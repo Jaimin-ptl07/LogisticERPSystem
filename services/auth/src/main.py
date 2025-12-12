@@ -4,7 +4,6 @@ Authentication Service Main Application
 import logging
 from contextlib import asynccontextmanager
 
-import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -13,36 +12,23 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from src.api.endpoints import auth, users, tenants
-from config.settings import Settings
-from src.config import AuthSettings
+from src.config_local import AuthSettings
 from src.database import engine, Base
-from shared.logging import configure_logging
-from shared.metrics import init_metrics
-from shared.tracing import init_tracer
 
-# Configure structured logging
-configure_logging()
-logger = structlog.get_logger(__name__)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 settings = AuthSettings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
-    logger.info("Starting auth service", version="1.0.0")
+    logger.info(f"Starting auth service - version=1.0.0")
 
     # Initialize database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    # Initialize OpenTelemetry
-    init_tracer(
-        service_name="auth-service",
-        jaeger_endpoint=settings.JAEGER_ENDPOINT
-    )
-
-    # Initialize metrics
-    init_metrics()
 
     yield
 
@@ -101,12 +87,11 @@ async def readiness_check():
             "status": "ready",
             "service": "auth-service",
             "checks": {
-                "database": "ok",
-                "redis": "ok"  # TODO: Add Redis health check
+                "database": "ok"
             }
         }
     except Exception as e:
-        logger.error("Readiness check failed", error=str(e))
+        logger.error(f"Readiness check failed - error={str(e)}")
         return Response(
             content={"status": "not ready", "error": str(e)},
             status_code=503
@@ -116,19 +101,19 @@ async def readiness_check():
 # Include API routers
 app.include_router(
     auth.router,
-    prefix=f"{settings.API_V1_PREFIX}/auth",
+    prefix="/api/v1/auth",
     tags=["Authentication"]
 )
 
 app.include_router(
     users.router,
-    prefix=f"{settings.API_V1_PREFIX}/users",
+    prefix="/api/v1/users",
     tags=["Users"]
 )
 
 app.include_router(
     tenants.router,
-    prefix=f"{settings.API_V1_PREFIX}/tenants",
+    prefix="/api/v1/tenants",
     tags=["Tenants"]
 )
 
@@ -138,10 +123,8 @@ app.include_router(
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler"""
     logger.error(
-        "Unhandled exception",
-        exc_info=exc,
-        path=request.url.path,
-        method=request.method
+        f"Unhandled exception - path={request.url.path}, method={request.method}",
+        exc_info=exc
     )
 
     return Response(

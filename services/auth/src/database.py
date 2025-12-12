@@ -6,14 +6,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, DateTime, Boolean, Text, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import sys
-import os
 
-# Add the parent directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../../../..'))
-
-from config.settings import Settings
-from src.config import AuthSettings
+from src.config_local import AuthSettings
 
 settings = AuthSettings()
 

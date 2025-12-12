@@ -36,11 +36,11 @@ check_requirements() {
 install_python_deps() {
     echo "🐍 Installing Python dependencies..."
 
-    # Install Poetry if not present
-    if ! command -v poetry &> /dev/null; then
-        echo "Installing Poetry..."
-        curl -sSL https://install.python-poetry.org | python3 -
-        export PATH="$HOME/.local/bin:$PATH"
+    # Install uv if not present
+    if ! command -v uv &> /dev/null; then
+        echo "Installing uv..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
     fi
 
     # Install dependencies for each service
@@ -48,13 +48,13 @@ install_python_deps() {
         if [ -f "$service/pyproject.toml" ]; then
             echo "Installing dependencies for $(basename $service)..."
             cd "$service"
-            poetry install
+            uv sync
             cd - > /dev/null
         fi
     done
 
     # Install root dependencies
-    poetry install
+    uv sync --extra dev
 
     echo "✅ Python dependencies installed"
 }

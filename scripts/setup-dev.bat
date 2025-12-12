@@ -29,11 +29,11 @@ echo ✅ All requirements satisfied
 REM Install Python dependencies
 echo 🐍 Installing Python dependencies...
 
-REM Install Poetry if not present
-poetry --version >nul 2>&1
+REM Install uv if not present
+uv --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Installing Poetry...
-    curl -sSL https://install.python-poetry.org | python -
+    echo Installing uv...
+    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 )
 
 REM Install dependencies for each service
@@ -41,13 +41,13 @@ for /d %%d in (services\*) do (
     if exist "%%d\pyproject.toml" (
         echo Installing dependencies for %%~nd...
         cd %%d
-        poetry install
+        uv sync
         cd ..\..
     )
 )
 
 REM Install root dependencies
-poetry install
+uv sync --extra dev
 echo ✅ Python dependencies installed
 
 REM Install Node.js dependencies

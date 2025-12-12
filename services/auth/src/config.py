@@ -8,11 +8,11 @@ import os
 # Add the parent directory to the path to import shared config
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../../..'))
 
-from config.settings import Settings as get_settings
+from config.settings import Settings
 from shared.logging import LoggingMixin
 
 
-class AuthSettings(get_settings(), LoggingMixin):
+class AuthSettings(Settings, LoggingMixin):
     """Extended settings for Auth Service"""
 
     # Auth specific settings
