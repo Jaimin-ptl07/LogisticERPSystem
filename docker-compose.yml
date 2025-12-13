@@ -245,6 +245,11 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
+    # Mount source code for development with auto-reload
+    volumes:
+      - ./services/auth/src:/app/src
+      - ./services/auth/pyproject.toml:/app/pyproject.toml
+      - ./services/auth/uv.lock:/app/uv.lock
 
 volumes:
   postgres_data:

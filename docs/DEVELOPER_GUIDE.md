@@ -68,7 +68,7 @@ The Logistics ERP is a **multi-tenant microservices architecture** designed to h
 - **SQLAlchemy**: ORM for database operations with async support
 - **Alembic**: Database migration tool
 - **Pydantic**: Data validation using Python type annotations
-- **JWT**: Stateless authentication tokens
+- **JWT & Refresh Tokens**: Stateless authentication with automatic token refresh
 - **Kafka-Python**: Apache Kafka producer and consumer
 
 #### Infrastructure
@@ -304,11 +304,15 @@ cd ../..
 
 #### Step 6: Run Services Individually
 
-**Terminal 1 - Auth Service:**
+**Terminal 1 - Auth Service (with auto-reload):**
 ```bash
 cd services/auth
 poetry run python -m src.main
+# OR use uvicorn with reload for development:
+poetry run uvicorn src.main:app --reload --host 0.0.0.0 --port 8001
 ```
+
+**Note**: The auth service Docker container is configured with auto-reload. When running with Docker Compose, code changes will automatically reload the service.
 
 **Terminal 2 - Frontend:**
 ```bash
@@ -497,6 +501,60 @@ poetry run pytest tests/test_auth.py
 # Run integration tests
 poetry run pytest -m integration
 ```
+
+## Authentication
+
+### Overview
+
+The authentication system provides secure access control with the following features:
+
+- **JWT Access Tokens**: Short-lived tokens (24 hours) for API access
+- **Refresh Tokens**: Long-lived tokens (30 days) stored in database for session renewal
+- **Multi-tenant Support**: Users belong to specific tenants
+- **Role-based Access Control (RBAC)**: Fine-grained permissions
+- **Password Security**: SHA256 hashing with salt
+- **Account Lockout**: Automatic lock after failed attempts
+- **Token Validation**: Synchronized between localStorage and cookies
+
+### Default Users
+
+The system is initialized with the following default users:
+
+| Role | Email | Password | Tenant |
+|------|-------|----------|---------|
+| Super Admin | admin@example.com | admin123 | default-tenant |
+| Manager | manager@example.com | manager123 | default-tenant |
+| Employee | employee@example.com | employee123 | default-tenant |
+
+### API Endpoints
+
+#### Authentication
+- `POST /api/v1/auth/login` - User login
+- `GET /api/v1/auth/me` - Get current user info
+- `POST /api/v1/auth/refresh` - Refresh access token
+
+#### User Management
+- `GET /api/v1/users` - List users (admin only)
+- `POST /api/v1/users` - Create new user (admin only)
+- `PUT /api/v1/users/{id}` - Update user (admin or owner)
+- `DELETE /api/v1/users/{id}` - Delete user (admin only)
+
+### Security Features
+
+1. **Token Refresh**: Automatic token renewal without requiring re-login
+2. **Cookie Validation**: Tokens stored in cookies must match localStorage
+3. **Route Protection**: Middleware protects all non-public routes
+4. **Password Hashing**: Using SHA256 with configurable salt
+5. **Session Management**: Refresh tokens can be revoked
+6. **UUID-based IDs**: All users and resources use UUIDs for unique identification
+
+### Frontend Integration
+
+The frontend automatically handles:
+- Token storage in localStorage and cookies
+- Automatic token refresh on API calls
+- Redirects to login on authentication failure
+- Logout on token manipulation
 
 ## Testing
 

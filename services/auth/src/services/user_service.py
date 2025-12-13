@@ -1,6 +1,7 @@
 """
 User service for authentication and user management
 """
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,6 +141,7 @@ class UserService:
 
         # Create user
         db_user = User(
+            id=str(uuid.uuid4()),
             email=user_data.email.lower(),
             password_hash=password_hash,
             first_name=user_data.first_name,
