@@ -44,9 +44,10 @@ interface TabsTriggerProps {
   value: string;
   children: React.ReactNode;
   onClick?: () => void;
+  className?: string;
 }
 
-export function TabsTrigger({ value, children, onClick }: TabsTriggerProps) {
+export function TabsTrigger({ value, children, onClick, className }: TabsTriggerProps) {
   const context = useContext(TabsContext);
   if (!context) throw new Error("TabsTrigger must be used within Tabs");
 
