@@ -1,9 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { uiSlice } from './slices/ui.slice';
+import authReducer from './slices/auth.slice';
 
 export const store = configureStore({
   reducer: {
     ui: uiSlice.reducer,
+    auth: authReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

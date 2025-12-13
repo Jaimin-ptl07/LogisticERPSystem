@@ -9,11 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 
 from src.api.endpoints import auth, users, tenants
 from src.config_local import AuthSettings
-from src.database import engine, Base
+from src.database import engine, Base, AsyncSessionLocal
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -80,8 +80,8 @@ async def readiness_check():
     """Readiness check endpoint"""
     try:
         # Check database connection
-        async with engine.begin() as conn:
-            await conn.execute("SELECT 1")
+        async with AsyncSessionLocal() as session:
+            await session.execute("SELECT 1")
 
         return {
             "status": "ready",
@@ -92,7 +92,7 @@ async def readiness_check():
         }
     except Exception as e:
         logger.error(f"Readiness check failed - error={str(e)}")
-        return Response(
+        return JSONResponse(
             content={"status": "not ready", "error": str(e)},
             status_code=503
         )
@@ -127,7 +127,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         exc_info=exc
     )
 
-    return Response(
+    return JSONResponse(
         content={"detail": "Internal server error"},
         status_code=500
     )

@@ -4,27 +4,31 @@ Authentication utilities and JWT handling
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import HTTPException, status
 import secrets
+import hashlib
 
-from .config import AuthSettings
+from .config_local import AuthSettings
 from .schemas import TokenData
 
 settings = AuthSettings()
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password: str) -> str:
+    """Generate SHA256 password hash"""
+    # Add salt to the password
+    salted_password = password + settings.JWT_SECRET
+    # Hash with SHA256
+    return hashlib.sha256(salted_password.encode('utf-8')).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password: str) -> str:
-    """Generate password hash"""
-    return pwd_context.hash(password)
+    """Verify a password against its SHA256 hash"""
+    # Hash the provided password with the same salt
+    salted_password = plain_password + settings.JWT_SECRET
+    computed_hash = hashlib.sha256(salted_password.encode('utf-8')).hexdigest()
+    # Compare hashes
+    return computed_hash == hashed_password
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
@@ -48,13 +52,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
 def create_refresh_token(user_id: str, tenant_id: str) -> str:
     """Create a secure refresh token"""
     # Generate a cryptographically secure random token
-    token = secrets.token_urlsafe(32)
-
-    # Store token hash in database (to be implemented)
-    # token_hash = get_password_hash(token)
-    # save_token_to_db(user_id, token_hash, expires_at)
-
-    return token
+    return secrets.token_urlsafe(32)
 
 
 def verify_token(token: str) -> TokenData:
@@ -94,7 +92,7 @@ def verify_token(token: str) -> TokenData:
 
 def generate_password_reset_token(email: str) -> str:
     """Generate password reset token"""
-    delta = timedelta(hours=settings.RESET_TOKEN_EXPIRE_HOURS)
+    delta = timedelta(hours=RESET_TOKEN_EXPIRE_HOURS)
     now = datetime.utcnow()
     expires = now + delta
     exp = expires.timestamp()
@@ -164,7 +162,7 @@ def reset_login_attempts() -> int:
 
 def create_email_verification_token(email: str) -> str:
     """Create email verification token"""
-    delta = timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
+    delta = timedelta(hours=EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
     now = datetime.utcnow()
     expires = now + delta
     exp = expires.timestamp()
@@ -194,9 +192,6 @@ def verify_email_verification_token(token: str) -> Optional[str]:
         return None
 
 
-# Add these missing settings to AuthSettings if not present
-if not hasattr(settings, 'RESET_TOKEN_EXPIRE_HOURS'):
-    settings.RESET_TOKEN_EXPIRE_HOURS = 1
-
-if not hasattr(settings, 'EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS'):
-    settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = 24
+# Default values for missing settings
+RESET_TOKEN_EXPIRE_HOURS = 1
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = 24
