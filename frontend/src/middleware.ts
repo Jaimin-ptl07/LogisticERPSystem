@@ -14,11 +14,11 @@ export function middleware(request: NextRequest) {
 
   // Check if the path is protected
   const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route)) ||
-                          (pathname !== '/' && pathname !== '/login' && pathname !== '/register' && !pathname.startsWith('/api/'));
+    (pathname !== '/' && pathname !== '/login' && pathname !== '/register' && !pathname.startsWith('/api/'));
 
   // Get token from cookies or authorization header
   const token = request.cookies.get('access_token')?.value ||
-                request.headers.get('authorization')?.replace('Bearer ', '');
+    request.headers.get('authorization')?.replace('Bearer ', '');
 
   // If accessing protected routes without token, redirect to login
   if (!isPublicRoute && isProtectedRoute && !token) {

@@ -16,12 +16,27 @@ export interface LoginResponse {
 export interface User {
   id: string;
   email: string;
-  role: string;
-  tenantId: string;
-  first_name?: string;
-  last_name?: string;
+  role_id: string;
+  tenant_id: string;
+  first_name: string;
+  last_name: string;
   is_active: boolean;
+  is_superuser: boolean;
   last_login?: string;
+  created_at?: string;
+  updated_at?: string;
+  login_attempts?: number;
+  locked_until?: string;
+  role?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+  tenant?: {
+    id: string;
+    name: string;
+    domain?: string;
+  };
 }
 
 class ApiHelper {

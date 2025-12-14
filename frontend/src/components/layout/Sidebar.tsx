@@ -7,14 +7,17 @@ import {
   Truck,
   CheckCircle,
   Clock,
-  Archive,
   Settings,
   FileText,
   ChevronRight,
-  User
+  User,
+  UserCircle,
+  LogOut
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAppSelector } from '@/store/hooks';
+import { Dropdown, DropdownItem } from '@/components/ui/Dropdown';
 
 interface NavItem {
   label: string;
@@ -38,6 +41,7 @@ interface SidebarProps {
 
 export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname();
+  const { user } = useAppSelector((state) => state.auth);
 
   return (
     <aside className={cn('w-64 bg-white border-r border-gray-200 flex flex-col h-full', className)}>
@@ -74,15 +78,43 @@ export function Sidebar({ className }: SidebarProps) {
       </nav>
 
       <div className="border-t border-gray-200 p-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-            <User className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-900">Salah</p>
-            <p className="text-xs text-gray-500">Admin</p>
-          </div>
-        </div>
+        <Dropdown
+          trigger={
+            <div className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors">
+              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {user?.first_name || 'User'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {user?.email || 'user@example.com'}
+                </p>
+              </div>
+            </div>
+          }
+        >
+          <DropdownItem onClick={() => window.location.href = '/profile'}>
+            <div className="flex items-center gap-2">
+              <UserCircle className="w-4 h-4" />
+              Profile
+            </div>
+          </DropdownItem>
+          <DropdownItem onClick={() => window.location.href = '/settings'}>
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Settings
+            </div>
+          </DropdownItem>
+          <hr className="my-1" />
+          <DropdownItem>
+            <div className="flex items-center gap-2">
+              <LogOut className="w-4 h-4" />
+              Logout
+            </div>
+          </DropdownItem>
+        </Dropdown>
       </div>
     </aside>
   );
