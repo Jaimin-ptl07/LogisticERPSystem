@@ -5,10 +5,11 @@ import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Button } from '@/components/ui/Button';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { mockTrips, mockOrderItems, mockTrucks, mockDrivers, mockBranches } from '@/data/mockData';
+import { tmsAPI, tmsResourcesAPI, OrderAssignData, TripCreateData } from '@/lib/api';
 import { Driver, Trip } from '@/types';
-import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Image, Edit2 } from 'lucide-react';
-import { useState } from 'react';
+import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Play, Square, Flag, AlertTriangle, RotateCcw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+
 
 export default function Trips() {
   const [showCreateTrip, setShowCreateTrip] = useState(false);
@@ -16,18 +17,70 @@ export default function Trips() {
   const [selectedTruck, setSelectedTruck] = useState('');
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
-  const [createdTrips, setCreatedTrips] = useState<Trip[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedTripForOrders, setSelectedTripForOrders] = useState<Trip | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const [assignedOrderIds, setAssignedOrderIds] = useState<Set<string>>(new Set());
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
   const [orderPriorityFilter, setOrderPriorityFilter] = useState('all');
   const [showSplitOptions, setShowSplitOptions] = useState(false);
-  const [splitOrder, setSplitOrder] = useState<typeof mockOrderItems[0] | null>(null);
+  const [splitOrder, setSplitOrder] = useState<any | null>(null);
   const [splitItemsCount, setSplitItemsCount] = useState(0);
   const [splitWeight, setSplitWeight] = useState(0);
+
+  // Resource data from API
+  const [availableTrucks, setAvailableTrucks] = useState<any[]>([]);
+  const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
+  const [availableOrders, setAvailableOrders] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+
+  // Loading states
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch data on component mount
+  useEffect(() => {
+    fetchTrips();
+    fetchResources();
+  }, []);
+
+  // Fetch trips with filters
+  const fetchTrips = async (filters?: { status?: string; branch?: string }) => {
+    try {
+      setLoading(true);
+      const data = await tmsAPI.getAllTrips(filters);
+      setTrips(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch trips');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch all resources
+  const fetchResources = async () => {
+    try {
+      const [trucksData, driversData, ordersData, branchesData] = await Promise.all([
+        tmsResourcesAPI.getTrucks(),
+        tmsResourcesAPI.getDrivers(),
+        tmsResourcesAPI.getOrders(),
+        tmsResourcesAPI.getBranches(),
+      ]);
+
+      setAvailableTrucks(trucksData);
+      setAvailableDrivers(driversData);
+      setAvailableOrders(ordersData);
+      setBranches(branchesData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch resources');
+    }
+  };
+
+  // Update filtered trips when status filter changes
+  useEffect(() => {
+    fetchTrips(statusFilter ? { status: statusFilter } : undefined);
+  }, [statusFilter]);
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -52,49 +105,97 @@ export default function Trips() {
     return ['on-route', 'loading', 'completed', 'truck-malfunction'].includes(status);
   };
 
-  const handleCreateTrip = () => {
-    // Find selected truck and driver details
-    const selectedTruckDetails = availableTrucks.find(t => t.id === selectedTruck);
+  const getNextStatusOptions = (currentStatus: string) => {
+    switch (currentStatus) {
+      case 'planning':
+        return [
+          { value: 'loading', label: 'Start Loading', color: 'yellow' }
+        ];
+      case 'loading':
+        return [
+          { value: 'on-route', label: 'Start Delivery', color: 'blue' },
+          { value: 'planning', label: 'Back to Planning', color: 'gray' }
+        ];
+      case 'on-route':
+        return [
+          { value: 'completed', label: 'Complete Trip', color: 'green' },
+          { value: 'truck-malfunction', label: 'Report Truck Malfunction', color: 'red' }
+        ];
+      case 'truck-malfunction':
+        return [
+          { value: 'loading', label: 'Resume Loading', color: 'yellow' },
+          { value: 'on-route', label: 'Resume Delivery', color: 'blue' }
+        ];
+      case 'completed':
+      case 'cancelled':
+        return [];
+      default:
+        return [];
+    }
+  };
 
-    // Create new trip object
-    const newTrip: Trip = {
-      id: `TRIP-${String(mockTrips.length + createdTrips.length + 1).padStart(3, '0')}`,
-      status: 'planning',
-      branch: selectedBranch,
-      origin: selectedBranch,
-      destination: 'To be determined',
-      truck: selectedTruckDetails ? {
-        plate: selectedTruckDetails.plate,
-        model: selectedTruckDetails.model,
-        capacity: selectedTruckDetails.capacity,
-      } : undefined,
-      driver: selectedDriver ? {
-        name: selectedDriver.name,
-        phone: selectedDriver.phone,
-      } : undefined,
-      orders: [],
-      date: new Date().toISOString().split('T')[0],
-      createdAt: new Date().toISOString(),
-      capacityUsed: 0,
-      capacityTotal: selectedTruckDetails?.capacity || 0,
-    };
+  const handleStatusChange = async (tripId: string, newStatus: string) => {
+    try {
+      await tmsAPI.updateTrip(tripId, { status: newStatus });
 
-    // Add to created trips
-    setCreatedTrips([...createdTrips, newTrip]);
+      // Refresh trips to show updated status
+      fetchTrips();
 
-    console.log('Creating trip with:', {
-      branch: selectedBranch,
-      truck: selectedTruck,
-      driver: selectedDriver,
-      newTrip
-    });
+      // Show success message
+      const statusMessages = {
+        'loading': 'Trip is now in loading status',
+        'on-route': 'Trip is now on route',
+        'completed': 'Trip has been completed',
+        'cancelled': 'Trip has been cancelled',
+        'truck-malfunction': 'Truck malfunction has been reported',
+        'planning': 'Trip is back to planning status'
+      };
 
-    // Reset form
-    setSelectedBranch('');
-    setSelectedTruck('');
-    setSelectedDriver(null);
-    setCurrentStep(1);
-    setShowCreateTrip(false);
+      alert(statusMessages[newStatus as keyof typeof statusMessages] || 'Trip status updated');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update trip status');
+    }
+  };
+
+  const handleCreateTrip = async () => {
+    try {
+      // Find selected truck and driver details
+      const selectedTruckDetails = availableTrucks.find(t => t.id === selectedTruck);
+
+      if (!selectedTruckDetails || !selectedDriver || !selectedBranch) {
+        alert('Please select branch, truck, and driver');
+        return;
+      }
+
+      // Create trip via API
+      const tripData: TripCreateData = {
+        branch: selectedBranch,
+        truck_plate: selectedTruckDetails.plate,
+        truck_model: selectedTruckDetails.model,
+        truck_capacity: selectedTruckDetails.capacity,
+        driver_id: selectedDriver.id,
+        driver_name: selectedDriver.name,
+        driver_phone: selectedDriver.phone,
+        capacity_total: selectedTruckDetails.capacity,
+        trip_date: new Date().toISOString().split('T')[0],
+        origin: selectedBranch,
+        destination: null, // Will be determined later
+      };
+
+      await tmsAPI.createTrip(tripData);
+
+      // Refresh trips
+      fetchTrips();
+
+      // Reset form
+      setSelectedBranch('');
+      setSelectedTruck('');
+      setSelectedDriver(null);
+      setCurrentStep(1);
+      setShowCreateTrip(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to create trip');
+    }
   };
 
   const handleNextStep = () => {
@@ -136,13 +237,13 @@ export default function Trips() {
     }
   };
 
-  const getApprovedOrders = () => mockOrderItems.filter(order => order.status === 'approved');
-  const availableTrucks = mockTrucks.filter(truck => truck.status === 'available');
-  const availableDrivers = mockDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
+  const getApprovedOrders = () => availableOrders.filter(order => order.status === 'approved');
+  const getTrucksAvailable = () => availableTrucks.filter(truck => truck.status === 'available');
+  const getDriversAvailable = () => availableDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
 
   // Order assignment helper functions
   const getAvailableOrders = () => {
-    return mockOrderItems.filter(order => {
+    return availableOrders.filter(order => {
       const isApproved = order.status === 'approved';
       const isNotAssigned = !isOrderAssigned(order.id);
       const matchesSearch = order.customer.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
@@ -155,13 +256,13 @@ export default function Trips() {
 
   // Check if order is already assigned to any trip
   const isOrderAssigned = (orderId: string) => {
-    return allTrips.some(trip =>
+    return trips.some(trip =>
       trip.orders.some(order => order.id === orderId)
     );
   };
 
   // Split order logic
-  const handleSplitOrder = (order: typeof mockOrderItems[0]) => {
+  const handleSplitOrder = (order: any) => {
     if (!selectedTripForOrders) return;
 
     const availableCapacity = (selectedTripForOrders.capacityTotal || 0) - (selectedTripForOrders.capacityUsed || 0);
@@ -182,57 +283,47 @@ export default function Trips() {
     setShowSplitOptions(true);
   };
 
-  const handleAssignPartialOrder = () => {
+  const handleConfirmSplit = async () => {
     if (!splitOrder || !selectedTripForOrders) return;
 
-    // Add the split order to the trip
-    addOrdersToTrip(selectedTripForOrders, [splitOrder]);
+    try {
+      // Create split order data
+      const splitOrderData = {
+        order_id: `${splitOrder.id}-SPLIT`,
+        customer: splitOrder.customer,
+        customerAddress: splitOrder.customerAddress,
+        total: Math.round((splitOrder.total / splitOrder.items) * splitItemsCount),
+        weight: splitWeight,
+        volume: Math.round((splitOrder.volume / splitOrder.items) * splitItemsCount),
+        items: splitItemsCount,
+        priority: splitOrder.priority,
+        address: splitOrder.address,
+        original_order_id: splitOrder.id,
+        original_items: splitOrder.items,
+        original_weight: splitOrder.weight,
+      };
 
-    // Show remaining items message
-    const remainingItems = splitOrder.originalItems! - splitOrder.items;
-    alert(`Successfully assigned ${splitOrder.items} items. ${remainingItems} items remaining from original order.`);
+      // Assign split order to trip
+      await tmsAPI.assignOrdersToTrip(selectedTripForOrders.id, [splitOrderData]);
 
-    // Reset split state
-    setSplitOrder(null);
-    setShowSplitOptions(false);
-  };
+      // Show success message
+      const remainingItems = splitOrder.items - splitItemsCount;
+      alert(`Successfully assigned split order with ${splitItemsCount} items. ${remainingItems} items remaining from original order ${splitOrder.id}.`);
 
-  const handleConfirmSplit = () => {
-    if (!splitOrder || !selectedTripForOrders) return;
+      // Reset split state and close modals
+      setSplitOrder(null);
+      setSplitItemsCount(0);
+      setSplitWeight(0);
+      setShowSplitOptions(false);
+      setShowOrderModal(false);
+      setSelectedTripForOrders(null);
+      setSelectedOrders([]);
 
-    // Create split order based on user's selection
-    const splitOrderData = {
-      id: `${splitOrder.id}-SPLIT`,
-      customer: splitOrder.customer,
-      customerAddress: splitOrder.customerAddress,
-      status: 'approved' as const,
-      total: Math.round((splitOrder.total / splitOrder.items) * splitItemsCount),
-      weight: splitWeight,
-      volume: Math.round((splitOrder.volume / splitOrder.items) * splitItemsCount),
-      date: splitOrder.date,
-      priority: splitOrder.priority,
-      items: splitItemsCount,
-      address: splitOrder.address,
-      originalOrderId: splitOrder.id,
-      originalItems: splitOrder.items,
-      originalWeight: splitOrder.weight
-    };
-
-    // Add the split order to the trip
-    addOrdersToTrip(selectedTripForOrders, [splitOrderData]);
-
-    // Show success message
-    const remainingItems = splitOrder.items - splitItemsCount;
-    alert(`Successfully assigned split order with ${splitItemsCount} items. ${remainingItems} items remaining from original order ${splitOrder.id}.`);
-
-    // Reset split state and close modals
-    setSplitOrder(null);
-    setSplitItemsCount(0);
-    setSplitWeight(0);
-    setShowSplitOptions(false);
-    setShowOrderModal(false);
-    setSelectedTripForOrders(null);
-    setSelectedOrders([]);
+      // Refresh trips
+      fetchTrips();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to split order');
+    }
   };
 
   const handleAddOrderClick = (trip: Trip) => {
@@ -251,18 +342,12 @@ export default function Trips() {
 
   const calculateTotalWeight = (orderIds: string[]) => {
     return orderIds.reduce((total, orderId) => {
-      const order = mockOrderItems.find(o => o.id === orderId);
+      const order = availableOrders.find(o => o.id === orderId);
       return total + (order?.weight || 0);
     }, 0);
   };
 
-  const calculateTotalVolume = (orderIds: string[]) => {
-    return orderIds.reduce((total, orderId) => {
-      const order = mockOrderItems.find(o => o.id === orderId);
-      return total + (order?.volume || 0);
-    }, 0);
-  };
-
+  
   const getCapacityPercentage = (used: number, total: number) => {
     if (total === 0) return 0;
     return Math.round((used / total) * 100);
@@ -274,76 +359,108 @@ export default function Trips() {
     return 'bg-green-500';
   };
 
-  const handleAssignOrders = () => {
+  const handleAssignOrders = async () => {
     if (!selectedTripForOrders || selectedOrders.length === 0) return;
 
-    const ordersToAdd = mockOrderItems.filter(order => selectedOrders.includes(order.id));
-    const newCapacityUsed = (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders);
-    const isOverCapacity = newCapacityUsed > (selectedTripForOrders.capacityTotal || 0);
+    try {
+      // Prepare orders data
+      const ordersData: OrderAssignData[] = [];
+      selectedOrders.forEach(orderId => {
+        const order = availableOrders.find(o => o.id === orderId);
+        if (order) {
+          ordersData.push({
+            order_id: order.id,
+            customer: order.customer,
+            customerAddress: order.customerAddress,
+            total: order.total,
+            weight: order.weight,
+            volume: order.volume,
+            items: order.items,
+            priority: order.priority,
+            address: order.address,
+          });
+        }
+      });
 
-    if (isOverCapacity) {
-      // Show confirmation dialog for overcapacity
-      if (confirm('Warning: Adding these orders will exceed the truck capacity. Do you want to continue?')) {
-        // Proceed with assignment even if over capacity
-        addOrdersToTrip(selectedTripForOrders, ordersToAdd);
+      // Check capacity
+      const newCapacityUsed = (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders);
+      if (newCapacityUsed > (selectedTripForOrders.capacityTotal || 0)) {
+        if (!confirm('Warning: Adding these orders will exceed the truck capacity. Do you want to continue?')) {
+          return;
+        }
       }
-    } else {
-      // Normal assignment
-      addOrdersToTrip(selectedTripForOrders, ordersToAdd);
+
+      // Assign orders via API
+      await tmsAPI.assignOrdersToTrip(selectedTripForOrders.id, ordersData);
+
+      // Refresh trips
+      fetchTrips();
+
+      // Close modal and reset
+      setShowOrderModal(false);
+      setSelectedTripForOrders(null);
+      setSelectedOrders([]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to assign orders');
     }
   };
 
-  const addOrdersToTrip = (trip: Trip, orders: typeof mockOrderItems) => {
-    // Update mock trips
-    const tripIndex = mockTrips.findIndex(t => t.id === trip.id);
-    if (tripIndex !== -1) {
-      mockTrips[tripIndex] = {
-        ...mockTrips[tripIndex],
-        orders: [...mockTrips[tripIndex].orders, ...orders],
-        capacityUsed: (mockTrips[tripIndex].capacityUsed || 0) + calculateTotalWeight(orders.map(o => o.id))
-      };
-    }
-
-    // Update created trips if applicable
-    const createdTripIndex = createdTrips.findIndex(t => t.id === trip.id);
-    if (createdTripIndex !== -1) {
-      const updatedCreatedTrips = [...createdTrips];
-      updatedCreatedTrips[createdTripIndex] = {
-        ...updatedCreatedTrips[createdTripIndex],
-        orders: [...updatedCreatedTrips[createdTripIndex].orders, ...orders],
-        capacityUsed: (updatedCreatedTrips[createdTripIndex].capacityUsed || 0) + calculateTotalWeight(orders.map(o => o.id))
-      };
-      setCreatedTrips(updatedCreatedTrips);
-    }
-
-    // Mark orders as assigned
-    const newAssignedOrderIds = new Set(assignedOrderIds);
-    orders.forEach(order => newAssignedOrderIds.add(order.id));
-    setAssignedOrderIds(newAssignedOrderIds);
-
-    // Close modal and reset
-    setShowOrderModal(false);
-    setSelectedTripForOrders(null);
-    setSelectedOrders([]);
-  };
-
-  const allTrips = [...mockTrips.filter(t => t.status !== 'cancelled'), ...createdTrips];
-
+  // Calculate statistics
   const tripStats = {
-    planning: allTrips.filter(t => t.status === 'planning').length,
-    loading: allTrips.filter(t => t.status === 'loading').length,
-    onRoute: allTrips.filter(t => t.status === 'on-route').length,
-    completed: allTrips.filter(t => t.status === 'completed').length,
-    cancelled: mockTrips.filter(t => t.status === 'cancelled').length,
+    planning: trips.filter(t => t.status === 'planning').length,
+    loading: trips.filter(t => t.status === 'loading').length,
+    onRoute: trips.filter(t => t.status === 'on-route').length,
+    completed: trips.filter(t => t.status === 'completed').length,
+    cancelled: trips.filter(t => t.status === 'cancelled').length,
   };
 
   const activeTrips = statusFilter
-    ? allTrips.filter(t => t.status === statusFilter)
-    : allTrips;
+    ? trips.filter(t => t.status === statusFilter)
+    : trips;
 
   return (
     <AppLayout>
       <div className="space-y-6">
+        {/* Loading and Error States */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">Loading trips data...</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <XCircle className="h-5 w-5 text-red-400" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error loading data</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>{error}</p>
+                </div>
+                <div className="mt-4">
+                  <Button
+                    onClick={() => {
+                      setError(null);
+                      fetchTrips();
+                      fetchResources();
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="text-red-700 border-red-300 hover:bg-red-50"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <>
         {/* Page Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -567,7 +684,35 @@ export default function Trips() {
                               </Badge>
                             )}
                           </div>
-                          <span className="text-sm text-gray-500">{trip.date}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">{trip.date}</span>
+                            {getNextStatusOptions(trip.status).length > 0 && (
+                              <div className="flex gap-1">
+                                {getNextStatusOptions(trip.status).map((option) => (
+                                  <Button
+                                    key={option.value}
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleStatusChange(trip.id, option.value)}
+                                    className={`text-xs ${
+                                      option.color === 'red' ? 'text-red-600 border-red-300 hover:bg-red-50' :
+                                      option.color === 'green' ? 'text-green-600 border-green-300 hover:bg-green-50' :
+                                      option.color === 'blue' ? 'text-blue-600 border-blue-300 hover:bg-blue-50' :
+                                      option.color === 'yellow' ? 'text-yellow-600 border-yellow-300 hover:bg-yellow-50' :
+                                      'text-gray-600 border-gray-300 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {option.color === 'red' && <XCircle className="w-3 h-3 mr-1" />}
+                                    {option.color === 'green' && <CheckCircle className="w-3 h-3 mr-1" />}
+                                    {option.color === 'blue' && <Play className="w-3 h-3 mr-1" />}
+                                    {option.color === 'yellow' && <Package className="w-3 h-3 mr-1" />}
+                                    {option.color === 'gray' && <RotateCcw className="w-3 h-3 mr-1" />}
+                                    {option.label}
+                                  </Button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
@@ -704,8 +849,12 @@ export default function Trips() {
                             <div className="text-center py-8 text-gray-500">
                               <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                               <p>No orders assigned to this trip yet</p>
-                              {trip.status === 'planning' && (
+                              {trip.status === 'planning' ? (
                                 <p className="text-sm mt-1">Click &quot;Add Order&quot; to assign orders to this trip</p>
+                              ) : (
+                                <p className="text-sm mt-1 text-yellow-600">
+                                  Orders cannot be added to trips that are {trip.status.replace('-', ' ')}
+                                </p>
                               )}
                             </div>
                           )}
@@ -800,11 +949,11 @@ export default function Trips() {
               {/* Available Trucks */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-black">Available Trucks ({availableTrucks.length})</CardTitle>
+                  <CardTitle className="text-black">Available Trucks ({getTrucksAvailable().length})</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {availableTrucks.map((truck) => (
+                    {getTrucksAvailable().map((truck) => (
                       <div key={truck.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                         <div>
                           <p className="font-medium text-gray-900">{truck.plate}</p>
@@ -904,7 +1053,7 @@ export default function Trips() {
                     <h3 className="text-lg font-semibold text-black mb-4">Select Branch</h3>
                     <p className="text-gray-600 mb-6">Choose the branch for this trip</p>
                     <div className="space-y-3">
-                      {mockBranches.map((branch) => (
+                      {branches.map((branch) => (
                         <div
                           key={branch.id}
                           onClick={() => handleBranchSelect(branch.name)}
@@ -948,12 +1097,12 @@ export default function Trips() {
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">Available Trucks:</p>
-                          <p className="text-sm text-gray-500">{availableTrucks.length} trucks available</p>
+                          <p className="text-sm text-gray-500">{getTrucksAvailable().length} trucks available</p>
                         </div>
                       </div>
                     </div>
                     <div className="space-y-3">
-                      {availableTrucks.map((truck) => (
+                      {getTrucksAvailable().map((truck) => (
                         <div
                           key={truck.id}
                           onClick={() => setSelectedTruck(truck.id)}
@@ -1016,12 +1165,12 @@ export default function Trips() {
                         </div>
                       </div>
                       <div className="text-sm text-gray-600 border-t pt-2">
-                        Available Drivers: <span className="font-medium text-black">{availableDrivers.length} drivers available</span>
+                        Available Drivers: <span className="font-medium text-black">{getDriversAvailable().length} drivers available</span>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-                      {availableDrivers.map((driver) => (
+                      {getDriversAvailable().map((driver) => (
                         <div
                           key={driver.id}
                           onClick={() => setSelectedDriver(driver)}
@@ -1489,7 +1638,8 @@ export default function Trips() {
             </div>
           </div>
         )}
-
+          </>
+        )}
       </div>
     </AppLayout>
   );

@@ -1,0 +1,469 @@
+// Client-side API helper functions
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+  user: User;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  role_id: string;
+  tenant_id: string;
+  first_name: string;
+  last_name: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  last_login?: string;
+  created_at?: string;
+  updated_at?: string;
+  login_attempts?: number;
+  locked_until?: string;
+  role?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+  tenant?: {
+    id: string;
+    name: string;
+    domain?: string;
+  };
+}
+
+class ApiHelper {
+  // Get the stored token from localStorage and verify with cookies
+  getToken(): string | null {
+    if (typeof window !== 'undefined') {
+      // Get token from localStorage
+      const token = localStorage.getItem('access_token');
+
+      if (!token) {
+        return null;
+      }
+
+      // Verify token exists in cookie (server-side validation)
+      const cookies = document.cookie.split(';');
+      let cookieToken = null;
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'access_token') {
+          cookieToken = value;
+          break;
+        }
+      }
+
+      // If token doesn't exist in cookie or doesn't match, logout
+      if (!cookieToken || cookieToken !== token) {
+        console.warn('Token validation failed: mismatch or missing cookie');
+        this.logout();
+        return null;
+      }
+
+      return token;
+    }
+    return null;
+  }
+
+  // Get refresh token from localStorage
+  getRefreshToken(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('refresh_token');
+    }
+    return null;
+  }
+
+  // Make authenticated requests with automatic token refresh
+  private async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+    const token = this.getToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> || {}),
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Make the initial request
+    let response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    // If we get a 401 Unauthorized, try to refresh the token
+    if (response.status === 401 && !url.includes('/api/auth/me') && !url.includes('/api/auth/refresh')) {
+      console.warn('Received 401 response, attempting to refresh token...');
+
+      try {
+        // Try to refresh the token
+        const refreshed = await this.refreshToken();
+
+        if (refreshed) {
+          // Get the new token and retry the original request
+          const newToken = this.getToken();
+          if (newToken) {
+            headers['Authorization'] = `Bearer ${newToken}`;
+            console.log('Token refreshed successfully, retrying original request...');
+            response = await fetch(url, {
+              ...options,
+              headers,
+            });
+          }
+        } else {
+          // Refresh failed, logout user
+          console.error('Token refresh failed, logging out...');
+          this.logout();
+          window.location.href = '/login';
+        }
+      } catch (error) {
+        console.error('Failed to refresh token:', error);
+        this.logout();
+        window.location.href = '/login';
+      }
+    }
+
+    return response;
+  }
+
+  // Refresh access token using refresh token
+  private async refreshToken(): Promise<boolean> {
+    const refreshToken = this.getRefreshToken();
+
+    if (!refreshToken) {
+      console.error('No refresh token available');
+      return false;
+    }
+
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Token refresh failed');
+      }
+
+      const data: LoginResponse = await response.json();
+
+      // Store the new tokens
+      this.setTokens(data.access_token, data.refresh_token);
+
+      return true;
+    } catch (error) {
+      console.error('Error refreshing token:', error);
+      return false;
+    }
+  }
+
+  // Login
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(credentials),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Login failed');
+    }
+
+    return response.json();
+  }
+
+  // Get current user
+  async getCurrentUser(): Promise<User> {
+    const response = await this.authenticatedFetch('/api/auth/me');
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to get user info');
+    }
+
+    return response.json();
+  }
+
+  // Logout
+  logout(): void {
+    if (typeof window !== 'undefined') {
+      // Remove from localStorage
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+
+      // Remove from cookies
+      document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
+  }
+
+  // Set both access and refresh tokens in localStorage and cookies
+  setTokens(accessToken: string, refreshToken: string): void {
+    if (typeof window !== 'undefined') {
+      // Store in localStorage for client-side access
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
+
+      // Store access token in cookie for server-side middleware access
+      // Set cookie to expire in 24 hours (same as JWT token)
+      const expires = new Date();
+      expires.setTime(expires.getTime() + 24 * 60 * 60 * 1000);
+      document.cookie = `access_token=${accessToken}; expires=${expires.toUTCString()}; path=/; SameSite=Strict; ${window.location.protocol === 'https:' ? 'Secure;' : ''}`;
+
+      // Store refresh token in cookie (httpOnly for security)
+      const refreshExpires = new Date();
+      refreshExpires.setTime(refreshExpires.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      document.cookie = `refresh_token=${refreshToken}; expires=${refreshExpires.toUTCString()}; path=/; SameSite=Strict; ${window.location.protocol === 'https:' ? 'Secure;' : ''}`;
+    }
+  }
+
+  // Set token in both localStorage and cookies (for backward compatibility)
+  setToken(token: string): void {
+    console.warn('setToken is deprecated, use setTokens instead');
+    if (typeof window !== 'undefined') {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        this.setTokens(token, refreshToken);
+      } else {
+        // Fallback to old behavior
+        localStorage.setItem('access_token', token);
+        const expires = new Date();
+        expires.setTime(expires.getTime() + 24 * 60 * 60 * 1000);
+        document.cookie = `access_token=${token}; expires=${expires.toUTCString()}; path=/; SameSite=Strict; ${window.location.protocol === 'https:' ? 'Secure;' : ''}`;
+      }
+    }
+  }
+
+  // Check if authenticated
+  isAuthenticated(): boolean {
+    return !!this.getToken();
+  }
+}
+
+export const api = new ApiHelper();
+
+// TMS (Transport Management System) API functions
+const TMS_BASE = '/api/tms';
+
+// Helper function to fetch with error handling
+async function fetchWithError(url: string, options?: RequestInit) {
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Types for TMS API
+interface TripCreateData {
+  user_id: string;
+  company_id: string;
+  branch: string;
+  truck_plate: string;
+  truck_model: string;
+  truck_capacity: number;
+  driver_id: string;
+  driver_name: string;
+  driver_phone: string;
+  capacity_total: number;
+  trip_date: string;
+  origin?: string;
+  destination?: string | null;
+}
+
+interface TripUpdateData {
+  status?: string;
+  destination?: string;
+  capacity_used?: number;
+  distance?: number;
+  estimated_duration?: number;
+}
+
+interface OrderAssignData {
+  user_id: string;
+  company_id: string;
+  order_id: string;
+  customer: string;
+  customerAddress?: string;
+  total: number;
+  weight: number;
+  volume: number;
+  items: number;
+  priority: string;
+  address?: string;
+  original_order_id?: string;
+  original_items?: number;
+  original_weight?: number;
+}
+
+// Trip API functions
+export const tmsAPI = {
+  // Get all trips with optional filters
+  async getAllTrips(filters?: {
+    status?: string;
+    branch?: string;
+    date?: string;
+  }) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.branch) params.append('branch', filters.branch);
+    if (filters?.date) params.append('trip_date', filters.date);
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    const url = `${TMS_BASE}/trips${params.toString() ? `?${params.toString()}` : ''}`;
+    const data = await fetchWithError(url);
+
+    // Transform API response to match frontend Trip type
+    return data.map((trip: any) => ({
+      id: trip.id,
+      status: trip.status,
+      branch: trip.branch,
+      origin: trip.origin,
+      destination: trip.destination,
+      distance: trip.distance,
+      estimatedDuration: trip.estimated_duration,
+      preTripTime: trip.pre_trip_time,
+      postTripTime: trip.post_trip_time,
+      truck: {
+        plate: trip.truck_plate,
+        model: trip.truck_model,
+        capacity: trip.truck_capacity
+      },
+      driver: {
+        name: trip.driver_name,
+        phone: trip.driver_phone
+      },
+      orders: trip.orders || [],
+      date: trip.trip_date,
+      createdAt: trip.created_at,
+      capacityUsed: trip.capacity_used,
+      capacityTotal: trip.capacity_total
+    }));
+  },
+
+  // Get single trip by ID
+  async getTripById(id: string) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${id}?${params.toString()}`);
+  },
+
+  // Create new trip
+  async createTrip(tripData: TripCreateData) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const tripDataWithIds = {
+      ...tripData,
+      user_id: HARDCODED_USER_ID,
+      company_id: HARDCODED_COMPANY_ID,
+    };
+
+    return fetchWithError(`${TMS_BASE}/trips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tripDataWithIds),
+    });
+  },
+
+  // Update trip
+  async updateTrip(id: string, tripData: Partial<TripUpdateData>) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${id}?${params.toString()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tripData),
+    });
+  },
+
+  // Get trip orders
+  async getTripOrders(tripId: string) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?${params.toString()}`);
+  },
+
+  // Assign orders to trip
+  async assignOrdersToTrip(tripId: string, orders: OrderAssignData[]) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const ordersWithIds = orders.map(order => ({
+      ...order,
+      user_id: HARDCODED_USER_ID,
+      company_id: HARDCODED_COMPANY_ID,
+    }));
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orders: ordersWithIds }),
+    });
+  },
+};
+
+// Resources API functions
+export const tmsResourcesAPI = {
+  async getTrucks() {
+    return fetchWithError(`${TMS_BASE}/resources/trucks`);
+  },
+
+  async getDrivers() {
+    return fetchWithError(`${TMS_BASE}/resources/drivers`);
+  },
+
+  async getOrders() {
+    return fetchWithError(`${TMS_BASE}/resources/orders`);
+  },
+
+  async getBranches() {
+    return fetchWithError(`${TMS_BASE}/resources/branches`);
+  },
+};
