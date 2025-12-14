@@ -288,16 +288,17 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Create default admin user (password: admin123)
 -- NOTE: This is a default password that should be changed immediately after first login
+-- Password hash computed with JWT_SECRET: eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('a5dc781f-9e43-4863-9e35-8772b26a7b77', 'admin@example.com', '5c3e807858864fa9f98d09fc5c8dd5d0503d211f4ae66563b245e6f814bc1914', 'System', 'Administrator', true, true, 'default-tenant', 'super-admin-role')
+    ('a5dc781f-9e43-4863-9e35-8772b26a7b77', 'admin@example.com', 'aa2573da8923d5d34ffd1fba1e6a2f34af71cb77e039da7e760b0b6242a3ca00', 'System', 'Administrator', true, true, 'default-tenant', 'super-admin-role')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create default demo manager user (password: manager123)
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('75267200-9b37-49a5-9ffa-4b7e1f3aba51', 'manager@example.com', '87e00244ba6f5e41968583ee9535f2266d98a50ac2d3a490ccfe503cfe188572', 'Demo', 'Manager', true, false, 'default-tenant', 'manager-role')
+    ('75267200-9b37-49a5-9ffa-4b7e1f3aba51', 'manager@example.com', '1baedde8092024d84b5e24e0e18f0202cf493c98e45916ac53a751d7e516a1fb', 'Demo', 'Manager', true, false, 'default-tenant', 'manager-role')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create default demo employee user (password: employee123)
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('5fcd2919-1b77-4c88-b60d-0de84ea3c512', 'employee@example.com', '92837eeb6a18e6108124abdd61c28f958fc4849d48808b30b17dd2f674b12757', 'Demo', 'Employee', true, false, 'default-tenant', 'user-role')
+    ('5fcd2919-1b77-4c88-b60d-0de84ea3c512', 'employee@example.com', '38a907ef3c2aa3ed2ba2865279723ad3398dfc0a2bd5fc22cc6c167a3dba5fe7', 'Demo', 'Employee', true, false, 'default-tenant', 'user-role')
 ON CONFLICT (id) DO NOTHING;
