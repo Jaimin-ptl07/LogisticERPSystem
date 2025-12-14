@@ -17,7 +17,7 @@ export default function Trips() {
   const [selectedTruck, setSelectedTruck] = useState('');
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
-  const [trips, setTrips] = useState<Trip[]>([]);
+  const [allTrips, setAllTrips] = useState<Trip[]>([]);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedTripForOrders, setSelectedTripForOrders] = useState<Trip | null>(null);
@@ -41,21 +41,27 @@ export default function Trips() {
 
   // Fetch data on component mount
   useEffect(() => {
-    fetchTrips();
+    fetchAllTrips();
     fetchResources();
   }, []);
 
-  // Fetch trips with filters
-  const fetchTrips = async (filters?: { status?: string; branch?: string }) => {
+  // Fetch all trips (for statistics)
+  const fetchAllTrips = async () => {
     try {
       setLoading(true);
-      const data = await tmsAPI.getAllTrips(filters);
-      setTrips(data);
+      const data = await tmsAPI.getAllTrips();
+      setAllTrips(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch trips');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Fetch trips with filters (for display) - now just refreshes all trips
+  const fetchTrips = async (filters?: { status?: string; branch?: string }) => {
+    // We'll just refresh all trips since filtering is now done on frontend
+    await fetchAllTrips();
   };
 
   // Fetch all resources
@@ -407,16 +413,16 @@ export default function Trips() {
 
   // Calculate statistics
   const tripStats = {
-    planning: trips.filter(t => t.status === 'planning').length,
-    loading: trips.filter(t => t.status === 'loading').length,
-    onRoute: trips.filter(t => t.status === 'on-route').length,
-    completed: trips.filter(t => t.status === 'completed').length,
-    cancelled: trips.filter(t => t.status === 'cancelled').length,
+    planning: allTrips.filter(t => t.status === 'planning').length,
+    loading: allTrips.filter(t => t.status === 'loading').length,
+    onRoute: allTrips.filter(t => t.status === 'on-route').length,
+    completed: allTrips.filter(t => t.status === 'completed').length,
+    cancelled: allTrips.filter(t => t.status === 'cancelled').length,
   };
 
   const activeTrips = statusFilter
-    ? trips.filter(t => t.status === statusFilter)
-    : trips;
+    ? allTrips.filter(t => t.status === statusFilter)
+    : allTrips;
 
   return (
     <AppLayout>
