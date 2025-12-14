@@ -15,24 +15,28 @@ import {
   LogOut
 } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useAppSelector } from '@/store/hooks';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { Dropdown, DropdownItem } from '@/components/ui/Dropdown';
+import { logoutAsync } from '@/store/slices/auth.slice';
+import { showSuccessToast } from '@/utils/toast';
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
+  access?: 'super_admin' | 'admin' | 'user';
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: Home },
-  { label: 'Orders', href: '/orders', icon: Package },
-  { label: 'Trips', href: '/trips', icon: Truck },
-  { label: 'Deliveries', href: '/deliveries', icon: CheckCircle },
-  { label: 'History', href: '/history', icon: Clock },
-  { label: 'Manage Masters', href: '/masters', icon: Settings },
-  { label: 'Audit Logs', href: '/audit-logs', icon: FileText },
+  { label: 'Dashboard', href: '/dashboard', icon: Home, access: 'user' },
+  { label: 'Orders', href: '/orders', icon: Package, access: 'user' },
+  { label: 'Trips', href: '/trips', icon: Truck, access: 'user' },
+  { label: 'Deliveries', href: '/deliveries', icon: CheckCircle, access: 'user' },
+  { label: 'History', href: '/history', icon: Clock, access: 'user' },
+  { label: 'Manage Masters', href: '/masters', icon: Settings, access: 'admin' },
+  { label: 'Audit Logs', href: '/audit-logs', icon: FileText, access: 'admin' },
+  { label: 'Super Admin', href: '/super-admin', icon: User, access: 'super_admin' },
 ];
 
 interface SidebarProps {
@@ -41,7 +45,36 @@ interface SidebarProps {
 
 export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await dispatch(logoutAsync()).unwrap();
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  // Filter nav items based on user access level
+  const filteredNavItems = navItems.filter(item => {
+    // If no access level specified, show to everyone
+    if (!item.access) return true;
+
+    // Super admin can see everything
+    if (user?.is_superuser) return true;
+
+    // Check access levels
+    if (item.access === 'user') return true;
+    if (item.access === 'admin' && user?.role_id === 'manager-role') return true;
+    if (item.access === 'admin' && user?.role_id === 'super-admin-role') return true;
+    if (item.access === 'super_admin') return user?.is_superuser;
+
+    return false;
+  });
 
   return (
     <aside className={cn('w-64 bg-white border-r border-gray-200 flex flex-col h-full', className)}>
@@ -52,7 +85,7 @@ export function Sidebar({ className }: SidebarProps) {
 
       <nav className="flex-1 px-4 pb-4">
         <ul className="space-y-1">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
 
@@ -108,7 +141,7 @@ export function Sidebar({ className }: SidebarProps) {
             </div>
           </DropdownItem>
           <hr className="my-1" />
-          <DropdownItem>
+          <DropdownItem onClick={handleLogout}>
             <div className="flex items-center gap-2">
               <LogOut className="w-4 h-4" />
               Logout

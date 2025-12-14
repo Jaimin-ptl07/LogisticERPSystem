@@ -155,7 +155,7 @@ export default function ProfilePage() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className={`grid gap-4 ${user?.is_superuser ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-3'}`}>
               <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 <User className="w-6 h-6 text-gray-600 mb-2" />
                 <div className="text-sm font-medium text-gray-900">Edit Profile</div>
@@ -166,6 +166,16 @@ export default function ProfilePage() {
                 <div className="text-sm font-medium text-gray-900">Security Settings</div>
                 <div className="text-xs text-gray-500 mt-1">Manage password and security</div>
               </button>
+              {user?.is_superuser && (
+                <button
+                  onClick={() => window.location.href = '/super-admin'}
+                  className="p-4 border border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <Shield className="w-6 h-6 text-blue-600 mb-2" />
+                  <div className="text-sm font-medium text-blue-900">Super Admin</div>
+                  <div className="text-xs text-blue-600 mt-1">Manage all companies</div>
+                </button>
+              )}
               <button className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 <Mail className="w-6 h-6 text-gray-600 mb-2" />
                 <div className="text-sm font-medium text-gray-900">Notification Preferences</div>

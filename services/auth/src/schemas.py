@@ -158,7 +158,6 @@ class LoginRequest(BaseSchema):
     """Schema for login request"""
     email: EmailStr
     password: str
-    tenant_id: Optional[str] = None  # Optional for multi-tenant login
 
 
 class LoginResponse(BaseSchema):

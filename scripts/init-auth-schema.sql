@@ -289,15 +289,15 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 -- Create default admin user (password: admin123)
 -- NOTE: This is a default password that should be changed immediately after first login
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('a5dc781f-9e43-4863-9e35-8772b26a7b77', 'admin@example.com', 'a6806c822a63d8ca9b963498d88c7ced1a7978f567805d7f3a78afc2b9c41f80', 'System', 'Administrator', true, true, 'default-tenant', 'super-admin-role')
+    ('a5dc781f-9e43-4863-9e35-8772b26a7b77', 'admin@example.com', '5c3e807858864fa9f98d09fc5c8dd5d0503d211f4ae66563b245e6f814bc1914', 'System', 'Administrator', true, true, 'default-tenant', 'super-admin-role')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create default demo manager user (password: manager123)
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('75267200-9b37-49a5-9ffa-4b7e1f3aba51', 'manager@example.com', 'bed56b71b37838d5420c6ff7855572210fcacccb5645a5af5c9324875ea374ca', 'Demo', 'Manager', true, false, 'default-tenant', 'manager-role')
+    ('75267200-9b37-49a5-9ffa-4b7e1f3aba51', 'manager@example.com', '87e00244ba6f5e41968583ee9535f2266d98a50ac2d3a490ccfe503cfe188572', 'Demo', 'Manager', true, false, 'default-tenant', 'manager-role')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create default demo employee user (password: employee123)
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('5fcd2919-1b77-4c88-b60d-0de84ea3c512', 'employee@example.com', '8addabb8bd120a783f4adc1cc346b43ab40540a8c3450cabfe59fb23c48393cc', 'Demo', 'Employee', true, false, 'default-tenant', 'user-role')
+    ('5fcd2919-1b77-4c88-b60d-0de84ea3c512', 'employee@example.com', '92837eeb6a18e6108124abdd61c28f958fc4849d48808b30b17dd2f674b12757', 'Demo', 'Employee', true, false, 'default-tenant', 'user-role')
 ON CONFLICT (id) DO NOTHING;

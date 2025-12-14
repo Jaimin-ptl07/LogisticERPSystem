@@ -73,8 +73,8 @@ class UserService:
     ) -> Tuple[Optional[User], Optional[str]]:
         """Authenticate user with email and password"""
 
-        # Get user by email
-        user = await UserService.get_by_email(db, login_data.email, login_data.tenant_id)
+        # Get user by email (email is unique across all tenants)
+        user = await UserService.get_by_email(db, login_data.email)
 
         if not user:
             return None, "Invalid credentials"
