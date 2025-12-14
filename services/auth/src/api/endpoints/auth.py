@@ -118,14 +118,16 @@ async def refresh_token(
     user_data = {
         "id": user.id,
         "email": user.email,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
         "tenant_id": user.tenant_id,
         "role_id": user.role_id,
         "is_active": user.is_active,
         "is_superuser": user.is_superuser,
         "permissions": [],  # Will be populated in a separate call
-        "created_at": user.created_at
+        "created_at": user.created_at,
+        "role": None,  # Will be populated if needed
+        "tenant": None  # Will be populated if needed
     }
 
     return {

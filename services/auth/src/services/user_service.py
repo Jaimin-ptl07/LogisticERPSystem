@@ -220,10 +220,12 @@ class UserService:
         """Create access and refresh tokens for user"""
 
         # Get permissions from user's role
-        permissions = [
-            f"{p.resource}:{p.action}"
-            for p in user.role.permissions
-        ]
+        permissions = []
+        if user.role and user.role.permissions:
+            permissions = [
+                f"{p.resource}:{p.action}"
+                for p in user.role.permissions
+            ]
 
         # Add superuser permissions if applicable
         if user.is_superuser:
@@ -239,7 +241,7 @@ class UserService:
         })
 
         # Create refresh token
-        refresh_token = create_refresh_token(user.id, user.tenant_id)
+        refresh_token = create_refresh_token(user.id, user.tenant_id or "")
 
         # Store refresh token in database
         await RefreshTokenService.create_refresh_token(db, user.id, refresh_token)
@@ -248,14 +250,25 @@ class UserService:
         user_data = {
             "id": user.id,
             "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
+            "first_name": user.first_name or "",
+            "last_name": user.last_name or "",
             "tenant_id": user.tenant_id,
             "role_id": user.role_id,
             "is_active": user.is_active,
             "is_superuser": user.is_superuser,
             "permissions": permissions,
-            "created_at": user.created_at
+            "created_at": user.created_at,
+            "role": {
+                "id": user.role.id,
+                "name": user.role.name,
+                "description": user.role.description
+            } if user.role else None,
+            "tenant": {
+                "id": user.tenant.id,
+                "name": user.tenant.name,
+                "domain": user.tenant.domain,
+                "created_at": user.tenant.created_at
+            } if user.tenant else None
         }
 
         return access_token, refresh_token, user_data

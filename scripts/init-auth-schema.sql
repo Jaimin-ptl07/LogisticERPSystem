@@ -7,20 +7,21 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Enable Row Level Security
 ALTER DATABASE postgres SET row_security = on;
 
--- Create tenants table
+-- Create tenants table (without admin_id constraint initially to avoid circular reference)
 CREATE TABLE IF NOT EXISTS tenants (
     id VARCHAR(255) PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
     domain VARCHAR(255) UNIQUE,
     settings TEXT,
     is_active BOOLEAN DEFAULT true,
+    admin_id VARCHAR(255) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create roles table
 CREATE TABLE IF NOT EXISTS roles (
-    id VARCHAR(255) PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id SERIAL PRIMARY KEY,  -- Changed to auto-increment integer
     name VARCHAR(100) NOT NULL,
     description TEXT,
     is_system BOOLEAN DEFAULT false,
@@ -41,7 +42,7 @@ CREATE TABLE IF NOT EXISTS permissions (
 -- Create role_permissions association table
 CREATE TABLE IF NOT EXISTS role_permissions (
     id VARCHAR(255) PRIMARY KEY DEFAULT uuid_generate_v4(),
-    role_id VARCHAR(255) NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     permission_id VARCHAR(255) NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(role_id, permission_id)
@@ -61,8 +62,8 @@ CREATE TABLE IF NOT EXISTS users (
     locked_until TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    tenant_id VARCHAR(255) NOT NULL REFERENCES tenants(id),
-    role_id VARCHAR(255) NOT NULL REFERENCES roles(id)
+    tenant_id VARCHAR(255) REFERENCES tenants(id),  -- Nullable for super admins
+    role_id INTEGER NOT NULL REFERENCES roles(id)  -- Changed to INTEGER
 );
 
 -- Add unique constraint for email per tenant
@@ -103,16 +104,16 @@ CREATE TRIGGER update_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECU
 
 -- Insert default tenant
 INSERT INTO tenants (id, name, domain, is_active)
-VALUES ('default-tenant', 'Default Organization', 'demo.logistics-erp.com', true)
+VALUES ('550e8400-e29b-41d4-a716-446655440000', 'Default Organization', 'demo.logistics-erp.com', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Insert default roles
-INSERT INTO roles (id, name, description, tenant_id, is_system) VALUES
-    ('super-admin-role', 'Super Admin', 'System administrator with all privileges', 'default-tenant', true),
-    ('admin-role', 'Admin', 'Organization administrator', 'default-tenant', true),
-    ('manager-role', 'Manager', 'Operations manager', 'default-tenant', false),
-    ('user-role', 'User', 'Regular user', 'default-tenant', false)
-ON CONFLICT (id) DO NOTHING;
+-- Insert default roles (using integer IDs)
+INSERT INTO roles (name, description, tenant_id, is_system) VALUES
+    ('Super Admin', 'System administrator with all privileges', '550e8400-e29b-41d4-a716-446655440000', true),
+    ('Admin', 'Organization administrator', '550e8400-e29b-41d4-a716-446655440000', true),
+    ('Manager', 'Operations manager', '550e8400-e29b-41d4-a716-446655440000', false),
+    ('User', 'Regular user', '550e8400-e29b-41d4-a716-446655440000', false)
+ON CONFLICT DO NOTHING;
 
 -- Insert default permissions
 INSERT INTO permissions (resource, action, description) VALUES
@@ -222,83 +223,103 @@ INSERT INTO permissions (resource, action, description) VALUES
     ('superuser', 'access', 'Full system access')
 ON CONFLICT DO NOTHING;
 
--- Assign all permissions to super admin role
+-- Assign all permissions to super admin role (ID = 1)
 INSERT INTO role_permissions (role_id, permission_id)
-SELECT 'super-admin-role', id FROM permissions
-ON CONFLICT DO NOTHING;
-
--- Assign manager permissions
-INSERT INTO role_permissions (role_id, permission_id) VALUES
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'users' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'users' AND action = 'create')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'roles' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'tenants' AND action = 'manage_own')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'create')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'approve')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read_all')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'update')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'read')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'create')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'export')),
-    ('manager-role', (SELECT id FROM permissions WHERE resource = 'dashboard' AND action = 'read'))
+SELECT 1, id FROM permissions
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- Assign employee permissions
+-- Assign manager permissions (ID = 2)
 INSERT INTO role_permissions (role_id, permission_id) VALUES
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read_own')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'users' AND action = 'update_own')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'update')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'create')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'update')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'update')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'update')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'update')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'update')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'read')),
-    ('user-role', (SELECT id FROM permissions WHERE resource = 'dashboard' AND action = 'read'))
+    (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'roles' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'tenants' AND action = 'manage_own')),
+    (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'approve')),
+    (2, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'export')),
+    (2, (SELECT id FROM permissions WHERE resource = 'dashboard' AND action = 'read'))
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- Create default admin user (password: admin123)
+-- Assign employee permissions (ID = 4)
+INSERT INTO role_permissions (role_id, permission_id) VALUES
+    (4, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read_own')),
+    (4, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'update_own')),
+    (4, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'update')),
+    (4, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'create')),
+    (4, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'update')),
+    (4, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'update')),
+    (4, (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'update')),
+    (4, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'update')),
+    (4, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'update')),
+    (4, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'dashboard' AND action = 'read'))
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Create default super admin user (password: admin123) - NOT assigned to any tenant
 -- NOTE: This is a default password that should be changed immediately after first login
 -- Password hash computed with JWT_SECRET: eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('a5dc781f-9e43-4863-9e35-8772b26a7b77', 'admin@example.com', 'aa2573da8923d5d34ffd1fba1e6a2f34af71cb77e039da7e760b0b6242a3ca00', 'System', 'Administrator', true, true, 'default-tenant', 'super-admin-role')
+    ('a5dc781f-9e43-4863-9e35-8772b26a7b77', 'admin@example.com', 'aa2573da8923d5d34ffd1fba1e6a2f34af71cb77e039da7e760b0b6242a3ca00', 'System', 'Administrator', true, true, NULL, 1)
 ON CONFLICT (id) DO NOTHING;
 
 -- Create default demo manager user (password: manager123)
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('75267200-9b37-49a5-9ffa-4b7e1f3aba51', 'manager@example.com', '1baedde8092024d84b5e24e0e18f0202cf493c98e45916ac53a751d7e516a1fb', 'Demo', 'Manager', true, false, 'default-tenant', 'manager-role')
+    ('75267200-9b37-49a5-9ffa-4b7e1f3aba51', 'manager@example.com', '1baedde8092024d84b5e24e0e18f0202cf493c98e45916ac53a751d7e516a1fb', 'Demo', 'Manager', true, false, '550e8400-e29b-41d4-a716-446655440000', 2)
 ON CONFLICT (id) DO NOTHING;
 
 -- Create default demo employee user (password: employee123)
 INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, is_superuser, tenant_id, role_id) VALUES
-    ('5fcd2919-1b77-4c88-b60d-0de84ea3c512', 'employee@example.com', '38a907ef3c2aa3ed2ba2865279723ad3398dfc0a2bd5fc22cc6c167a3dba5fe7', 'Demo', 'Employee', true, false, 'default-tenant', 'user-role')
+    ('5fcd2919-1b77-4c88-b60d-0de84ea3c512', 'employee@example.com', '38a907ef3c2aa3ed2ba2865279723ad3398dfc0a2bd5fc22cc6c167a3dba5fe7', 'Demo', 'Employee', true, false, '550e8400-e29b-41d4-a716-446655440000', 4)
 ON CONFLICT (id) DO NOTHING;
+
+-- Note: Super admin (id: a5dc781f-9e43-4863-9e35-8772b26a7b77) is NOT assigned to any tenant
+-- Super admins can manage all tenants without being assigned to one
+
+-- Add foreign key constraint for admin_id after both tables exist
+-- This handles the circular reference between tenants and users
+DO $$
+BEGIN
+    -- Check if the foreign key constraint already exists
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_tenants_admin_id'
+        AND table_name = 'tenants'
+    ) THEN
+        -- Add the foreign key constraint
+        ALTER TABLE tenants
+        ADD CONSTRAINT fk_tenants_admin_id
+        FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;

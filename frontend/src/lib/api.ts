@@ -16,8 +16,8 @@ export interface LoginResponse {
 export interface User {
   id: string;
   email: string;
-  role_id: string;
-  tenant_id: string;
+  role_id: number;
+  tenant_id?: string | null;  // Nullable for super admins
   first_name: string;
   last_name: string;
   is_active: boolean;
@@ -28,7 +28,7 @@ export interface User {
   login_attempts?: number;
   locked_until?: string;
   role?: {
-    id: string;
+    id: number;
     name: string;
     description?: string;
   };
@@ -198,6 +198,129 @@ class ApiHelper {
     return response.json();
   }
 
+  // Super Admin: Get all tenants/companies
+  async getAllTenants(): Promise<any[]> {
+    const response = await this.authenticatedFetch('/api/super-admin/companies');
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch companies');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Create new company with admin
+  async createCompanyWithAdmin(companyData: any): Promise<any> {
+    const response = await this.authenticatedFetch('/api/super-admin/companies', {
+      method: 'POST',
+      body: JSON.stringify(companyData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create company');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Create admin user for tenant
+  async createAdminUser(userData: any): Promise<any> {
+    const response = await this.authenticatedFetch('/api/super-admin/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create admin user');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Get companies statistics
+  async getCompaniesStats(): Promise<any> {
+    const response = await this.authenticatedFetch('/api/super-admin/stats');
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch statistics');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Update tenant status
+  async updateTenantStatus(tenantId: string, isActive: boolean): Promise<any> {
+    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: isActive }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update company status');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Update tenant details (name, domain, settings)
+  async updateTenant(tenantId: string, updateData: any): Promise<any> {
+    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update company');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Get tenant by ID
+  async getTenantById(tenantId: string): Promise<any> {
+    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch company details');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Delete/Deactivate tenant
+  async deleteTenant(tenantId: string): Promise<any> {
+    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to delete company');
+    }
+
+    return response.json();
+  }
+
+  // Super Admin: Get users for a tenant
+  async getTenantUsers(tenantId: string): Promise<any[]> {
+    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}/users`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch company users');
+    }
+
+    return response.json();
+  }
+
+  
   // Logout
   logout(): void {
     if (typeof window !== 'undefined') {

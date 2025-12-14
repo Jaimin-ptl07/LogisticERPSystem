@@ -58,8 +58,8 @@ class UserBase(BaseSchema):
 class UserCreate(UserBase):
     """Schema for creating a user"""
     password: str = Field(..., min_length=8)
-    tenant_id: str
-    role_id: str
+    tenant_id: Optional[str] = None  # Optional for super admins
+    role_id: int
 
 
 class UserUpdate(BaseSchema):
@@ -68,7 +68,7 @@ class UserUpdate(BaseSchema):
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
-    role_id: Optional[str] = None
+    role_id: Optional[int] = None
 
 
 class UserUpdatePassword(BaseSchema):
@@ -80,8 +80,8 @@ class UserUpdatePassword(BaseSchema):
 class UserInDB(UserBase):
     """Schema for user in database"""
     id: str
-    tenant_id: str
-    role_id: str
+    tenant_id: Optional[str] = None  # Nullable for super admins
+    role_id: int
     is_superuser: bool = False
     last_login: Optional[datetime] = None
     login_attempts: int = 0
@@ -118,7 +118,7 @@ class RoleUpdate(BaseSchema):
 
 class RoleInDB(RoleBase):
     """Schema for role in database"""
-    id: str
+    id: int
     tenant_id: str
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -177,8 +177,8 @@ class RefreshTokenRequest(BaseSchema):
 class TokenData(BaseSchema):
     """Schema for token data"""
     user_id: str
-    tenant_id: str
-    role_id: str
+    tenant_id: Optional[str] = None  # Nullable for super admins
+    role_id: int
     permissions: List[str]
     exp: Optional[datetime] = None
 

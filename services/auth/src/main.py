@@ -11,7 +11,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
-from src.api.endpoints import auth, users, tenants
+from src.api.endpoints import auth, users, tenants, admin
 from src.config_local import AuthSettings
 from src.database import engine, Base, AsyncSessionLocal
 
@@ -113,8 +113,14 @@ app.include_router(
 
 app.include_router(
     tenants.router,
-    prefix="/api/v1/tenants",
-    tags=["Tenants"]
+    prefix="/api/v1/companies",  # Changed from tenants to companies for frontend consistency
+    tags=["Companies"]
+)
+
+app.include_router(
+    admin.router,
+    prefix="/api/v1/admin",
+    tags=["Super Admin"]
 )
 
 

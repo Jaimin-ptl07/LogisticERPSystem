@@ -47,7 +47,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
     // Check role-based access if required
     if (requiredRole && requiredRole.length > 0 && user) {
-      const hasRequiredRole = requiredRole.includes(user.role);
+      const hasRequiredRole = requiredRole.includes(user.role?.name || '');
       if (!hasRequiredRole) {
         // Redirect to unauthorized page or dashboard
         router.push('/dashboard');
@@ -74,7 +74,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
   // Check role-based access
   if (requiredRole && requiredRole.length > 0 && user) {
-    const hasRequiredRole = requiredRole.includes(user.role);
+    const hasRequiredRole = requiredRole.includes(user.role?.name || '');
     if (!hasRequiredRole) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">

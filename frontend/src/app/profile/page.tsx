@@ -40,14 +40,10 @@ export default function ProfilePage() {
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Personal Information</h3>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-4">
                   <div>
-                    <label className="text-sm text-gray-500">First Name</label>
-                    <p className="mt-1 text-sm font-medium text-gray-900">{user?.first_name || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-500">Last Name</label>
-                    <p className="mt-1 text-sm font-medium text-gray-900">{user?.last_name || 'N/A'}</p>
+                    <label className="text-sm text-gray-500">Name</label>
+                    <p className="mt-1 text-sm font-medium text-gray-900">{user?.first_name || 'N/A'} {user?.last_name}</p>
                   </div>
                 </div>
 
@@ -59,7 +55,7 @@ export default function ProfilePage() {
                   <p className="mt-1 text-sm font-medium text-gray-900">{user?.email || 'N/A'}</p>
                 </div>
 
-                <div>
+                {/* <div>
                   <label className="text-sm text-gray-500 flex items-center gap-1">
                     <Phone className="w-4 h-4" />
                     Phone
@@ -73,7 +69,7 @@ export default function ProfilePage() {
                     Location
                   </label>
                   <p className="mt-1 text-sm font-medium text-gray-900">Not provided</p>
-                </div>
+                </div> */}
               </div>
 
               {/* Professional Information */}
@@ -137,11 +133,10 @@ export default function ProfilePage() {
                   <h3 className="text-sm font-semibold text-gray-900">Account Status</h3>
                   <p className="mt-1 text-sm text-gray-500">Current status of your account</p>
                 </div>
-                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
-                  user?.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                }`}>
+                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${user?.is_active
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-red-100 text-red-800'
+                  }`}>
                   {user?.is_active ? 'Active' : 'Inactive'}
                 </span>
               </div>

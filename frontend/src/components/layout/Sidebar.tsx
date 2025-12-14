@@ -69,8 +69,8 @@ export function Sidebar({ className }: SidebarProps) {
 
     // Check access levels
     if (item.access === 'user') return true;
-    if (item.access === 'admin' && user?.role_id === 'manager-role') return true;
-    if (item.access === 'admin' && user?.role_id === 'super-admin-role') return true;
+    if (item.access === 'admin' && user?.role_id === 2) return true;  // Admin role
+    if (item.access === 'admin' && user?.role_id === 3) return true;  // Manager role
     if (item.access === 'super_admin') return user?.is_superuser;
 
     return false;
