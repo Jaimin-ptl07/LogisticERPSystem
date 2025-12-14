@@ -1,6 +1,6 @@
-import { ReactNode, useEffect, useState } from 'react';
-import { X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { ReactNode, useEffect, useState } from "react";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ModalLayoutProps {
   isOpen: boolean;
@@ -9,15 +9,15 @@ interface ModalLayoutProps {
   children: ReactNode;
   className?: string;
   showCloseIcon?: boolean;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: "sm" | "md" | "lg" | "xl" | "full";
 }
 
 const sizeClasses = {
-  sm: 'max-w-md w-full md:w-auto',
-  md: 'max-w-lg w-full md:w-auto',
-  lg: 'max-w-2xl w-full md:w-auto',
-  xl: 'max-w-4xl w-full md:w-auto',
-  full: 'max-w-full mx-4',
+  sm: "max-w-md w-full md:w-auto",
+  md: "max-w-lg w-full md:w-auto",
+  lg: "max-w-2xl w-full md:w-auto",
+  xl: "max-w-4xl w-full md:w-auto",
+  full: "max-w-full mx-4",
 };
 
 export function ModalLayout({
@@ -27,7 +27,7 @@ export function ModalLayout({
   children,
   className,
   showCloseIcon = true,
-  size = 'md',
+  size = "md",
 }: ModalLayoutProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
@@ -68,15 +68,15 @@ export function ModalLayout({
         <div
           className={cn(
             // Base styles
-            'relative transform bg-white shadow-xl transition-all duration-300 ease-out',
+            "relative transform bg-white shadow-xl transition-all duration-300 ease-out",
             // Mobile first - full width at bottom
-            'rounded-lg w-full',
+            "rounded-lg w-full",
             // Size classes
             sizeClasses[size],
             // Animations
             isAnimating
-              ? 'translate-y-0 opacity-100 scale-100'
-              : '-translate-y-full opacity-0 scale-95',
+              ? "translate-y-0 opacity-100 scale-100"
+              : "-translate-y-full opacity-0 scale-95",
             // Custom className
             className
           )}

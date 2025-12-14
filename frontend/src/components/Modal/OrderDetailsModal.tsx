@@ -16,6 +16,7 @@ import {
   Clock,
   CheckCircle,
   ShoppingBag,
+  TrendingUp,
 } from "lucide-react";
 
 interface OrderDetailsModalProps {
@@ -124,7 +125,7 @@ const mockOrderDetails = {
   },
 };
 
-type TabType = "details" | "customer" | "items" | "delivery";
+type TabType = "details" | "customer" | "items" | "delivery" | "status";
 
 export function OrderDetailsModal({
   isOpen,
@@ -175,6 +176,7 @@ export function OrderDetailsModal({
     { id: "customer" as TabType, label: "Customer Info", icon: User },
     { id: "items" as TabType, label: "Order Items", icon: ShoppingBag },
     { id: "delivery" as TabType, label: "Delivery", icon: Truck },
+    { id: "status" as TabType, label: "Order Status", icon: TrendingUp },
   ];
 
   return (
@@ -182,8 +184,8 @@ export function OrderDetailsModal({
       isOpen={isOpen}
       onClose={onClose}
       title={`Order Details - ${order.id}`}
-      size="lg"
-      className="flex flex-col m-4 h-[90vh] max-h-[800px]"
+      size="xl"
+      className="flex flex-col  h-[90vh] max-h-[800px]"
     >
       <div className="flex flex-col h-full" ref={modalRef}>
         {/* Order Header Summary */}
@@ -448,16 +450,303 @@ export function OrderDetailsModal({
               </div>
             </div>
           )}
+
+          {/* Order Status Tab */}
+          {activeTab === "status" && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Order Status Tracking
+              </h3>
+
+              {/* Status Workflow */}
+              <div className="relative">
+                {/* Progress Line */}
+                <div className="absolute left-6 top-8 bottom-0 w-0.5 bg-gray-300"></div>
+
+                <div className="space-y-6">
+                  {/* Submitted Status */}
+                  <div className="flex items-start gap-4">
+                    <div className="relative z-10 w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                      <CheckCircle className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-gray-900">
+                          Submitted
+                        </h4>
+                        <Badge variant="success" className="text-xs">
+                          Completed
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        Order has been successfully submitted and is awaiting
+                        finance approval.
+                      </p>
+                      <div className="text-xs text-gray-500">
+                        <span className="font-medium">Time:</span> {order.date}{" "}
+                        at 10:30 AM
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Finance Status */}
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`relative z-10 w-12 h-12 ${
+                        order.status === "completed" ||
+                        order.status === "on-route"
+                          ? "bg-green-500"
+                          : order.status === "loading"
+                          ? "bg-yellow-500"
+                          : "bg-gray-300"
+                      } rounded-full flex items-center justify-center`}
+                    >
+                      <DollarSign className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-gray-900">Finance</h4>
+                        {order.status === "completed" ||
+                        order.status === "on-route" ? (
+                          <Badge variant="success" className="text-xs">
+                            Approved
+                          </Badge>
+                        ) : order.status === "loading" ? (
+                          <Badge variant="warning" className="text-xs">
+                            In Review
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="text-xs">
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        {order.status === "completed" ||
+                        order.status === "on-route"
+                          ? "Payment has been verified and approved."
+                          : order.status === "loading"
+                          ? "Payment is currently being reviewed and verified."
+                          : "Awaiting payment verification and approval."}
+                      </p>
+                      <div className="text-xs text-gray-500">
+                        {order.status === "completed" ||
+                        order.status === "on-route" ? (
+                          <span>
+                            <span className="font-medium">Approved by:</span>{" "}
+                            Sarah Chen •{" "}
+                            <span className="font-medium">Time:</span>{" "}
+                            {order.date} at 2:15 PM
+                          </span>
+                        ) : order.status === "loading" ? (
+                          <span>
+                            <span className="font-medium">
+                              Est. completion:
+                            </span>{" "}
+                            Today by 6:00 PM
+                          </span>
+                        ) : (
+                          <span>
+                            <span className="font-medium">Est. start:</span>{" "}
+                            Within 2 hours
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Logistics Status */}
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`relative z-10 w-12 h-12 ${
+                        order.status === "completed"
+                          ? "bg-green-500"
+                          : order.status === "on-route"
+                          ? "bg-blue-500"
+                          : "bg-gray-300"
+                      } rounded-full flex items-center justify-center`}
+                    >
+                      <Truck className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-gray-900">
+                          Logistics
+                        </h4>
+                        {order.status === "completed" ? (
+                          <Badge variant="success" className="text-xs">
+                            Dispatched
+                          </Badge>
+                        ) : order.status === "on-route" ? (
+                          <Badge variant="info" className="text-xs">
+                            In Progress
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="text-xs">
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        {order.status === "completed"
+                          ? "Order has been dispatched and assigned to driver."
+                          : order.status === "on-route"
+                          ? "Order is in transit to delivery location."
+                          : "Awaiting logistics planning and driver assignment."}
+                      </p>
+                      <div className="text-xs text-gray-500">
+                        {order.status === "completed" ? (
+                          <span>
+                            <span className="font-medium">Driver:</span>{" "}
+                            {orderDetails?.delivery.driver || "Assigned"} •{" "}
+                            <span className="font-medium">Truck:</span>{" "}
+                            {orderDetails?.delivery.truck || "Assigned"}
+                          </span>
+                        ) : order.status === "on-route" ? (
+                          <span>
+                            <span className="font-medium">
+                              Current location:
+                            </span>{" "}
+                            5 km away •{" "}
+                            <span className="font-medium">ETA:</span> 30 minutes
+                          </span>
+                        ) : (
+                          <span>
+                            <span className="font-medium">Est. dispatch:</span>{" "}
+                            Tomorrow by 9:00 AM
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Driver Status */}
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`relative z-10 w-12 h-12 ${
+                        order.status === "completed"
+                          ? "bg-green-500"
+                          : order.status === "on-route"
+                          ? "bg-blue-500 animate-pulse"
+                          : "bg-gray-300"
+                      } rounded-full flex items-center justify-center`}
+                    >
+                      <User className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-gray-900">Driver</h4>
+                        {order.status === "completed" ? (
+                          <Badge variant="success" className="text-xs">
+                            Delivered
+                          </Badge>
+                        ) : order.status === "on-route" ? (
+                          <Badge variant="info" className="text-xs">
+                            On Route
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="text-xs">
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        {order.status === "completed"
+                          ? "Order has been successfully delivered to customer."
+                          : order.status === "on-route"
+                          ? "Driver is currently delivering the order to the customer."
+                          : "Waiting for driver assignment and route planning."}
+                      </p>
+                      <div className="text-xs text-gray-500">
+                        {order.status === "completed" ? (
+                          <span>
+                            <span className="font-medium">Delivery time:</span>{" "}
+                            {orderDetails?.delivery.actualDelivery ||
+                              "Completed"}
+                          </span>
+                        ) : order.status === "on-route" ? (
+                          <span>
+                            <span className="font-medium">
+                              Estimated delivery:
+                            </span>{" "}
+                            {orderDetails?.delivery.estimatedDelivery ||
+                              "Today"}
+                          </span>
+                        ) : (
+                          <span>
+                            <span className="font-medium">Waiting for:</span>{" "}
+                            Finance approval → Logistics assignment
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Summary */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-semibold text-gray-900 mb-3">
+                  Current Status Summary
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Order Progress
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${
+                            order.status === "completed"
+                              ? "bg-green-500 w-full"
+                              : order.status === "on-route"
+                              ? "bg-blue-500 w-3/4"
+                              : order.status === "loading"
+                              ? "bg-yellow-500 w-1/2"
+                              : "bg-gray-400 w-1/4"
+                          }`}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-medium text-gray-700">
+                        {order.status === "completed"
+                          ? "100%"
+                          : order.status === "on-route"
+                          ? "75%"
+                          : order.status === "loading"
+                          ? "50%"
+                          : "25%"}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500 block mb-1">
+                      Estimated Completion
+                    </span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {order.status === "completed"
+                        ? "Delivered"
+                        : order.status === "on-route"
+                        ? "Today"
+                        : order.status === "loading"
+                        ? "Tomorrow"
+                        : "2-3 Business Days"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t">
-          <button
+          {/* <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
           >
             Close
-          </button>
+          </button> */}
           {order.status === "pending" && (
             <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer">
               Process Order
