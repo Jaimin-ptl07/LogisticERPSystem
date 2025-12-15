@@ -7,23 +7,48 @@ import { Button } from '@/components/ui/Button';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { tmsAPI, tmsResourcesAPI, OrderAssignData, TripCreateData } from '@/lib/api';
 import { Driver, Trip } from '@/types';
-import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Play, Square, Flag, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Play, Square, Flag, AlertTriangle, RotateCcw, Search } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 
 export default function Trips() {
+  // Utility function to format date in UK timezone
+  const formatUKDateTime = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+
+    try {
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/London'
+      }).format(date);
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
+
   const [showCreateTrip, setShowCreateTrip] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState('');
   const [selectedTruck, setSelectedTruck] = useState('');
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
-  const [allTrips, setAllTrips] = useState<Trip[]>([]);
+  const [allTrips, setAllTrips] = useState<Trip[]>([]);``
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedTripForOrders, setSelectedTripForOrders] = useState<Trip | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
   const [orderPriorityFilter, setOrderPriorityFilter] = useState('all');
+
+  // Search states for trip creation
+  const [branchSearchTerm, setBranchSearchTerm] = useState('');
+  const [truckSearchTerm, setTruckSearchTerm] = useState('');
+  const [driverSearchTerm, setDriverSearchTerm] = useState('');
   const [showSplitOptions, setShowSplitOptions] = useState(false);
   const [splitOrder, setSplitOrder] = useState<any | null>(null);
   const [splitItemsCount, setSplitItemsCount] = useState(0);
@@ -199,6 +224,9 @@ export default function Trips() {
       setSelectedDriver(null);
       setCurrentStep(1);
       setShowCreateTrip(false);
+      setBranchSearchTerm('');
+      setTruckSearchTerm('');
+      setDriverSearchTerm('');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create trip');
     }
@@ -220,6 +248,9 @@ export default function Trips() {
     setSelectedBranch(branch);
     setSelectedTruck('');
     setSelectedDriver(null);
+    setBranchSearchTerm('');
+    setTruckSearchTerm('');
+    setDriverSearchTerm('');
   };
 
   const handleCloseModal = () => {
@@ -228,6 +259,9 @@ export default function Trips() {
     setSelectedDriver(null);
     setCurrentStep(1);
     setShowCreateTrip(false);
+    setBranchSearchTerm('');
+    setTruckSearchTerm('');
+    setDriverSearchTerm('');
   };
 
   const getPriorityVariant = (priority: string) => {
@@ -247,6 +281,32 @@ export default function Trips() {
   const getTrucksAvailable = () => availableTrucks.filter(truck => truck.status === 'available');
   const getDriversAvailable = () => availableDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
 
+  // Filter functions for trip creation
+  const getFilteredBranches = () => {
+    return branches.filter(branch =>
+      branch.name.toLowerCase().includes(branchSearchTerm.toLowerCase()) ||
+      branch.location.toLowerCase().includes(branchSearchTerm.toLowerCase())
+    );
+  };
+
+  const getFilteredTrucks = () => {
+    const available = getTrucksAvailable();
+    return available.filter(truck =>
+      truck.plate.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
+      truck.model.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
+      truck.capacity.toString().includes(truckSearchTerm)
+    );
+  };
+
+  const getFilteredDrivers = () => {
+    const available = getDriversAvailable();
+    return available.filter(driver =>
+      driver.name.toLowerCase().includes(driverSearchTerm.toLowerCase()) ||
+      driver.phone.includes(driverSearchTerm) ||
+      driver.license.toLowerCase().includes(driverSearchTerm.toLowerCase())
+    );
+  };
+
   // Order assignment helper functions
   const getAvailableOrders = () => {
     return availableOrders.filter(order => {
@@ -262,7 +322,7 @@ export default function Trips() {
 
   // Check if order is already assigned to any trip
   const isOrderAssigned = (orderId: string) => {
-    return trips.some(trip =>
+    return allTrips.some(trip =>
       trip.orders.some(order => order.id === orderId)
     );
   };
@@ -680,7 +740,10 @@ export default function Trips() {
                       <div className="p-4 border-b border-gray-200">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-4">
-                            <h3 className="font-bold text-lg text-gray-900">{trip.id}</h3>
+                            <div>
+                              <h3 className="font-bold text-lg text-gray-900">{trip.id}</h3>
+                              <p className="text-xs text-gray-500">Created: {formatUKDateTime(trip.createdAt)}</p>
+                            </div>
                             <Badge variant={getStatusVariant(trip.status)} className="mt-1">
                               {trip.status.toUpperCase().replace('-', ' ')}
                             </Badge>
@@ -691,28 +754,27 @@ export default function Trips() {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">{trip.date}</span>
+                            
                             {getNextStatusOptions(trip.status).length > 0 && (
                               <div className="flex gap-1">
                                 {getNextStatusOptions(trip.status).map((option) => (
                                   <Button
                                     key={option.value}
                                     size="sm"
-                                    variant="outline"
                                     onClick={() => handleStatusChange(trip.id, option.value)}
-                                    className={`text-xs ${
-                                      option.color === 'red' ? 'text-red-600 border-red-300 hover:bg-red-50' :
-                                      option.color === 'green' ? 'text-green-600 border-green-300 hover:bg-green-50' :
-                                      option.color === 'blue' ? 'text-blue-600 border-blue-300 hover:bg-blue-50' :
-                                      option.color === 'yellow' ? 'text-yellow-600 border-yellow-300 hover:bg-yellow-50' :
-                                      'text-gray-600 border-gray-300 hover:bg-gray-50'
+                                    className={`text-xs text-white border-transparent hover:opacity-90 ${
+                                      option.color === 'red' ? 'bg-red-600 hover:bg-red-700' :
+                                      option.color === 'green' ? 'bg-green-600 hover:bg-green-700' :
+                                      option.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
+                                      option.color === 'yellow' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                                      'bg-gray-600 hover:bg-gray-700'
                                     }`}
                                   >
-                                    {option.color === 'red' && <XCircle className="w-3 h-3 mr-1" />}
-                                    {option.color === 'green' && <CheckCircle className="w-3 h-3 mr-1" />}
-                                    {option.color === 'blue' && <Play className="w-3 h-3 mr-1" />}
-                                    {option.color === 'yellow' && <Package className="w-3 h-3 mr-1" />}
-                                    {option.color === 'gray' && <RotateCcw className="w-3 h-3 mr-1" />}
+                                    {option.color === 'red' && <XCircle className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'green' && <CheckCircle className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'blue' && <Play className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'yellow' && <Package className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'gray' && <RotateCcw className="w-3 h-3 mr-1 text-white" />}
                                     {option.label}
                                   </Button>
                                 ))}
@@ -1057,9 +1119,22 @@ export default function Trips() {
                 {currentStep === 1 && (
                   <div>
                     <h3 className="text-lg font-semibold text-black mb-4">Select Branch</h3>
-                    <p className="text-gray-600 mb-6">Choose the branch for this trip</p>
-                    <div className="space-y-3">
-                      {branches.map((branch) => (
+                    <p className="text-gray-600 mb-4">Choose the branch for this trip</p>
+
+                    {/* Search Input */}
+                    <div className="relative mb-6">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder="Search branches by name or location..."
+                        value={branchSearchTerm}
+                        onChange={(e) => setBranchSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                      />
+                    </div>
+
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {getFilteredBranches().map((branch) => (
                         <div
                           key={branch.id}
                           onClick={() => handleBranchSelect(branch.name)}
@@ -1103,12 +1178,25 @@ export default function Trips() {
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">Available Trucks:</p>
-                          <p className="text-sm text-gray-500">{getTrucksAvailable().length} trucks available</p>
+                          <p className="text-sm text-gray-500">{getFilteredTrucks().length} trucks found</p>
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-3">
-                      {getTrucksAvailable().map((truck) => (
+
+                    {/* Search Input */}
+                    <div className="relative mb-6">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder="Search trucks by plate, model, or capacity..."
+                        value={truckSearchTerm}
+                        onChange={(e) => setTruckSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                      />
+                    </div>
+
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {getFilteredTrucks().map((truck) => (
                         <div
                           key={truck.id}
                           onClick={() => setSelectedTruck(truck.id)}
@@ -1171,12 +1259,24 @@ export default function Trips() {
                         </div>
                       </div>
                       <div className="text-sm text-gray-600 border-t pt-2">
-                        Available Drivers: <span className="font-medium text-black">{getDriversAvailable().length} drivers available</span>
+                        Available Drivers: <span className="font-medium text-black">{getFilteredDrivers().length} drivers found</span>
                       </div>
                     </div>
 
+                    {/* Search Input */}
+                    <div className="relative mb-6">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder="Search drivers by name, phone, or license..."
+                        value={driverSearchTerm}
+                        onChange={(e) => setDriverSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-                      {getDriversAvailable().map((driver) => (
+                      {getFilteredDrivers().map((driver) => (
                         <div
                           key={driver.id}
                           onClick={() => setSelectedDriver(driver)}
