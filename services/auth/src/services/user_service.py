@@ -234,7 +234,7 @@ class UserService:
         # Create access token
         access_token = create_access_token({
             "sub": user.id,
-            "tenant_id": user.tenant_id,
+            "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
             "role_id": user.role_id,
             "permissions": permissions,
             "email": user.email

@@ -40,9 +40,19 @@ export interface User {
 }
 
 class ApiHelper {
+  private isRefreshing = false;
+  private refreshSubscribers: ((token: string | null) => void)[] = [];
+  private latestAccessToken: string | null = null;
+  private latestRefreshToken: string | null = null;
+
   // Get the stored token from localStorage and verify with cookies
   getToken(): string | null {
     if (typeof window !== 'undefined') {
+      // First check if we have a recently refreshed token
+      if (this.latestAccessToken) {
+        return this.latestAccessToken;
+      }
+
       // Get token from localStorage
       const token = localStorage.getItem('access_token');
 
@@ -50,22 +60,28 @@ class ApiHelper {
         return null;
       }
 
-      // Verify token exists in cookie (server-side validation)
-      const cookies = document.cookie.split(';');
-      let cookieToken = null;
-      for (const cookie of cookies) {
-        const [name, value] = cookie.trim().split('=');
-        if (name === 'access_token') {
-          cookieToken = value;
-          break;
-        }
-      }
+      // For requests made immediately after refresh, skip cookie validation
+      // The cookie might not be updated yet due to async nature
+      const isRecentRefresh = this.latestAccessToken !== null;
 
-      // If token doesn't exist in cookie or doesn't match, logout
-      if (!cookieToken || cookieToken !== token) {
-        console.warn('Token validation failed: mismatch or missing cookie');
-        this.logout();
-        return null;
+      if (!isRecentRefresh) {
+        // Verify token exists in cookie (server-side validation)
+        const cookies = document.cookie.split(';');
+        let cookieToken = null;
+        for (const cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'access_token') {
+            cookieToken = value;
+            break;
+          }
+        }
+
+        // If token doesn't exist in cookie or doesn't match, logout
+        if (!cookieToken || cookieToken !== token) {
+          console.warn('Token validation failed: mismatch or missing cookie');
+          this.logout();
+          return null;
+        }
       }
 
       return token;
@@ -76,9 +92,25 @@ class ApiHelper {
   // Get refresh token from localStorage
   getRefreshToken(): string | null {
     if (typeof window !== 'undefined') {
+      // First check if we have a recently refreshed token
+      if (this.latestRefreshToken) {
+        return this.latestRefreshToken;
+      }
+
       return localStorage.getItem('refresh_token');
     }
     return null;
+  }
+
+  // Add subscriber to wait for token refresh
+  private addRefreshSubscriber(callback: (token: string | null) => void): void {
+    this.refreshSubscribers.push(callback);
+  }
+
+  // Notify all subscribers that refresh is complete
+  private notifyRefreshSubscribers(token: string | null): void {
+    this.refreshSubscribers.forEach(callback => callback(token));
+    this.refreshSubscribers = [];
   }
 
   // Make authenticated requests with automatic token refresh
@@ -101,33 +133,76 @@ class ApiHelper {
 
     // If we get a 401 Unauthorized, try to refresh the token
     if (response.status === 401 && !url.includes('/api/auth/me') && !url.includes('/api/auth/refresh')) {
-      console.warn('Received 401 response, attempting to refresh token...');
+      console.warn('[API] Received 401 response, attempting to refresh token...');
 
       try {
-        // Try to refresh the token
-        const refreshed = await this.refreshToken();
+        // Check if already refreshing
+        if (this.isRefreshing) {
+          console.log('[API] Another request is refreshing token, waiting...');
+          // Wait for the refresh to complete
+          const newToken = await new Promise<string | null>((resolve) => {
+            this.addRefreshSubscriber(resolve);
+          });
 
-        if (refreshed) {
-          // Get the new token and retry the original request
-          const newToken = this.getToken();
           if (newToken) {
+            // Update the latest token and retry
             headers['Authorization'] = `Bearer ${newToken}`;
-            console.log('Token refreshed successfully, retrying original request...');
+            console.log('[API] Token refreshed by another request, retrying original request...');
             response = await fetch(url, {
               ...options,
               headers,
             });
+          } else {
+            // Refresh failed, logout user
+            console.error('[API] Token refresh failed, logging out...');
+            this.logout();
+            window.location.href = '/login';
+            return response;
           }
         } else {
-          // Refresh failed, logout user
-          console.error('Token refresh failed, logging out...');
-          this.logout();
-          window.location.href = '/login';
+          // This is the first request encountering 401, handle the refresh
+          this.isRefreshing = true;
+          console.log('[API] This is the first 401, handling refresh...');
+
+          // Try to refresh the token
+          const refreshed = await this.refreshToken();
+
+          // Get the new tokens from the refresh operation
+          const newToken = this.latestAccessToken;
+
+          // Clear the temporary token storage after use
+          this.latestAccessToken = null;
+          this.latestRefreshToken = null;
+
+          // Notify all waiting requests
+          this.notifyRefreshSubscribers(newToken);
+          this.isRefreshing = false;
+
+          if (refreshed && newToken) {
+            // Retry the original request with the new token
+            headers['Authorization'] = `Bearer ${newToken}`;
+            console.log('[API] Token refreshed successfully, retrying original request...');
+            response = await fetch(url, {
+              ...options,
+              headers,
+            });
+          } else {
+            // Refresh failed, logout user
+            console.error('[API] Token refresh failed, logging out...');
+            this.logout();
+            window.location.href = '/login';
+            return response;
+          }
         }
       } catch (error) {
-        console.error('Failed to refresh token:', error);
+        console.error('[API] Failed to refresh token:', error);
+        this.notifyRefreshSubscribers(null);
+        this.isRefreshing = false;
+        this.latestAccessToken = null;
+        this.latestRefreshToken = null;
         this.logout();
         window.location.href = '/login';
+        return response;
       }
     }
 
@@ -139,9 +214,11 @@ class ApiHelper {
     const refreshToken = this.getRefreshToken();
 
     if (!refreshToken) {
-      console.error('No refresh token available');
+      console.error('[API] No refresh token available');
       return false;
     }
+
+    console.log('[API] Attempting to refresh token...');
 
     try {
       const response = await fetch('/api/auth/refresh', {
@@ -153,17 +230,29 @@ class ApiHelper {
       });
 
       if (!response.ok) {
+        const error = await response.json();
+        console.error('[API] Token refresh failed:', response.status, error);
         throw new Error('Token refresh failed');
       }
 
       const data: LoginResponse = await response.json();
+      console.log('[API] Token refreshed successfully');
 
       // Store the new tokens
       this.setTokens(data.access_token, data.refresh_token);
 
+      // Also store the new tokens in temporary variables for immediate use
+      // This avoids the race condition with cookie updates
+      this.latestAccessToken = data.access_token;
+      this.latestRefreshToken = data.refresh_token;
+
+      // Verify tokens are stored
+      console.log('[API] New access token length:', data.access_token.length);
+      console.log('[API] New refresh token length:', data.refresh_token.length);
+
       return true;
     } catch (error) {
-      console.error('Error refreshing token:', error);
+      console.error('[API] Error refreshing token:', error);
       return false;
     }
   }
@@ -324,6 +413,10 @@ class ApiHelper {
   // Logout
   logout(): void {
     if (typeof window !== 'undefined') {
+      // Clear temporary token storage
+      this.latestAccessToken = null;
+      this.latestRefreshToken = null;
+
       // Remove from localStorage
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');

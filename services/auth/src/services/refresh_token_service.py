@@ -1,7 +1,7 @@
 """
 Refresh token service for managing refresh tokens in the database
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -24,14 +24,14 @@ class RefreshTokenService:
         """Create and store a refresh token"""
 
         # Calculate expiration date
-        expires_at = datetime.utcnow() + timedelta(days=expires_days)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=expires_days)
 
         # Hash the token for storage
         token_hash = get_password_hash(token)
 
         # Create refresh token record
         refresh_token = RefreshToken(
-            id=f"rt_{user_id}_{datetime.utcnow().timestamp()}",
+            id=f"rt_{user_id}_{datetime.now(timezone.utc).timestamp()}",
             token_hash=token_hash,
             expires_at=expires_at,
             user_id=user_id
@@ -65,7 +65,7 @@ class RefreshTokenService:
             return None
 
         # Check if token has expired
-        if datetime.utcnow() > refresh_token.expires_at:
+        if datetime.now(timezone.utc) > refresh_token.expires_at:
             return None
 
         return refresh_token
@@ -87,7 +87,7 @@ class RefreshTokenService:
             return False
 
         refresh_token.is_revoked = True
-        refresh_token.revoked_at = datetime.utcnow()
+        refresh_token.revoked_at = datetime.now(timezone.utc)
         await db.commit()
 
         return True
@@ -109,7 +109,7 @@ class RefreshTokenService:
         count = 0
         for token in tokens:
             token.is_revoked = True
-            token.revoked_at = datetime.utcnow()
+            token.revoked_at = datetime.now(timezone.utc)
             count += 1
 
         await db.commit()
@@ -122,7 +122,7 @@ class RefreshTokenService:
         """Clean up expired refresh tokens"""
 
         query = select(RefreshToken).where(
-            RefreshToken.expires_at < datetime.utcnow()
+            RefreshToken.expires_at < datetime.now(timezone.utc)
         )
         result = await db.execute(query)
         tokens = result.scalars().all()
