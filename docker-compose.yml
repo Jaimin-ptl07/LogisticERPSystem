@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: postgres  # Default database
+      POSTGRES_DB: postgres # Default database
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     ports:
       - "5432:5432"
@@ -14,12 +14,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
       - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
-      - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
-      - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
+      - ./scripts/init-tms-schema.sql:/docker-entrypoint-initdb.d/03-tms-schema.sql
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,7 +38,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,7 +54,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -81,13 +80,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "kafka-broker-api-versions",
-          "--bootstrap-server",
-          "localhost:9092",
-        ]
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -122,8 +115,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test:
-        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -157,7 +149,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -173,7 +165,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -253,7 +245,7 @@ services:
       - ./services/auth/src:/app/src
       - ./services/auth/pyproject.toml:/app/pyproject.toml
       - ./services/auth/uv.lock:/app/uv.lock
-      
+
   company-service:
     build:
       context: ./services/company
@@ -284,6 +276,30 @@ services:
     networks:
       - logistics-network
 
+  # TMS Service
+  tms-service:
+    build:
+      context: ./services/tms
+      dockerfile: Dockerfile
+    container_name: tms-service
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8004/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   postgres_data:
   timescaledb_data:
@@ -292,6 +308,7 @@ volumes:
   redis_data:
   prometheus_data:
   grafana_data:
+
 
 networks:
   logistics-network:

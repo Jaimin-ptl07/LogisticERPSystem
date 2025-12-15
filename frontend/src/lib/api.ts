@@ -320,7 +320,7 @@ class ApiHelper {
     return response.json();
   }
 
-  
+
   // Logout
   logout(): void {
     if (typeof window !== 'undefined') {
@@ -378,3 +378,215 @@ class ApiHelper {
 }
 
 export const api = new ApiHelper();
+
+// TMS (Transport Management System) API functions
+const TMS_BASE = '/api/tms';
+
+// Helper function to fetch with error handling
+async function fetchWithError(url: string, options?: RequestInit) {
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Types for TMS API
+interface TripCreateData {
+  user_id: string;
+  company_id: string;
+  branch: string;
+  truck_plate: string;
+  truck_model: string;
+  truck_capacity: number;
+  driver_id: string;
+  driver_name: string;
+  driver_phone: string;
+  capacity_total: number;
+  trip_date: string;
+  origin?: string;
+  destination?: string | null;
+}
+
+interface TripUpdateData {
+  status?: string;
+  destination?: string;
+  capacity_used?: number;
+  distance?: number;
+  estimated_duration?: number;
+}
+
+interface OrderAssignData {
+  user_id: string;
+  company_id: string;
+  order_id: string;
+  customer: string;
+  customerAddress?: string;
+  total: number;
+  weight: number;
+  volume: number;
+  items: number;
+  priority: string;
+  address?: string;
+  original_order_id?: string;
+  original_items?: number;
+  original_weight?: number;
+}
+
+// Trip API functions
+export const tmsAPI = {
+  // Get all trips with optional filters
+  async getAllTrips(filters?: {
+    status?: string;
+    branch?: string;
+    date?: string;
+  }) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.branch) params.append('branch', filters.branch);
+    if (filters?.date) params.append('trip_date', filters.date);
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    const url = `${TMS_BASE}/trips${params.toString() ? `?${params.toString()}` : ''}`;
+    const data = await fetchWithError(url);
+
+    // Transform API response to match frontend Trip type
+    return data.map((trip: any) => ({
+      id: trip.id,
+      status: trip.status,
+      branch: trip.branch,
+      origin: trip.origin,
+      destination: trip.destination,
+      distance: trip.distance,
+      estimatedDuration: trip.estimated_duration,
+      preTripTime: trip.pre_trip_time,
+      postTripTime: trip.post_trip_time,
+      truck: {
+        plate: trip.truck_plate,
+        model: trip.truck_model,
+        capacity: trip.truck_capacity
+      },
+      driver: {
+        name: trip.driver_name,
+        phone: trip.driver_phone
+      },
+      orders: trip.orders || [],
+      date: trip.trip_date,
+      createdAt: trip.created_at,
+      capacityUsed: trip.capacity_used,
+      capacityTotal: trip.capacity_total
+    }));
+  },
+
+  // Get single trip by ID
+  async getTripById(id: string) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${id}?${params.toString()}`);
+  },
+
+  // Create new trip
+  async createTrip(tripData: TripCreateData) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const tripDataWithIds = {
+      ...tripData,
+      user_id: HARDCODED_USER_ID,
+      company_id: HARDCODED_COMPANY_ID,
+    };
+
+    return fetchWithError(`${TMS_BASE}/trips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tripDataWithIds),
+    });
+  },
+
+  // Update trip
+  async updateTrip(id: string, tripData: Partial<TripUpdateData>) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${id}?${params.toString()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tripData),
+    });
+  },
+
+  // Get trip orders
+  async getTripOrders(tripId: string) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?${params.toString()}`);
+  },
+
+  // Assign orders to trip
+  async assignOrdersToTrip(tripId: string, orders: OrderAssignData[]) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const ordersWithIds = orders.map(order => ({
+      ...order,
+      user_id: HARDCODED_USER_ID,
+      company_id: HARDCODED_COMPANY_ID,
+    }));
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orders: ordersWithIds }),
+    });
+  },
+};
+
+// Resources API functions
+export const tmsResourcesAPI = {
+  async getTrucks() {
+    return fetchWithError(`${TMS_BASE}/resources/trucks`);
+  },
+
+  async getDrivers() {
+    return fetchWithError(`${TMS_BASE}/resources/drivers`);
+  },
+
+  async getOrders() {
+    return fetchWithError(`${TMS_BASE}/resources/orders`);
+  },
+
+  async getBranches() {
+    return fetchWithError(`${TMS_BASE}/resources/branches`);
+  },
+};
