@@ -2,11 +2,13 @@ import { configureStore } from '@reduxjs/toolkit';
 import { uiSlice } from './slices/ui.slice';
 import { companyApi } from '../services/api/companyApi';
 import { setupListeners } from '@reduxjs/toolkit/query';
+import authReducer from './slices/auth.slice';
 
 export const store = configureStore({
   reducer: {
     ui: uiSlice.reducer,
     companyApi: companyApi.reducer,
+    auth: authReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -14,6 +14,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
       - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
+      - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
+      - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
     networks:
       - logistics-network
     healthcheck:
@@ -235,7 +237,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
+      - JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
       - ENV=development
     depends_on:
       postgres:
@@ -246,6 +248,11 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
+    # Mount source code for development with auto-reload
+    volumes:
+      - ./services/auth/src:/app/src
+      - ./services/auth/pyproject.toml:/app/pyproject.toml
+      - ./services/auth/uv.lock:/app/uv.lock
       
   company-service:
     build:

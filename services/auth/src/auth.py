@@ -4,61 +4,63 @@ Authentication utilities and JWT handling
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import HTTPException, status
 import secrets
+import hashlib
 
-from .config import AuthSettings
+from .config_local import AuthSettings, GLOBAL_JWT_SECRET, GLOBAL_JWT_ALGORITHM, GLOBAL_JWT_EXPIRE_MINUTES
 from .schemas import TokenData
 
 settings = AuthSettings()
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password: str) -> str:
+    """Generate SHA256 password hash using global JWT secret"""
+    # Use the global JWT secret as salt for password hashing
+    salted_password = password + GLOBAL_JWT_SECRET
+    # Hash with SHA256
+    hash_result = hashlib.sha256(salted_password.encode('utf-8')).hexdigest()
+    # print(f"[AUTH] Hashed password: {hash_result[:20]}... with secret {GLOBAL_JWT_SECRET[:20]}...")
+    return hash_result
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password: str) -> str:
-    """Generate password hash"""
-    return pwd_context.hash(password)
+    """Verify a password against its SHA256 hash using global JWT secret"""
+    # Hash the provided password with the same global JWT secret
+    salted_password = plain_password + GLOBAL_JWT_SECRET
+    computed_hash = hashlib.sha256(salted_password.encode('utf-8')).hexdigest()
+    # print(f"[AUTH] Verifying password: computed {computed_hash[:20]}... vs stored {hashed_password[:20]}...")
+    # Compare hashes
+    return computed_hash == hashed_password
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-    """Create JWT access token"""
+    """Create JWT access token using global configuration"""
     to_encode = data.copy()
 
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+        expire = datetime.utcnow() + timedelta(minutes=GLOBAL_JWT_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(
         to_encode,
-        settings.JWT_SECRET,
-        algorithm=settings.JWT_ALGORITHM
+        GLOBAL_JWT_SECRET,
+        algorithm=GLOBAL_JWT_ALGORITHM
     )
+    # print(f"[AUTH] Created access token with secret {GLOBAL_JWT_SECRET[:20]}...")
     return encoded_jwt
 
 
 def create_refresh_token(user_id: str, tenant_id: str) -> str:
     """Create a secure refresh token"""
     # Generate a cryptographically secure random token
-    token = secrets.token_urlsafe(32)
-
-    # Store token hash in database (to be implemented)
-    # token_hash = get_password_hash(token)
-    # save_token_to_db(user_id, token_hash, expires_at)
-
-    return token
+    return secrets.token_urlsafe(32)
 
 
 def verify_token(token: str) -> TokenData:
-    """Verify JWT token and return token data"""
+    """Verify JWT token and return token data using global configuration"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -68,8 +70,8 @@ def verify_token(token: str) -> TokenData:
     try:
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET,
-            algorithms=[settings.JWT_ALGORITHM]
+            GLOBAL_JWT_SECRET,
+            algorithms=[GLOBAL_JWT_ALGORITHM]
         )
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
@@ -93,26 +95,26 @@ def verify_token(token: str) -> TokenData:
 
 
 def generate_password_reset_token(email: str) -> str:
-    """Generate password reset token"""
-    delta = timedelta(hours=settings.RESET_TOKEN_EXPIRE_HOURS)
+    """Generate password reset token using global configuration"""
+    delta = timedelta(hours=RESET_TOKEN_EXPIRE_HOURS)
     now = datetime.utcnow()
     expires = now + delta
     exp = expires.timestamp()
     encoded_jwt = jwt.encode(
         {"exp": exp, "nbf": now, "sub": email},
-        settings.JWT_SECRET,
-        algorithm=settings.JWT_ALGORITHM,
+        GLOBAL_JWT_SECRET,
+        algorithm=GLOBAL_JWT_ALGORITHM,
     )
     return encoded_jwt
 
 
 def verify_password_reset_token(token: str) -> Optional[str]:
-    """Verify password reset token"""
+    """Verify password reset token using global configuration"""
     try:
         decoded_token = jwt.decode(
             token,
-            settings.JWT_SECRET,
-            algorithms=[settings.JWT_ALGORITHM]
+            GLOBAL_JWT_SECRET,
+            algorithms=[GLOBAL_JWT_ALGORITHM]
         )
         return decoded_token["sub"]
     except JWTError:
@@ -137,6 +139,7 @@ def check_user_lockout(
     Check if user is locked out and return lockout status
     Returns: (is_locked, remaining_minutes)
     """
+    # Use settings from AuthSettings if not provided
     max_attempts = max_attempts or settings.MAX_LOGIN_ATTEMPTS
     lockout_duration = lockout_duration or settings.LOCKOUT_DURATION_MINUTES
 
@@ -163,26 +166,26 @@ def reset_login_attempts() -> int:
 
 
 def create_email_verification_token(email: str) -> str:
-    """Create email verification token"""
-    delta = timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
+    """Create email verification token using global configuration"""
+    delta = timedelta(hours=EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
     now = datetime.utcnow()
     expires = now + delta
     exp = expires.timestamp()
     encoded_jwt = jwt.encode(
         {"exp": exp, "nbf": now, "sub": email, "type": "email_verification"},
-        settings.JWT_SECRET,
-        algorithm=settings.JWT_ALGORITHM,
+        GLOBAL_JWT_SECRET,
+        algorithm=GLOBAL_JWT_ALGORITHM,
     )
     return encoded_jwt
 
 
 def verify_email_verification_token(token: str) -> Optional[str]:
-    """Verify email verification token"""
+    """Verify email verification token using global configuration"""
     try:
         decoded_token = jwt.decode(
             token,
-            settings.JWT_SECRET,
-            algorithms=[settings.JWT_ALGORITHM]
+            GLOBAL_JWT_SECRET,
+            algorithms=[GLOBAL_JWT_ALGORITHM]
         )
 
         # Check token type
@@ -194,9 +197,6 @@ def verify_email_verification_token(token: str) -> Optional[str]:
         return None
 
 
-# Add these missing settings to AuthSettings if not present
-if not hasattr(settings, 'RESET_TOKEN_EXPIRE_HOURS'):
-    settings.RESET_TOKEN_EXPIRE_HOURS = 1
-
-if not hasattr(settings, 'EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS'):
-    settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = 24
+# Default values for missing settings
+RESET_TOKEN_EXPIRE_HOURS = 1
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS = 24

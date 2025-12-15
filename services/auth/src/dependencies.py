@@ -6,10 +6,11 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .database import get_db
+from .database import get_db, User
 from .auth import verify_token
-from .schemas import TokenData, User
-from .config import AuthSettings
+from .schemas import TokenData
+from .services.user_service import UserService
+from .config_local import AuthSettings
 
 settings = AuthSettings()
 
@@ -31,23 +32,19 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db)
 ) -> User:
     """Get current user from database"""
-    # TODO: Implement user retrieval from database
-    # user = await user_service.get_by_id(db, token_data.user_id)
-    # if not user:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_404_NOT_FOUND,
-    #         detail="User not found"
-    #     )
+    # Retrieve user from database
+    user = await UserService.get_by_id(db, token_data.user_id)
 
-    # For now, return a dummy user
-    return User(
-        id=token_data.user_id,
-        email="user@example.com",
-        tenant_id=token_data.tenant_id,
-        role_id=token_data.role_id,
-        is_active=True,
-        is_superuser=False
-    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Update token data with current permissions
+    token_data.permissions = await UserService.get_user_permissions(db, token_data.user_id)
+
+    return user
 
 
 async def get_current_active_user(
