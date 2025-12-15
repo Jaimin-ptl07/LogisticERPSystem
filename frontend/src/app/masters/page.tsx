@@ -1,55 +1,69 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { mockCustomers, mockBranches, mockProducts, mockTrucks, mockDrivers } from '@/data/mockData';
 import {
-  Search,
-  Download,
-  Upload,
-  Plus,
-  Edit,
-  Ban,
   Building,
   Users,
   Package,
   Truck,
-  UserCheck
+  UserCheck,
+  ArrowRight,
+  Settings,
+  DollarSign,
+  BarChart3
 } from 'lucide-react';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-export default function Masters() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+export default function MastersPage() {
+  const router = useRouter();
 
-  const filteredCustomers = mockCustomers.filter(customer => {
-    const matchesSearch = customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         customer.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         customer.phone.includes(searchQuery);
-    const matchesStatus = statusFilter === 'all' || customer.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const MastersIcon = ({ type }: { type: string }) => {
-    switch (type) {
-      case 'branches':
-        return <Building className="w-5 h-5" />;
-      case 'customers':
-        return <Users className="w-5 h-5" />;
-      case 'products':
-        return <Package className="w-5 h-5" />;
-      case 'trucks':
-        return <Truck className="w-5 h-5" />;
-      case 'drivers':
-        return <UserCheck className="w-5 h-5" />;
-      default:
-        return <Users className="w-5 h-5" />;
+  const modules = [
+    {
+      title: 'Branch Management',
+      description: 'Manage branches and their locations',
+      icon: Building,
+      href: '/masters/branches',
+      color: 'bg-blue-500'
+    },
+    {
+      title: 'Customer Management',
+      description: 'Manage customers and their information',
+      icon: Users,
+      href: '/masters/customers',
+      color: 'bg-green-500'
+    },
+    {
+      title: 'Vehicle Management',
+      description: 'Manage fleet of vehicles',
+      icon: Truck,
+      href: '/masters/vehicles',
+      color: 'bg-purple-500'
+    },
+    {
+      title: 'Product Management',
+      description: 'Manage product catalog and inventory',
+      icon: Package,
+      href: '/masters/products',
+      color: 'bg-orange-500'
+    },
+    {
+      title: 'User Management',
+      description: 'Manage users and their permissions',
+      icon: UserCheck,
+      href: '/masters/users',
+      color: 'bg-indigo-500'
+    },
+    {
+      title: 'Pricing Configuration',
+      description: 'Configure pricing rules and rates',
+      icon: DollarSign,
+      href: '/masters/pricing',
+      color: 'bg-pink-500'
     }
-  };
+  ];
 
   return (
     <AppLayout>
@@ -57,248 +71,208 @@ export default function Masters() {
         {/* Page Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Masters Management</h1>
-          <p className="text-gray-500 mt-2">Manage all master data and configurations</p>
+          <p className="text-gray-500 mt-2">Manage all master data and configurations for your logistics business</p>
         </div>
 
-        <Tabs defaultValue="customers" className="w-full">
-          <TabsList>
-            <TabsTrigger value="branches" className="flex items-center gap-2">
-              <MastersIcon type="branches" />
-              Branches
-            </TabsTrigger>
-            <TabsTrigger value="customers" className="flex items-center gap-2">
-              <MastersIcon type="customers" />
-              Customers
-            </TabsTrigger>
-            <TabsTrigger value="products" className="flex items-center gap-2">
-              <MastersIcon type="products" />
-              Products
-            </TabsTrigger>
-            <TabsTrigger value="trucks" className="flex items-center gap-2">
-              <MastersIcon type="trucks" />
-              Trucks
-            </TabsTrigger>
-            <TabsTrigger value="drivers" className="flex items-center gap-2">
-              <MastersIcon type="drivers" />
-              Drivers
-            </TabsTrigger>
-          </TabsList>
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-blue-100 rounded-lg mr-4">
+                  <Building className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total Branches</p>
+                  <Link href="/masters/branches" className="text-2xl font-bold text-gray-900 hover:text-blue-600">
+                    View
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          <TabsContent value="customers">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Customers</CardTitle>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Download className="w-4 h-4" />
-                      Download Template
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Upload className="w-4 h-4" />
-                      Upload Excel
-                    </Button>
-                    <Button size="sm" className="flex items-center gap-2">
-                      <Plus className="w-4 h-4" />
-                      New Customer
-                    </Button>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-green-100 rounded-lg mr-4">
+                  <Users className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total Customers</p>
+                  <Link href="/masters/customers" className="text-2xl font-bold text-gray-900 hover:text-green-600">
+                    View
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-purple-100 rounded-lg mr-4">
+                  <Truck className="w-6 h-6 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total Vehicles</p>
+                  <Link href="/masters/vehicles" className="text-2xl font-bold text-gray-900 hover:text-purple-600">
+                    View
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-orange-100 rounded-lg mr-4">
+                  <Package className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total Products</p>
+                  <Link href="/masters/products" className="text-2xl font-bold text-gray-900 hover:text-orange-600">
+                    View
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
+                onClick={() => router.push('/masters/branches/new')}
+              >
+                <Building className="w-8 h-8" />
+                <span>New Branch</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
+                onClick={() => router.push('/masters/customers/new')}
+              >
+                <Users className="w-8 h-8" />
+                <span>New Customer</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
+                onClick={() => router.push('/masters/vehicles/new')}
+              >
+                <Truck className="w-8 h-8" />
+                <span>Add Vehicle</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
+                onClick={() => router.push('/masters/products/new')}
+              >
+                <Package className="w-8 h-8" />
+                <span>New Product</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
+                onClick={() => router.push('/masters/users/new')}
+              >
+                <UserCheck className="w-8 h-8" />
+                <span>Add User</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
+                onClick={() => router.push('/masters/pricing')}
+              >
+                <Settings className="w-8 h-8" />
+                <span>Configure</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Modules Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {modules.map((module) => (
+            <Link
+              key={module.href}
+              href={module.href}
+              className="group block"
+            >
+              <Card className="h-48 hover:shadow-lg transition-shadow duration-200">
+                <CardContent className="p-6 h-full">
+                  <div className="flex flex-col h-full">
+                    <div className="flex items-center mb-4">
+                      <div className={`p-3 ${module.color} rounded-lg mr-4`}>
+                        <module.icon className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600">
+                          {module.title}
+                        </h3>
+                      </div>
+                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600" />
+                    </div>
+                    <p className="text-gray-600 flex-1">{module.description}</p>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {/* Toolbar */}
-                <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="text"
-                      placeholder="Search customers..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={statusFilter === 'all' ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => setStatusFilter('all')}
-                    >
-                      All ({mockCustomers.length})
-                    </Button>
-                    <Button
-                      variant={statusFilter === 'active' ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => setStatusFilter('active')}
-                    >
-                      Active ({mockCustomers.filter(c => c.status === 'active').length})
-                    </Button>
-                    <Button
-                      variant={statusFilter === 'inactive' ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => setStatusFilter('inactive')}
-                    >
-                      Inactive ({mockCustomers.filter(c => c.status === 'inactive').length})
-                    </Button>
-                  </div>
-                </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
 
-                {/* Customers Table */}
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Home Branch</TableHead>
-                      <TableHead>Business Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredCustomers.map((customer) => (
-                      <TableRow key={customer.id}>
-                        <TableCell className="font-medium">{customer.code}</TableCell>
-                        <TableCell>{customer.name}</TableCell>
-                        <TableCell>{customer.phone}</TableCell>
-                        <TableCell>{customer.location}</TableCell>
-                        <TableCell>{customer.homeBranch}</TableCell>
-                        <TableCell>{customer.businessType}</TableCell>
-                        <TableCell>
-                          <Badge variant={customer.status === 'active' ? 'success' : 'default'}>
-                            {customer.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="sm">
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Ban className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="branches">
-            <Card>
-              <CardHeader>
-                <CardTitle>Branches</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {mockBranches.map((branch) => (
-                    <div key={branch.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-gray-900">{branch.name}</h3>
-                        <Badge variant={branch.status === 'active' ? 'success' : 'default'}>
-                          {branch.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-1">Code: {branch.code}</p>
-                      <p className="text-sm text-gray-600 mb-1">Location: {branch.location}</p>
-                      <p className="text-sm text-gray-600 mb-1">Manager: {branch.manager}</p>
-                      <p className="text-sm text-gray-600">Phone: {branch.phone}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="products">
-            <Card>
-              <CardHeader>
-                <CardTitle>Products</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {mockProducts.map((product) => (
-                    <div key={product.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-gray-900">{product.name}</h3>
-                        <Badge variant={product.status === 'active' ? 'success' : 'default'}>
-                          {product.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-1">Code: {product.code}</p>
-                      <p className="text-sm text-gray-600 mb-1">Category: {product.category}</p>
-                      <p className="text-sm text-gray-600 mb-1">Unit: {product.unit}</p>
-                      <p className="text-sm text-gray-600">Price: ${product.price.toFixed(2)}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="trucks">
-            <Card>
-              <CardHeader>
-                <CardTitle>Trucks</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {mockTrucks.map((truck) => (
-                    <div key={truck.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-gray-900">{truck.plate}</h3>
-                        <Badge variant={
-                          truck.status === 'available' ? 'success' :
-                          truck.status === 'on-duty' ? 'info' : 'warning'
-                        }>
-                          {truck.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-1">Model: {truck.model}</p>
-                      <p className="text-sm text-gray-600 mb-1">Capacity: {truck.capacity} kg</p>
-                      {truck.driver && (
-                        <p className="text-sm text-gray-600">Driver: {truck.driver}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="drivers">
-            <Card>
-              <CardHeader>
-                <CardTitle>Drivers</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {mockDrivers.map((driver) => (
-                    <div key={driver.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-gray-900">{driver.name}</h3>
-                        <Badge variant={driver.status === 'active' ? 'success' : 'default'}>
-                          {driver.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-1">Phone: {driver.phone}</p>
-                      <p className="text-sm text-gray-600 mb-1">License: {driver.license}</p>
-                      <p className="text-sm text-gray-600 mb-1">Experience: {driver.experience}</p>
-                      {driver.currentTruck && (
-                        <p className="text-sm text-gray-600">Current Truck: {driver.currentTruck}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        {/* Reports & Analytics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="w-5 h-5 mr-2" />
+              Reports & Analytics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Button
+                variant="outline"
+                className="flex items-center justify-center space-x-2 h-12"
+                onClick={() => router.push('/masters/dashboard')}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>Dashboard</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="flex items-center justify-center space-x-2 h-12"
+                onClick={() => {
+                  // Mock report generation
+                  alert('Report generation feature coming soon!');
+                }}
+              >
+                <Settings className="w-4 h-4" />
+                <span>Generate Reports</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="flex items-center justify-center space-x-2 h-12"
+                onClick={() => {
+                  // Mock analytics view
+                  alert('Detailed analytics coming soon!');
+                }}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>View Analytics</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );

@@ -7,6 +7,7 @@ echo "Creating databases..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     -- Create core databases
     CREATE DATABASE auth_db;
+    CREATE DATABASE company_db;
     CREATE DATABASE orders_db;
     CREATE DATABASE wms_db;
     CREATE DATABASE tms_db;
@@ -15,6 +16,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
 
     -- Grant permissions
     GRANT ALL PRIVILEGES ON DATABASE auth_db TO $POSTGRES_USER;
+    GRANT ALL PRIVILEGES ON DATABASE company_db TO $POSTGRES_USER;
     GRANT ALL PRIVILEGES ON DATABASE orders_db TO $POSTGRES_USER;
     GRANT ALL PRIVILEGES ON DATABASE wms_db TO $POSTGRES_USER;
     GRANT ALL PRIVILEGES ON DATABASE tms_db TO $POSTGRES_USER;
@@ -28,4 +30,8 @@ echo "Databases created successfully!"
 echo "Initializing auth database schema..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "auth_db" -f /docker-entrypoint-initdb.d/02-auth-schema.sql
 
-echo "Database initialization complete!"+
+# Initialize company database schema
+echo "Initializing company database schema..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "company_db" -f /docker-entrypoint-initdb.d/03-company-schema.sql
+
+echo "Database initialization complete!"
