@@ -14,6 +14,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
       - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
+      - ./scripts/init-orders-schema.sql:/docker-entrypoint-initdb.d/03-orders-schema.sql
     networks:
       - logistics-network
     healthcheck:
@@ -246,6 +247,35 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
+
+  orders-service:
+    build:
+      context: ./services/orders
+      dockerfile: Dockerfile
+    container_name: orders-service
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=orders_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
+      - ENV=development
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    volumes:
+      - ./services/orders/uploads:/app/uploads
 
 volumes:
   postgres_data:

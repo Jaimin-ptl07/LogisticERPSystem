@@ -28,4 +28,7 @@ echo "Databases created successfully!"
 echo "Initializing auth database schema..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "auth_db" -f /docker-entrypoint-initdb.d/02-auth-schema.sql
 
+# Initialize orders database schema
+echo "Initializing orders database schema..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "orders_db" -f /docker-entrypoint-initdb.d/03-orders-schema.sql
 echo "Database initialization complete!"+
