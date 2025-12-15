@@ -15,6 +15,7 @@ services:
       - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
       - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
       - ./scripts/init-tms-schema.sql:/docker-entrypoint-initdb.d/03-tms-schema.sql
+      - ./scripts/init-company-schema.sql:/docker-entrypoint-initdb.d/04-company-schema.sql
     networks:
       - logistics-network
     healthcheck:

@@ -24,8 +24,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT ALL PRIVILEGES ON DATABASE telemetry_db TO $POSTGRES_USER;
 EOSQL
 
-echo "Databases created successfully!"
-
 # Initialize auth database schema
 echo "Initializing auth database schema..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "auth_db" -f /docker-entrypoint-initdb.d/02-auth-schema.sql
@@ -36,6 +34,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "tms_db" -f /docker
 
 # Initialize company database schema
 echo "Initializing company database schema..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "company_db" -f /docker-entrypoint-initdb.d/03-company-schema.sql
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "company_db" -f /docker-entrypoint-initdb.d/04-company-schema.sql
 
 echo "Database initialization complete!"
