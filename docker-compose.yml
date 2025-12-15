@@ -15,6 +15,8 @@ services:
       - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
       - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
       - ./scripts/init-orders-schema.sql:/docker-entrypoint-initdb.d/03-orders-schema.sql
+      - ./scripts/init-tms-schema.sql:/docker-entrypoint-initdb.d/03-tms-schema.sql
+      - ./scripts/init-company-schema.sql:/docker-entrypoint-initdb.d/04-company-schema.sql
     networks:
       - logistics-network
     healthcheck:
@@ -236,7 +238,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
+      - JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
       - ENV=development
     depends_on:
       postgres:
@@ -247,6 +249,65 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
+    # Mount source code for development with auto-reload
+    volumes:
+      - ./services/auth/src:/app/src
+      - ./services/auth/pyproject.toml:/app/pyproject.toml
+      - ./services/auth/uv.lock:/app/uv.lock
+
+  company-service:
+    build:
+      context: ./services/company
+      dockerfile: Dockerfile
+    container_name: company-service
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_COMPANY_DB=company_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - ENV=development
+      - PORT=8002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - logistics-network
+
+  # TMS Service
+  tms-service:
+    build:
+      context: ./services/tms
+      dockerfile: Dockerfile
+    container_name: tms-service
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   orders-service:
     build:

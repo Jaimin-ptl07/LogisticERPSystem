@@ -6,6 +6,23 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 import os
 
+# Global JWT Configuration - Single Source of Truth
+# All JWT operations must use this centralized configuration
+GLOBAL_JWT_SECRET: str = os.getenv(
+    "JWT_SECRET",
+    "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
+)
+GLOBAL_JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+GLOBAL_JWT_EXPIRE_MINUTES: int = int(
+    os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24 hours
+GLOBAL_REFRESH_TOKEN_EXPIRE_MINUTES: int = int(
+    os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days
+
+# Print JWT config on import for debugging
+# print(f"[CONFIG] Global JWT Secret (first 20 chars): {GLOBAL_JWT_SECRET[:20]}...")
+# print(f"[CONFIG] Global JWT Algorithm: {GLOBAL_JWT_ALGORITHM}")
+# print(f"[CONFIG] Global JWT Expire Minutes: {GLOBAL_JWT_EXPIRE_MINUTES}")
+
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -41,13 +58,25 @@ class Settings(BaseSettings):
         password_part = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
         return f"redis://{password_part}{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
-    # JWT
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-this-in-production")
-    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
-    JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24 hours
+    # JWT - Use global configuration
+    @property
+    def JWT_SECRET(self) -> str:
+        """Get JWT secret from global configuration"""
+        return GLOBAL_JWT_SECRET
+
+    @property
+    def JWT_ALGORITHM(self) -> str:
+        """Get JWT algorithm from global configuration"""
+        return GLOBAL_JWT_ALGORITHM
+
+    @property
+    def JWT_EXPIRE_MINUTES(self) -> int:
+        """Get JWT expire minutes from global configuration"""
+        return GLOBAL_JWT_EXPIRE_MINUTES
 
     # CORS
-    CORS_ORIGINS: List[str] = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    CORS_ORIGINS: List[str] = os.getenv(
+        "CORS_ORIGINS", "http://localhost:3000").split(",")
 
     class Config:
         env_file = ".env"
@@ -82,7 +111,9 @@ class LoggingMixin:
 
 
 class AuthSettings(Settings, LoggingMixin):
-    """Extended settings for Auth Service"""
+    """Extended settings for Auth Service - uses global JWT configuration"""
+
+    # JWT - Inherits from parent Settings which uses global configuration
 
     # Auth specific settings
     PASSWORD_MIN_LENGTH: int = 8
@@ -93,7 +124,6 @@ class AuthSettings(Settings, LoggingMixin):
 
     # Session settings
     SESSION_EXPIRE_MINUTES: int = 1440  # 24 hours
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 30
 
@@ -110,4 +140,11 @@ class AuthSettings(Settings, LoggingMixin):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.log_event("Auth service configured", env=self.ENV)
+        self.log_event("Auth service configured",
+                       env=self.ENV,
+                       jwt_secret_set=bool(self.JWT_SECRET))
+
+    def get_password_hash_secret(self) -> str:
+        """Get the secret to use for password hashing"""
+        # Use the same global JWT_SECRET for password hashing
+        return self.JWT_SECRET

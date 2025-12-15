@@ -9,7 +9,9 @@ import {
   Product,
   Truck,
   Driver,
-  KPICard
+  KPICard,
+  OrderItem,
+  Location
 } from '@/types';
 
 export const mockKPIs: KPICard[] = [
@@ -45,51 +47,240 @@ export const mockOrders: Order[] = [
   },
 ];
 
+export const mockOrderItems: OrderItem[] = [
+  {
+    id: 'ORD-001',
+    customer: 'John\'s Farm',
+    customerAddress: '123 Farm Road, Rural Area, Cairo',
+    status: 'approved',
+    total: 2500,
+    weight: 850,
+    volume: 1200,
+    date: '2024-01-10',
+    priority: 'high',
+    items: 15,
+    address: '123 Farm Road, Rural Area, Cairo'
+  },
+  {
+    id: 'ORD-002',
+    customer: 'Green Valley Store',
+    customerAddress: '456 Market St, City Center',
+    status: 'approved',
+    total: 1800,
+    weight: 650,
+    volume: 950,
+    date: '2024-01-10',
+    priority: 'medium',
+    items: 8,
+    address: '456 Market St, City Center'
+  },
+  {
+    id: 'ORD-003',
+    customer: 'City Mart',
+    customerAddress: '789 Main St, Downtown',
+    status: 'approved',
+    total: 3200,
+    weight: 1200,
+    volume: 1800,
+    date: '2024-01-11',
+    priority: 'high',
+    items: 22,
+    address: '789 Main St, Downtown'
+  },
+  {
+    id: 'ORD-004',
+    customer: 'SuperStore Chain',
+    customerAddress: '321 Commercial Ave, Industrial Zone',
+    status: 'pending',
+    total: 4500,
+    weight: 1800,
+    volume: 2400,
+    date: '2024-01-11',
+    priority: 'low',
+    items: 35,
+    address: '321 Commercial Ave, Industrial Zone'
+  },
+  {
+    id: 'ORD-005',
+    customer: 'Local Pharmacy',
+    customerAddress: '555 Health St, Medical District',
+    status: 'approved',
+    total: 1500,
+    weight: 300,
+    volume: 450,
+    date: '2024-01-11',
+    priority: 'high',
+    items: 12,
+    address: '555 Health St, Medical District'
+  },
+  {
+    id: 'ORD-006',
+    customer: 'Heavy Industry Corp',
+    customerAddress: '789 Industrial Blvd, Manufacturing Zone',
+    status: 'approved',
+    total: 50000,
+    weight: 10000,
+    volume: 2500,
+    date: '2024-01-12',
+    priority: 'high',
+    items: 50,
+    address: '789 Industrial Blvd, Manufacturing Zone'
+  },
+];
+
+export const mockLocations: Location[] = [
+  {
+    id: 'LOC-001',
+    name: 'North Branch',
+    address: 'North Industrial Area, Cairo',
+    distance: 0,
+    estimatedTime: 0
+  },
+  {
+    id: 'LOC-002',
+    name: 'South Branch',
+    address: 'South Commercial Zone, Giza',
+    distance: 0,
+    estimatedTime: 0
+  },
+  {
+    id: 'LOC-003',
+    name: 'East Branch',
+    address: 'East Logistics Hub, Suez',
+    distance: 0,
+    estimatedTime: 0
+  },
+  {
+    id: 'LOC-004',
+    name: 'Cairo Downtown',
+    address: 'Downtown Cairo, Egypt',
+    distance: 15,
+    estimatedTime: 45
+  },
+  {
+    id: 'LOC-005',
+    name: 'Giza City Center',
+    address: 'Giza, Egypt',
+    distance: 22,
+    estimatedTime: 65
+  },
+  {
+    id: 'LOC-006',
+    name: 'Alexandria Port',
+    address: 'Alexandria, Egypt',
+    distance: 225,
+    estimatedTime: 180
+  },
+];
+
 export const mockTrips: Trip[] = [
   {
     id: 'TRIP-001',
     status: 'on-route',
     branch: 'North Branch',
+    origin: 'North Branch',
+    destination: 'Cairo Downtown',
+    distance: 15,
+    estimatedDuration: 90,
+    preTripTime: 30,
+    postTripTime: 15,
     truck: {
       plate: 'ABC-1234',
       model: 'Ford Transit',
+      capacity: 2000,
     },
     driver: {
       name: 'Mike Johnson',
       phone: '+201234567890',
     },
-    orders: 5,
+    orders: [
+      mockOrderItems[0], // ORD-001 - John's Farm
+      mockOrderItems[1], // ORD-002 - Green Valley Store
+    ],
     date: '2024-01-10',
+    createdAt: '2024-01-10T08:00:00Z',
+    capacityUsed: 1500,
+    capacityTotal: 2000,
   },
   {
     id: 'TRIP-002',
     status: 'planning',
     branch: 'South Branch',
+    origin: 'South Branch',
+    destination: 'Giza City Center',
+    distance: 22,
+    estimatedDuration: 120,
+    preTripTime: 30,
+    postTripTime: 20,
     truck: {
       plate: 'XYZ-5678',
       model: 'Mercedes Sprinter',
+      capacity: 3000,
     },
     driver: {
       name: 'Sarah Ahmed',
       phone: '+201112223333',
     },
-    orders: 8,
+    orders: [
+      mockOrderItems[2], // ORD-003 - City Mart
+      mockOrderItems[4], // ORD-005 - Local Pharmacy
+    ],
     date: '2024-01-11',
+    createdAt: '2024-01-11T06:00:00Z',
+    capacityUsed: 1500,
+    capacityTotal: 3000,
   },
   {
     id: 'TRIP-003',
     status: 'completed',
     branch: 'East Branch',
+    origin: 'East Branch',
+    destination: 'Alexandria Port',
+    distance: 225,
+    estimatedDuration: 240,
+    preTripTime: 45,
+    postTripTime: 30,
     truck: {
       plate: 'DEF-9012',
       model: 'Iveco Daily',
+      capacity: 5000,
     },
     driver: {
       name: 'Ali Hassan',
       phone: '+201445556666',
     },
-    orders: 12,
+    orders: [],
     date: '2024-01-09',
+    createdAt: '2024-01-09T05:00:00Z',
+    capacityUsed: 0,
+    capacityTotal: 5000,
+  },
+  {
+    id: 'TRIP-004',
+    status: 'truck-malfunction',
+    branch: 'North Branch',
+    origin: 'North Branch',
+    destination: 'Cairo Downtown',
+    distance: 15,
+    estimatedDuration: 90,
+    preTripTime: 30,
+    postTripTime: 15,
+    truck: {
+      plate: 'GHI-3456',
+      model: 'Isuzu NPR',
+      capacity: 2500,
+    },
+    driver: {
+      name: 'Mohamed Ali',
+      phone: '+201556667778',
+    },
+    orders: [
+      mockOrderItems[3], // ORD-004 - SuperStore Chain
+    ],
+    date: '2024-01-11',
+    createdAt: '2024-01-11T07:30:00Z',
+    capacityUsed: 1800,
+    capacityTotal: 2500,
   },
 ];
 
@@ -222,6 +413,24 @@ export const mockBranches: Branch[] = [
     location: 'Giza, Egypt',
     manager: 'Mohamed Hassan',
     phone: '+201000000011',
+    status: 'active',
+  },
+  {
+    id: 'BR-003',
+    code: 'EB001',
+    name: 'East Branch',
+    location: 'Suez, Egypt',
+    manager: 'Khalid Omar',
+    phone: '+201000000012',
+    status: 'active',
+  },
+  {
+    id: 'BR-004',
+    code: 'WB001',
+    name: 'West Branch',
+    location: 'Alexandria, Egypt',
+    manager: 'Sami Mahmoud',
+    phone: '+201000000013',
     status: 'active',
   },
 ];

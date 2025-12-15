@@ -56,12 +56,14 @@ class Tenant(Base):
     domain = Column(String(255), unique=True, nullable=True)
     settings = Column(Text, nullable=True)  # JSON string for tenant settings
     is_active = Column(Boolean, default=True)
+    admin_id = Column(String, ForeignKey("users.id"), unique=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships
-    users = relationship("User", back_populates="tenant")
+    # Relationships - specify foreign_keys to avoid ambiguity
+    users = relationship("User", back_populates="tenant", foreign_keys="User.tenant_id")
     roles = relationship("Role", back_populates="tenant")
+    admin = relationship("User", backref="admin_of_tenant", foreign_keys=[admin_id])
 
 
 class User(Base):
@@ -82,11 +84,11 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Foreign Keys
-    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
-    role_id = Column(String, ForeignKey("roles.id"), nullable=False)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=True)  # Nullable for super admins
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)  # Changed to Integer
 
     # Relationships
-    tenant = relationship("Tenant", back_populates="users")
+    tenant = relationship("Tenant", back_populates="users", foreign_keys=[tenant_id])
     role = relationship("Role", back_populates="users")
     refresh_tokens = relationship("RefreshToken", back_populates="user")
 
@@ -95,7 +97,7 @@ class Role(Base):
     """Role model for RBAC"""
     __tablename__ = "roles"
 
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True)  # Changed to Integer with auto-increment
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     is_system = Column(Boolean, default=False)  # System roles cannot be deleted
@@ -139,7 +141,7 @@ class RolePermission(Base):
     __tablename__ = "role_permissions"
 
     id = Column(String, primary_key=True)
-    role_id = Column(String, ForeignKey("roles.id"), nullable=False)
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     permission_id = Column(String, ForeignKey("permissions.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

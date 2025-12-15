@@ -24,18 +24,61 @@ export interface Order {
 
 export interface Trip {
   id: string;
-  status: 'planning' | 'loading' | 'on-route' | 'completed' | 'cancelled';
+  status: 'planning' | 'loading' | 'on-route' | 'completed' | 'cancelled' | 'truck-malfunction';
   branch: string;
-  truck: {
+  origin?: string;
+  destination?: string;
+  distance?: number;
+  estimatedDuration?: number;
+  preTripTime?: number;
+  postTripTime?: number;
+  truck?: {
     plate: string;
     model: string;
+    capacity: number;
   };
-  driver: {
+  driver?: {
     name: string;
     phone: string;
   };
-  orders: number;
+  orders: OrderItem[];
   date: string;
+  createdAt?: string;
+  capacityUsed?: number;
+  capacityTotal?: number;
+}
+
+export interface OrderItem {
+  id: string;
+  customer: string;
+  customerAddress?: string;
+  status: 'approved' | 'pending' | 'assigned' | 'loading' | 'on-route' | 'completed';
+  total: number;
+  weight: number;
+  volume: number;
+  date: string;
+  priority: 'high' | 'medium' | 'low';
+  items: number;
+  address?: string;
+  originalOrderId?: string;
+  originalItems?: number;
+  originalWeight?: number;
+}
+
+export interface TripPlan {
+  id: string;
+  orders: OrderItem[];
+  totalWeight: number;
+  totalVolume: number;
+  estimatedCapacity: number;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  address: string;
+  distance?: number;
+  estimatedTime?: number;
 }
 
 export interface Delivery {
