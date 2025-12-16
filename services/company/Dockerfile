@@ -64,4 +64,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 
 # Run the application with uvicorn
 # Enable hot reload for development - watches the /app/src directory for changes
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload", "--reload-dir", "/app/src", "--reload-include", "*.py"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]
