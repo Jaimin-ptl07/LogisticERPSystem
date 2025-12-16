@@ -3,11 +3,12 @@ Authentication Service Main Application
 """
 import logging
 from contextlib import asynccontextmanager
+import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
@@ -19,6 +20,43 @@ from src.database import engine, Base, AsyncSessionLocal
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = AuthSettings()
+
+# Initialize Prometheus metrics registry
+registry = CollectorRegistry()
+
+# Define metrics
+http_requests_total = Counter(
+    'auth_http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status_code'],
+    registry=registry
+)
+
+http_request_duration_seconds = Histogram(
+    'auth_http_request_duration_seconds',
+    'HTTP request duration in seconds',
+    ['method', 'endpoint'],
+    registry=registry
+)
+
+auth_operations_total = Counter(
+    'auth_operations_total',
+    'Total authentication operations',
+    ['operation', 'status'],
+    registry=registry
+)
+
+active_users = Gauge(
+    'auth_active_users',
+    'Number of active users',
+    registry=registry
+)
+
+active_tenants = Gauge(
+    'auth_active_tenants',
+    'Number of active tenants',
+    registry=registry
+)
 
 
 @asynccontextmanager
@@ -60,12 +98,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add metrics tracking middleware
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+
+    # Calculate request duration
+    duration = time.time() - start_time
+
+    # Get endpoint path (simplified)
+    endpoint = request.url.path
+    if endpoint.startswith("/api/v1/"):
+        endpoint = endpoint.split("/")[-1] or "root"
+
+    # Record metrics
+    http_requests_total.labels(
+        method=request.method,
+        endpoint=endpoint,
+        status_code=str(response.status_code)
+    ).inc()
+
+    http_request_duration_seconds.labels(
+        method=request.method,
+        endpoint=endpoint
+    ).observe(duration)
+
+    return response
+
 
 # Metrics endpoint
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint"""
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
 
 # Health check endpoints

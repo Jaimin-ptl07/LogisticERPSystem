@@ -1,54 +1,54 @@
 """
-Company Service Main Application
+Orders Service Main Application
 """
 import logging
 from contextlib import asynccontextmanager
 import time
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response, JSONResponse
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
-from starlette.responses import Response as StarletteResponse
+from starlette.requests import Request
 
-from src.api.endpoints import branches, customers, vehicles, products, product_categories
-from src.config_local import CompanySettings
+from src.api.endpoints import orders, order_documents
+from src.config_local import OrdersSettings
 from src.database import engine, Base
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-settings = CompanySettings()
+settings = OrdersSettings()
 
 # Initialize Prometheus metrics registry
 registry = CollectorRegistry()
 
 # Define metrics
 http_requests_total = Counter(
-    'company_http_requests_total',
+    'orders_http_requests_total',
     'Total HTTP requests',
     ['method', 'endpoint', 'status_code'],
     registry=registry
 )
 
 http_request_duration_seconds = Histogram(
-    'company_http_request_duration_seconds',
+    'orders_http_request_duration_seconds',
     'HTTP request duration in seconds',
     ['method', 'endpoint'],
     registry=registry
 )
 
-company_operations_total = Counter(
-    'company_operations_total',
-    'Total company operations',
+orders_operations_total = Counter(
+    'orders_operations_total',
+    'Total order operations',
     ['operation', 'status'],
     registry=registry
 )
 
-active_branches = Gauge(
-    'company_active_branches',
-    'Number of active branches',
+active_orders = Gauge(
+    'orders_active_orders',
+    'Number of active orders',
     registry=registry
 )
 
@@ -56,7 +56,7 @@ active_branches = Gauge(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
-    logger.info(f"Starting company service - version=1.0.0")
+    logger.info(f"Starting orders service - version=1.0.0")
 
     # Initialize database tables
     async with engine.begin() as conn:
@@ -64,13 +64,13 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    logger.info("Shutting down company service")
+    logger.info("Shutting down orders service")
 
 
 # Create FastAPI application
 app = FastAPI(
-    title="Logistics ERP Company Service",
-    description="Company management service for multi-tenant Logistics ERP",
+    title="Logistics ERP Orders Service",
+    description="Orders management service for multi-tenant Logistics ERP",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -83,9 +83,6 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["localhost", "127.0.0.1", "*.logistics-erp.com"] if settings.ENV == "production" else ["*"]
 )
-
-# Log CORS configuration for debugging
-logger.info(f"CORS Origins: {settings.CORS_ORIGINS}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -128,14 +125,14 @@ async def metrics_middleware(request: Request, call_next):
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint"""
-    return StarletteResponse(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
+    return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
 
 # Health check endpoints
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "company-service"}
+    return {"status": "healthy", "service": "orders-service"}
 
 
 @app.get("/ready", tags=["Health"])
@@ -148,7 +145,7 @@ async def readiness_check():
 
         return {
             "status": "ready",
-            "service": "company-service",
+            "service": "orders-service",
             "checks": {
                 "database": "ok"
             }
@@ -163,50 +160,19 @@ async def readiness_check():
 
 # Include API routers
 app.include_router(
-    branches.router,
-    prefix="/api/v1/branches",
-    tags=["Branches"]
+    orders.router,
+    prefix="/api/v1/orders",
+    tags=["Orders"]
 )
 
 app.include_router(
-    customers.router,
-    prefix="/api/v1/customers",
-    tags=["Customers"]
-)
-
-app.include_router(
-    vehicles.router,
-    prefix="/api/v1/vehicles",
-    tags=["Vehicles"]
-)
-
-app.include_router(
-    products.router,
-    prefix="/api/v1/products",
-    tags=["Products"]
-)
-
-app.include_router(
-    product_categories.router,
-    prefix="/api/v1/product-categories",
-    tags=["Product Categories"]
+    order_documents.router,
+    prefix="/api/v1/orders",
+    tags=["Order Documents"]
 )
 
 
 # Exception handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """HTTP exception handler"""
-    logger.warning(
-        f"HTTP exception - path={request.url.path}, method={request.method}, "
-        f"status={exc.status_code}, detail={exc.detail}"
-    )
-    return JSONResponse(
-        content={"detail": exc.detail},
-        status_code=exc.status_code
-    )
-
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler"""
@@ -225,9 +191,9 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "src.main:app",
+        "main:app",
         host="0.0.0.0",
-        port=settings.PORT,
+        port=8002,
         reload=True if settings.ENV == "development" else False,
         log_level=settings.LOG_LEVEL.lower(),
     )
