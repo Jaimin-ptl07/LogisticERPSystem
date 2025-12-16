@@ -1,11 +1,23 @@
 -- Orders Service Database Schema Initialization
 -- This file will be executed after the auth schema is created
 
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create function to automatically update updated_at column
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 -- Create orders table
 CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(255) PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_number VARCHAR(50) UNIQUE NOT NULL,
-    tenant_id VARCHAR(255) NOT NULL REFERENCES tenants(id),
+    tenant_id VARCHAR(255) NOT NULL, -- References tenants table in auth_db (handled at application level)
     customer_id VARCHAR(255) NOT NULL,
     branch_id VARCHAR(255) NOT NULL,
     order_type VARCHAR(20) NOT NULL DEFAULT 'delivery',
