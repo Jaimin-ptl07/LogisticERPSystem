@@ -281,6 +281,12 @@ class ApiHelper {
 
     if (!response.ok) {
       const error = await response.json();
+      // If we get authentication errors, clear tokens and force logout
+      if (response.status === 401 || response.status === 500) {
+        console.error('[API] Authentication failed, clearing tokens...');
+        this.logout();
+        window.location.href = '/login';
+      }
       throw new Error(error.detail || 'Failed to get user info');
     }
 
