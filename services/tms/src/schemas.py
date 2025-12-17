@@ -123,6 +123,8 @@ class TripOrderResponse(BaseSchema):
     volume: int
     items: int
     priority: Priority
+    delivery_status: Optional[str] = "pending"
+    sequence_number: int
     address: Optional[str] = None
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
@@ -231,4 +233,6 @@ class MessageResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
-    status_code: Optional[int] = None
+    status_code: Optional[int] = None# Reorder Orders Request Schema
+class ReorderOrdersRequest(BaseModel):
+    order_sequences: List[dict]  # List of {"order_id": int, "sequence_number": int}
