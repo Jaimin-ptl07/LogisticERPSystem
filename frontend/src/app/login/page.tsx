@@ -1,31 +1,39 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { loginAsync, clearError } from '@/store/slices/auth.slice';
-import { getDefaultRoute } from '@/lib/roles';
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { loginAsync, clearError } from "@/store/slices/auth.slice";
+import { getDefaultRoute } from "@/lib/roles";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
-  const { isLoading, error, isAuthenticated, user } = useAppSelector((state) => state.auth);
+  const { isLoading, error, isAuthenticated, user } = useAppSelector(
+    (state) => state.auth
+  );
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
-      const redirect = searchParams.get('redirect');
+      const redirect = searchParams.get("redirect");
       if (redirect) {
-        router.push(redirect);
+        // Only redirect if we're not already on the target route
+        if (window.location.pathname !== redirect) {
+          router.push(redirect);
+        }
       } else {
         const defaultRoute = getDefaultRoute(user.role?.name);
-        router.push(defaultRoute);
+        // Only redirect if we're not already on the default route
+        if (window.location.pathname !== defaultRoute) {
+          router.push(defaultRoute);
+        }
       }
     }
   }, [isAuthenticated, user, router, searchParams]);
@@ -46,8 +54,8 @@ export default function LoginPage() {
     if (loginAsync.fulfilled.match(result)) {
       // Get user data from result
       const userData = result.payload.user;
-      const redirect = searchParams.get('redirect');
-      
+      const redirect = searchParams.get("redirect");
+
       if (redirect) {
         router.push(redirect);
       } else {
@@ -62,8 +70,18 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-blue-100">
-            <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <svg
+              className="h-6 w-6 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
             </svg>
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -84,7 +102,10 @@ export default function LoginPage() {
               )}
 
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Email address
                 </label>
                 <Input
@@ -101,7 +122,10 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Password
                 </label>
                 <Input
@@ -124,7 +148,7 @@ export default function LoginPage() {
                   className="w-full"
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Signing in...' : 'Sign in'}
+                  {isLoading ? "Signing in..." : "Sign in"}
                 </Button>
               </div>
             </form>

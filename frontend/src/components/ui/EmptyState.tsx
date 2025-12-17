@@ -1,4 +1,6 @@
-import { Package } from 'lucide-react';
+"use client";
+
+import { Package } from "lucide-react";
 
 interface EmptyStateProps {
   title: string;

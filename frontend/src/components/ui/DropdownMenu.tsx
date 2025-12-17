@@ -1,15 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+"use client";
+
+import React, { useState, useRef, useEffect } from "react";
 
 interface DropdownMenuProps {
   children: React.ReactNode;
 }
 
 export function DropdownMenu({ children }: DropdownMenuProps) {
-  return (
-    <div className="relative inline-block text-left">
-      {children}
-    </div>
-  );
+  return <div className="relative inline-block text-left">{children}</div>;
 }
 
 interface DropdownMenuTriggerProps {
@@ -17,7 +15,10 @@ interface DropdownMenuTriggerProps {
   asChild?: boolean;
 }
 
-export function DropdownMenuTrigger({ children, asChild = false }: DropdownMenuTriggerProps) {
+export function DropdownMenuTrigger({
+  children,
+  asChild = false,
+}: DropdownMenuTriggerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -28,18 +29,15 @@ export function DropdownMenuTrigger({ children, asChild = false }: DropdownMenuT
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const trigger = React.cloneElement(
-    children as React.ReactElement,
-    {
-      onClick: () => setIsOpen(!isOpen),
-      'aria-expanded': isOpen,
-      'aria-haspopup': true,
-    }
-  );
+  const trigger = React.cloneElement(children as React.ReactElement, {
+    onClick: () => setIsOpen(!isOpen),
+    "aria-expanded": isOpen,
+    "aria-haspopup": true,
+  });
 
   return (
     <DropdownMenuContext.Provider value={{ isOpen, setIsOpen }}>
@@ -50,14 +48,14 @@ export function DropdownMenuTrigger({ children, asChild = false }: DropdownMenuT
 
 interface DropdownMenuContentProps {
   children: React.ReactNode;
-  align?: 'start' | 'center' | 'end';
+  align?: "start" | "center" | "end";
   className?: string;
 }
 
 export function DropdownMenuContent({
   children,
-  align = 'end',
-  className = ''
+  align = "end",
+  className = "",
 }: DropdownMenuContentProps) {
   const { isOpen } = React.useContext(DropdownMenuContext);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -70,20 +68,20 @@ export function DropdownMenuContent({
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const alignmentClasses = {
-    start: 'left-0',
-    center: 'left-1/2 transform -translate-x-1/2',
-    end: 'right-0'
+    start: "left-0",
+    center: "left-1/2 transform -translate-x-1/2",
+    end: "right-0",
   };
 
   return (
@@ -112,7 +110,7 @@ export function DropdownMenuItem({
   children,
   onClick,
   disabled = false,
-  className = ''
+  className = "",
 }: DropdownMenuItemProps) {
   const { setIsOpen } = React.useContext(DropdownMenuContext);
 
@@ -127,7 +125,7 @@ export function DropdownMenuItem({
     <button
       type="button"
       className={`block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:bg-gray-100 focus:text-gray-900 ${
-        disabled ? 'opacity-50 cursor-not-allowed' : ''
+        disabled ? "opacity-50 cursor-not-allowed" : ""
       } ${className}`}
       role="menuitem"
       onClick={handleClick}

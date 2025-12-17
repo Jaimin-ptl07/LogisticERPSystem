@@ -1,3 +1,5 @@
+"use client";
+
 export default function ProtectedLoading() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -6,7 +8,11 @@ export default function ProtectedLoading() {
         <div className="relative w-40 h-40">
           {/* Outer rotating ring */}
           <div className="absolute inset-0">
-            <svg className="w-full h-full animate-spin" style={{ animationDuration: '3s' }} viewBox="0 0 100 100">
+            <svg
+              className="w-full h-full animate-spin"
+              style={{ animationDuration: "3s" }}
+              viewBox="0 0 100 100"
+            >
               <circle
                 cx="50"
                 cy="50"
@@ -30,7 +36,11 @@ export default function ProtectedLoading() {
 
           {/* Inner rotating ring */}
           <div className="absolute inset-4">
-            <svg className="w-full h-full animate-spin" style={{ animationDuration: '2s', animationDirection: 'reverse' }} viewBox="0 0 100 100">
+            <svg
+              className="w-full h-full animate-spin"
+              style={{ animationDuration: "2s", animationDirection: "reverse" }}
+              viewBox="0 0 100 100"
+            >
               <circle
                 cx="50"
                 cy="50"
@@ -63,11 +73,25 @@ export default function ProtectedLoading() {
             Loading Dashboard
           </h2>
           <div className="flex items-center justify-center space-x-1">
-            <span className="text-sm text-gray-500">Preparing your workspace</span>
+            <span className="text-sm text-gray-500">
+              Preparing your workspace
+            </span>
             <span className="flex space-x-1">
-              <span className="animate-pulse" style={{ animationDelay: '0ms' }}>.</span>
-              <span className="animate-pulse" style={{ animationDelay: '200ms' }}>.</span>
-              <span className="animate-pulse" style={{ animationDelay: '400ms' }}>.</span>
+              <span className="animate-pulse" style={{ animationDelay: "0ms" }}>
+                .
+              </span>
+              <span
+                className="animate-pulse"
+                style={{ animationDelay: "200ms" }}
+              >
+                .
+              </span>
+              <span
+                className="animate-pulse"
+                style={{ animationDelay: "400ms" }}
+              >
+                .
+              </span>
             </span>
           </div>
         </div>
@@ -94,4 +118,3 @@ export default function ProtectedLoading() {
     </div>
   );
 }
-

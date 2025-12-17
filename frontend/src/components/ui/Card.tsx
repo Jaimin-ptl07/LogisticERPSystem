@@ -1,7 +1,9 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 import { forwardRef, HTMLAttributes } from "react";
 
-interface CardProps extends HTMLAttributes<HTMLDivElement> { }
+interface CardProps extends HTMLAttributes<HTMLDivElement> {}
 
 const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className, ...props }, ref) => (
