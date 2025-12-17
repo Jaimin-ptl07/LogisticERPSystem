@@ -12,7 +12,8 @@ import {
   ChevronRight,
   User,
   UserCircle,
-  LogOut
+  LogOut,
+  UserCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -32,6 +33,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: Home, access: 'user' },
   { label: 'Orders', href: '/orders', icon: Package, access: 'user' },
   { label: 'Trips', href: '/trips', icon: Truck, access: 'user' },
+  { label: 'Driver', href: '/driver', icon: UserCheck, access: 'user' },
   { label: 'Deliveries', href: '/deliveries', icon: CheckCircle, access: 'user' },
   { label: 'History', href: '/history', icon: Clock, access: 'user' },
   { label: 'Manage Masters', href: '/masters', icon: Settings, access: 'admin' },

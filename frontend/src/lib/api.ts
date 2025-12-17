@@ -716,3 +716,77 @@ export const tmsResourcesAPI = {
     return fetchWithError(`${TMS_BASE}/resources/branches`);
   },
 };
+
+// Driver Service API functions
+const DRIVER_BASE = '/api/driver';
+
+export const driverAPI = {
+  // Get all trips for the driver
+  async getDriverTrips(filters?: {
+    status?: string;
+    trip_date?: string;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.trip_date) params.append('trip_date', filters.trip_date);
+
+    const url = `${DRIVER_BASE}/trips${params.toString() ? `?${params.toString()}` : ''}`;
+    return fetchWithError(url);
+  },
+
+  // Get current active trip
+  async getCurrentTrip() {
+    return fetchWithError(`${DRIVER_BASE}/trips/current`);
+  },
+
+  // Get trip details with orders
+  async getTripDetail(tripId: string) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}`);
+  },
+
+  // Update order delivery status
+  async updateOrderDeliveryStatus(
+    tripId: string,
+    orderId: string,
+    deliveryStatus: string,
+    notes?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/orders/${orderId}/delivery`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        delivery_status: deliveryStatus,
+        notes: notes
+      }),
+    });
+  },
+
+  // Mark order as delivered (convenience endpoint)
+  async markOrderDelivered(tripId: string, orderId: string) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/orders/${orderId}/deliver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  },
+
+  // Get order status
+  async getOrderStatus(tripId: string, orderId: string) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/orders/${orderId}/status`);
+  },
+
+  // Report truck maintenance
+  async reportTruckMaintenance(
+    tripId: string,
+    maintenanceType: string,
+    reason: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/maintenance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        maintenance_type: maintenanceType,
+        reason: reason
+      }),
+    });
+  },
+};
