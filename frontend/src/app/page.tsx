@@ -3,20 +3,22 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector } from '@/store/hooks';
+import { getDefaultRoute } from '@/lib/roles';
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAppSelector((state) => state.auth);
+  const { isAuthenticated, isLoading, user } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
     // If not loading and not authenticated, redirect to login
     if (!isLoading && !isAuthenticated) {
       router.push('/login');
-    } else if (isAuthenticated) {
-      // If already authenticated, redirect to dashboard
-      router.push('/dashboard');
+    } else if (isAuthenticated && user) {
+      // If already authenticated, redirect based on user role
+      const defaultRoute = getDefaultRoute(user.role?.name);
+      router.push(defaultRoute);
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, user, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

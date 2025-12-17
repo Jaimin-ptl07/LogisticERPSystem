@@ -3,8 +3,22 @@ import type { NextRequest } from 'next/server';
 
 // Define public routes that don't require authentication
 const publicRoutes = ['/login', '/register', '/api/auth/login', '/api/auth/register', '/api/auth/me', '/api/auth/refresh'];
-// Define protected routes that require authentication
-const protectedRoutes = ['/dashboard', '/deliveries', '/orders', '/trips', '/history', '/masters', '/audit-logs'];
+// Define protected route prefixes
+const protectedRoutePrefixes = [
+  '/super-admin',
+  '/company-admin',
+  '/branch-manager',
+  '/finance-manager',
+  '/logistics-manager',
+  '/driver',
+  '/dashboard', // Legacy route
+  '/deliveries',
+  '/orders',
+  '/trips',
+  '/history',
+  '/masters',
+  '/audit-logs'
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -12,8 +26,8 @@ export function middleware(request: NextRequest) {
   // Check if the path is public
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
 
-  // Check if the path is protected
-  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route)) ||
+  // Check if the path is protected (any role-based route or legacy route)
+  const isProtectedRoute = protectedRoutePrefixes.some(route => pathname.startsWith(route)) ||
     (pathname !== '/' && pathname !== '/login' && pathname !== '/register' && !pathname.startsWith('/api/'));
 
   // Get token from cookies or authorization header
@@ -36,10 +50,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // If accessing login page with token, redirect to dashboard
-  if (pathname === '/login' && token) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
-  }
+  // If accessing login page with token, let the page handle redirect
+  // (The login page will redirect based on user role)
+  // if (pathname === '/login' && token) {
+  //   return NextResponse.redirect(new URL('/company-admin/dashboard', request.url));
+  // }
 
   // Continue with the request
   const response = NextResponse.next({

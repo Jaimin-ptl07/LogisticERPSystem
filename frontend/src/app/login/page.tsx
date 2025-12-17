@@ -1,26 +1,34 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { loginAsync, clearError } from '@/store/slices/auth.slice';
+import { getDefaultRoute } from '@/lib/roles';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
-  const { isLoading, error, isAuthenticated } = useAppSelector((state) => state.auth);
+  const { isLoading, error, isAuthenticated, user } = useAppSelector((state) => state.auth);
 
-  // Redirect to dashboard if already authenticated
+  // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      router.push('/dashboard');
+    if (isAuthenticated && user) {
+      const redirect = searchParams.get('redirect');
+      if (redirect) {
+        router.push(redirect);
+      } else {
+        const defaultRoute = getDefaultRoute(user.role?.name);
+        router.push(defaultRoute);
+      }
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, user, router, searchParams]);
 
   // Clear any existing errors when user starts typing
   useEffect(() => {
@@ -36,8 +44,16 @@ export default function LoginPage() {
     const result = await dispatch(loginAsync({ email, password }));
 
     if (loginAsync.fulfilled.match(result)) {
-      // Login successful, navigation will be handled by useEffect
-      router.push('/dashboard');
+      // Get user data from result
+      const userData = result.payload.user;
+      const redirect = searchParams.get('redirect');
+      
+      if (redirect) {
+        router.push(redirect);
+      } else {
+        const defaultRoute = getDefaultRoute(userData.role?.name);
+        router.push(defaultRoute);
+      }
     }
   };
 
