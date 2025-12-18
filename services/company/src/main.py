@@ -106,7 +106,7 @@ async def metrics_middleware(request: Request, call_next):
 
     # Get endpoint path (simplified)
     endpoint = request.url.path
-    if endpoint.startswith("/api/v1/"):
+    if endpoint.startswith("/"):
         endpoint = endpoint.split("/")[-1] or "root"
 
     # Record metrics
@@ -164,31 +164,31 @@ async def readiness_check():
 # Include API routers
 app.include_router(
     branches.router,
-    prefix="/api/v1/branches",
+    prefix="/branches",
     tags=["Branches"]
 )
 
 app.include_router(
     customers.router,
-    prefix="/api/v1/customers",
+    prefix="/customers",
     tags=["Customers"]
 )
 
 app.include_router(
     vehicles.router,
-    prefix="/api/v1/vehicles",
+    prefix="/vehicles",
     tags=["Vehicles"]
 )
 
 app.include_router(
     products.router,
-    prefix="/api/v1/products",
+    prefix="/products",
     tags=["Products"]
 )
 
 app.include_router(
     product_categories.router,
-    prefix="/api/v1/product-categories",
+    prefix="/product-categories",
     tags=["Product Categories"]
 )
 

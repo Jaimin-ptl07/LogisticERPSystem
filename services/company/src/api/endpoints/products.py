@@ -87,8 +87,8 @@ async def list_products(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Product.name)
 
-    # Include category relationship
-    query = query.options(selectinload(Product.category))
+    # Include category relationship with children
+    query = query.options(selectinload(Product.category).selectinload(ProductCategory.children))
 
     # Execute query
     result = await db.execute(query)
@@ -121,7 +121,7 @@ async def get_product(
         Product.id == product_id,
         Product.tenant_id == tenant_id
     ).options(
-        selectinload(Product.category)
+        selectinload(Product.category).selectinload(ProductCategory.children)
     )
 
     result = await db.execute(query)
@@ -190,8 +190,13 @@ async def create_product(
     await db.commit()
     await db.refresh(product)
 
-    # Load the category relationship for response
-    await db.refresh(product, ["category"])
+    # Load the category relationship for response with children
+    result = await db.execute(
+        select(Product)
+        .options(selectinload(Product.category).selectinload(ProductCategory.children))
+        .where(Product.id == product.id)
+    )
+    product = result.scalar_one()
 
     return ProductSchema.model_validate(product)
 
@@ -250,8 +255,13 @@ async def update_product(
     await db.commit()
     await db.refresh(product)
 
-    # Load the category relationship for response
-    await db.refresh(product, ["category"])
+    # Load the category relationship for response with children
+    result = await db.execute(
+        select(Product)
+        .options(selectinload(Product.category).selectinload(ProductCategory.children))
+        .where(Product.id == product.id)
+    )
+    product = result.scalar_one()
 
     return ProductSchema.model_validate(product)
 
@@ -309,8 +319,8 @@ async def get_low_stock_products(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Product.name)
 
-    # Include category relationship
-    query = query.options(selectinload(Product.category))
+    # Include category relationship with children
+    query = query.options(selectinload(Product.category).selectinload(ProductCategory.children))
 
     # Execute query
     result = await db.execute(query)
@@ -369,11 +379,19 @@ async def bulk_update_products(
     # Commit all updates
     await db.commit()
 
-    # Load relationships for all updated products
-    for product in updated_products:
-        await db.refresh(product, ["category"])
+    # Get product IDs
+    product_ids = [p.id for p in updated_products]
 
-    return [ProductSchema.model_validate(product) for product in updated_products]
+    # Load all updated products with relationships
+    result = await db.execute(
+        select(Product)
+        .options(selectinload(Product.category).selectinload(ProductCategory.children))
+        .where(Product.id.in_(product_ids))
+    )
+    loaded_products = {p.id: p for p in result.scalars().all()}
+
+    # Return in the same order as the input
+    return [ProductSchema.model_validate(loaded_products[p.id]) for p in updated_products]
 
 
 @router.get("/{product_id}/stock-history")
