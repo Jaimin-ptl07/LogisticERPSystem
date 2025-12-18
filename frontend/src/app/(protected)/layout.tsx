@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { getCurrentUserAsync } from "@/store/slices/auth.slice";
 import { canAccessRoute, getDefaultRoute } from "@/lib/roles";
-import { Spinner } from "@/components/ui/Spinner";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
 
 export default function ProtectedLayout({
   children,
@@ -23,6 +23,11 @@ export default function ProtectedLayout({
   );
   const hasRedirectedRef = useRef(false);
   const lastCheckedPathRef = useRef<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => !prev);
+  };
 
   useEffect(() => {
     // If not authenticated, redirect to login
@@ -72,13 +77,16 @@ export default function ProtectedLayout({
     }
   }, [isLoading, isAuthenticated, user, pathname, router, dispatch]);
 
-  // Show loading state
+  // Show loading state with skeleton inside layout
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center space-y-4">
-          <Spinner className="w-12 h-12 text-blue-600" />
-          <p className="text-gray-600">Loading...</p>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar isCollapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header />
+          <PageContainer>
+            <DashboardSkeleton />
+          </PageContainer>
         </div>
       </div>
     );
@@ -92,8 +100,8 @@ export default function ProtectedLayout({
   // Render with persistent Sidebar and Header
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <Sidebar isCollapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+      <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out">
         <Header />
         <PageContainer>{children}</PageContainer>
       </div>

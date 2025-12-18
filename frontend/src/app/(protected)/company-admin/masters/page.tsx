@@ -2,7 +2,6 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { AppLayout } from '@/components/layout/AppLayout';
 import {
   Building,
   Users,
@@ -66,8 +65,7 @@ export default function MastersPage() {
   ];
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
+          <div className="space-y-6">
         {/* Page Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Masters Management</h1>
@@ -274,6 +272,6 @@ export default function MastersPage() {
           </CardContent>
         </Card>
       </div>
-    </AppLayout>
+    
   );
 }

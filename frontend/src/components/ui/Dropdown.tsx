@@ -7,9 +7,17 @@ interface DropdownProps {
   trigger: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  position?: "top" | "bottom";
+  align?: "left" | "right";
 }
 
-export function Dropdown({ trigger, children, className }: DropdownProps) {
+export function Dropdown({
+  trigger,
+  children,
+  className,
+  position = "top",
+  align = "left",
+}: DropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +45,13 @@ export function Dropdown({ trigger, children, className }: DropdownProps) {
       <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
 
       {isOpen && (
-        <div className="absolute left-0 z-50 bottom-full mb-2 w-56 rounded-lg bg-white border border-gray-200 shadow-xl">
+        <div
+          className={cn(
+            "absolute z-50 w-56 rounded-lg bg-white border border-gray-200 shadow-xl",
+            position === "top" ? "bottom-full mb-2" : "top-full mt-2",
+            align === "left" ? "left-0" : "right-0"
+          )}
+        >
           <div className="py-2">{children}</div>
         </div>
       )}

@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
-import { AppLayout } from '@/components/layout/AppLayout';
 import {
   ArrowLeft,
   Save,
@@ -104,8 +103,7 @@ export default function NewUserPage() {
   };
 
   return (
-    <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+          <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -266,6 +264,6 @@ export default function NewUserPage() {
           </div>
         </form>
       </div>
-    </AppLayout>
+    
   );
 }

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import {
   Table,
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/Table";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { useAppSelector } from "@/store/hooks";
 import { api } from "@/lib/api";
 import { showSuccessToast, showErrorToast } from "@/utils/toast";
@@ -117,19 +116,17 @@ export default function SuperAdmin() {
   // Check if user is super admin
   if (!user?.is_superuser) {
     return (
-      <AppLayout>
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <Shield className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              Access Denied
-            </h2>
-            <p className="text-gray-500">
-              You don't have permission to access this page.
-            </p>
-          </div>
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Shield className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+            Access Denied
+          </h2>
+          <p className="text-gray-500">
+            You don't have permission to access this page.
+          </p>
         </div>
-      </AppLayout>
+      </div>
     );
   }
 
@@ -464,11 +461,35 @@ export default function SuperAdmin() {
 
               {/* Companies Table */}
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Spinner className="w-8 h-8 text-blue-600" />
-                  <span className="ml-2 text-gray-700">
-                    Loading companies...
-                  </span>
+                <div className="space-y-4 py-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-4 p-4 border border-gray-100 rounded-lg"
+                    >
+                      <Skeleton
+                        variant="rectangle"
+                        width="8rem"
+                        height="1rem"
+                      />
+                      <Skeleton variant="line" width="6rem" height="1rem" />
+                      <div className="flex-1 space-y-1">
+                        <Skeleton
+                          variant="line"
+                          width="10rem"
+                          height="0.875rem"
+                        />
+                        <Skeleton
+                          variant="line"
+                          width="8rem"
+                          height="0.75rem"
+                        />
+                      </div>
+                      <Skeleton variant="line" width="3rem" height="1rem" />
+                      <Skeleton variant="line" width="5rem" height="1.5rem" />
+                      <Skeleton variant="line" width="6rem" height="1rem" />
+                    </div>
+                  ))}
                 </div>
               ) : filteredCompanies.length === 0 ? (
                 <div className="text-center py-8">

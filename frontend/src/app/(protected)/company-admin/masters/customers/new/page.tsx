@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Textarea } from '@/components/ui/Textarea';
 import { Switch } from '@/components/ui/Switch';
-import { AppLayout } from '@/components/layout/AppLayout';
 import {
   ArrowLeft,
   Save,
@@ -169,8 +168,7 @@ const branches = branchesData?.items || [];
   };
 
   return (
-    <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+          <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -461,6 +459,6 @@ const branches = branchesData?.items || [];
           </div>
         </form>
       </div>
-    </AppLayout>
+    
   );
 }

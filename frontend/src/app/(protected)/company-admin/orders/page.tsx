@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { OrderDetailsModal, CreateOrderModal } from "@/components/Modal";
 import { mockOrders } from "@/data/mockData";
 import { Plus, Search, Package } from "lucide-react";
@@ -51,7 +50,7 @@ export default function Orders() {
   };
 
   const handleCreateOrderSubmit = (data: any) => {
-    console.log('Creating order:', data);
+    console.log("Creating order:", data);
     // TODO: Add order creation logic
   };
 
@@ -64,7 +63,7 @@ export default function Orders() {
   };
 
   return (
-    <AppLayout>
+    <>
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex justify-between items-center">
@@ -74,7 +73,10 @@ export default function Orders() {
               Manage and track all customer orders
             </p>
           </div>
-          <Button className="flex items-center gap-2" onClick={handleCreateOrder}>
+          <Button
+            className="flex items-center gap-2"
+            onClick={handleCreateOrder}
+          >
             <Plus className="w-5 h-5" />
             New Order
           </Button>
@@ -219,6 +221,6 @@ export default function Orders() {
         onClose={handleCloseCreateModal}
         onCreateOrder={handleCreateOrderSubmit}
       />
-    </AppLayout>
+    </>
   );
 }

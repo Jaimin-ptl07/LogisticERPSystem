@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
-import { AppLayout } from '@/components/layout/AppLayout';
 import {
   Tag,
   Plus,
@@ -216,8 +215,7 @@ export default function ProductCategoriesPage() {
   };
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
+          <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -457,6 +455,6 @@ export default function ProductCategoriesPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </AppLayout>
+    
   );
 }

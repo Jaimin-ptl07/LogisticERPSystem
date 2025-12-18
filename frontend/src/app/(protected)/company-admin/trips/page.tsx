@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Button } from '@/components/ui/Button';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { tmsAPI, tmsResourcesAPI, OrderAssignData, TripCreateData } from '@/lib/api';
 import { Driver, Trip } from '@/types';
 import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Play, Square, Flag, AlertTriangle, RotateCcw } from 'lucide-react';
@@ -425,8 +424,7 @@ export default function Trips() {
     : allTrips;
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
+          <div className="space-y-6">
         {/* Loading and Error States */}
         {loading && (
           <div className="flex items-center justify-center py-12">
@@ -1647,6 +1645,6 @@ export default function Trips() {
           </>
         )}
       </div>
-    </AppLayout>
+    
   );
 }
