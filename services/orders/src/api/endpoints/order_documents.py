@@ -18,8 +18,19 @@ from src.schemas import (
     DocumentListResponse,
 )
 from src.services.order_document_service import OrderDocumentService
-from src.utils.dependencies import get_current_user, require_permissions
-from src.utils.auth import get_tenant_id
+from src.security import (
+    TokenData,
+    require_permissions,
+    require_any_permission,
+    get_current_user_id,
+    get_current_tenant_id,
+    ORDER_DOCUMENTS_READ,
+    ORDER_DOCUMENTS_READ_OWN,
+    ORDER_DOCUMENTS_UPLOAD,
+    ORDER_DOCUMENTS_UPDATE,
+    ORDER_DOCUMENTS_DELETE,
+    ORDER_DOCUMENTS_VERIFY,
+)
 from src.utils.file_handler import FileHandler
 
 router = APIRouter()
@@ -29,8 +40,8 @@ router = APIRouter()
 async def list_order_documents(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_any_permission([ORDER_DOCUMENTS_READ[0], ORDER_DOCUMENTS_READ_OWN[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List all documents for an order"""
     document_service = OrderDocumentService(db)
@@ -59,10 +70,9 @@ async def upload_order_document(
     description: str = Form(None),
     is_required: bool = Form(False),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(
-        require_permissions(["orders", "update"])
-    ),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_permissions([ORDER_DOCUMENTS_UPLOAD[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Upload a document for an order"""
     document_service = OrderDocumentService(db)
@@ -107,7 +117,7 @@ async def upload_order_document(
         file_size=file.size,
         mime_type=file.content_type,
         file_hash=file_hash,
-        uploaded_by=current_user["id"]
+        uploaded_by=user_id
     )
 
     document = await document_service.create_document(document_data)
@@ -118,8 +128,8 @@ async def upload_order_document(
 async def get_order_document(
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_any_permission([ORDER_DOCUMENTS_READ[0], ORDER_DOCUMENTS_READ_OWN[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order document by ID"""
     document_service = OrderDocumentService(db)
@@ -151,10 +161,10 @@ async def update_order_document(
     document_id: UUID,
     document_data: OrderDocumentUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(
-        require_permissions(["orders", "update"])
+    token_data: TokenData = Depends(
+        require_permissions(ORDER_DOCUMENTS_UPDATE)
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Update order document"""
     document_service = OrderDocumentService(db)
@@ -186,10 +196,10 @@ async def update_order_document(
 async def delete_order_document(
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(
-        require_permissions(["orders", "delete"])
+    token_data: TokenData = Depends(
+        require_permissions(ORDER_DOCUMENTS_DELETE)
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Delete order document"""
     document_service = OrderDocumentService(db)
@@ -226,10 +236,11 @@ async def verify_order_document(
     document_id: UUID,
     verification_data: DocumentVerificationRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(
-        require_permissions(["orders", "verify"])
+    token_data: TokenData = Depends(
+        require_permissions(ORDER_DOCUMENTS_VERIFY)
     ),
-    tenant_id: UUID = Depends(get_tenant_id),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Verify an order document"""
     document_service = OrderDocumentService(db)
@@ -256,7 +267,7 @@ async def verify_order_document(
     verified_document = await document_service.verify_document(
         document_id,
         verification_data.verified,
-        current_user["id"],
+        user_id,
         verification_data.verification_notes
     )
     return verified_document
@@ -266,8 +277,8 @@ async def verify_order_document(
 async def download_order_document(
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_any_permission([ORDER_DOCUMENTS_READ[0], ORDER_DOCUMENTS_READ_OWN[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Download order document"""
     document_service = OrderDocumentService(db)
