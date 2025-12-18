@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const TMS_SERVICE_URL = process.env.TMS_SERVICE_URL || 'http://localhost:8004';
+const NEXT_PUBLIC_TMS_API_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
 
 export async function PUT(
   request: NextRequest,
@@ -19,7 +19,7 @@ export async function PUT(
     queryParams.append('company_id', HARDCODED_COMPANY_ID);
 
     // Forward the reorder request to TMS service
-    const reorderUrl = `${TMS_SERVICE_URL}/api/v1/trips/${id}/orders/reorder?${queryParams.toString()}`;
+    const reorderUrl = `${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}/orders/reorder?${queryParams.toString()}`;
 
     const response = await fetch(reorderUrl, {
       method: 'PUT',

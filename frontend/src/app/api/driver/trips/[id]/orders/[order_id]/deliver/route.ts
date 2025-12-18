@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Driver Service URL from environment
-const DRIVER_SERVICE_URL = process.env.DRIVER_SERVICE_URL || 'http://localhost:8005';
+const NEXT_PUBLIC_DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || 'http://localhost:8005';
 
 export async function POST(
   request: NextRequest,
@@ -28,7 +28,7 @@ export async function POST(
     }
 
     console.log('Marking order as delivered:', { tripId, order_id });
-    const url = `${DRIVER_SERVICE_URL}/api/v1/driver/trips/${tripId}/orders/${order_id}/deliver`;
+    const url = `${NEXT_PUBLIC_DRIVER_SERVICE_URL}/api/v1/driver/trips/${tripId}/orders/${order_id}/deliver`;
 
     const response = await fetch(url, {
       method: 'POST',

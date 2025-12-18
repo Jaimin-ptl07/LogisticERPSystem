@@ -8,7 +8,7 @@ import logging
 
 from src.config import settings
 from src.database import engine, Base
-from src.api.endpoints import trips, orders, resources
+from src.api.endpoints import trips, orders, resources, driver
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +55,7 @@ app.add_middleware(
 app.include_router(trips.router, prefix="/api/v1/trips", tags=["trips"])
 app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(resources.router, prefix="/api/v1/resources", tags=["resources"])
+app.include_router(driver.router, prefix="/api/v1/driver", tags=["driver"])
 
 
 @app.get("/")

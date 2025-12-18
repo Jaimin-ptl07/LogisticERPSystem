@@ -3,14 +3,12 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 import structlog
 import time
 import uvicorn
 
 from src.config import settings
-from src.database import init_db, get_db
 from src.api.endpoints import driver as driver_router
 
 # Configure structured logging
@@ -40,14 +38,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     logger.info("Starting Driver Service", version=settings.VERSION)
-
-    try:
-        # Initialize database
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
-        raise
+    logger.info("Driver Service started successfully - connecting to TMS service at %s", settings.TMS_API_URL)
 
     yield
 

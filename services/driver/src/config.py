@@ -20,11 +20,9 @@ class Settings(BaseSettings):
     PORT: int = 8005
     HOST: str = "0.0.0.0"
 
-    # Database Configuration
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db"
-    )
+    # TMS Service Configuration
+    TMS_API_URL: str = os.getenv("TMS_API_URL", "http://tms-service:8004")
+    TMS_API_TIMEOUT: int = int(os.getenv("TMS_API_TIMEOUT", "30"))
 
     # Redis Configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379")
@@ -58,9 +56,7 @@ class Settings(BaseSettings):
     # Kafka Configuration
     KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 
-    # TMS Service Configuration
-    TMS_SERVICE_URL: str = os.getenv("TMS_SERVICE_URL", "http://tms-service:8004")
-
+  
     class Config:
         """Pydantic configuration."""
         env_file = ".env"

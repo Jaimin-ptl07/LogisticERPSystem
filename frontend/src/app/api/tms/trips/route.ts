@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // TMS Service URL from environment
-const TMS_SERVICE_URL = process.env.TMS_SERVICE_URL || 'http://localhost:8004';
+const NEXT_PUBLIC_TMS_API_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     queryParams.append('user_id', HARDCODED_USER_ID);
     queryParams.append('company_id', HARDCODED_COMPANY_ID);
 
-    const url = `${TMS_SERVICE_URL}/api/v1/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       company_id: HARDCODED_COMPANY_ID,
     };
 
-    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips`, {
+    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

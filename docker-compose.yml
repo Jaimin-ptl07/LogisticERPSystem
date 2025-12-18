@@ -510,7 +510,7 @@ services:
       - LOG_LEVEL=INFO
       - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - TMS_SERVICE_URL=http://tms-service:8004
+      - NEXT_PUBLIC_TMS_API_URL=http://tms-service:8004
       - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
     depends_on:
       postgres:

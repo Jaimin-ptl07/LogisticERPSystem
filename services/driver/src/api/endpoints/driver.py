@@ -1,28 +1,23 @@
-"""API endpoints for driver operations."""
+"""API endpoints for driver operations using TMS Service."""
 
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.database import get_db
-from src.services.driver_service import DriverService
-from src.schemas import (
-    TripStatus, DeliveryStatus,
-    TripSummary, DeliveryUpdate, TruckMaintenanceRequest,
-    DriverTripListResponse, DriverTripDetailResponse,
-    TripOrderResponse, ApiResponse
-)
+from src.services.driver_service import get_driver_service
 from src.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/trips", response_model=DriverTripListResponse)
+@router.get("/trips")
 async def get_driver_trips(
-    status: Optional[TripStatus] = Query(None, description="Filter by trip status"),
+    status: Optional[str] = Query(None, description="Filter by trip status"),
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
-    db: AsyncSession = Depends(get_db)
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    driver_service=Depends(get_driver_service)
 ):
     """
     Get all trips assigned to the current driver.
@@ -31,16 +26,21 @@ async def get_driver_trips(
     optionally filtered by status and/or date.
     """
     try:
-        service = DriverService(db)
-        response = await service.get_driver_trips(status=status, trip_date=trip_date)
+        response = await driver_service.get_driver_trips(
+            status=status,
+            trip_date=trip_date,
+            company_id=company_id
+        )
         return response
     except Exception as e:
+        logger.error(f"Error getting driver trips: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/trips/current", response_model=Optional[TripSummary])
+@router.get("/trips/current")
 async def get_current_trip(
-    db: AsyncSession = Depends(get_db)
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    driver_service=Depends(get_driver_service)
 ):
     """
     Get the current active trip for the driver.
@@ -48,17 +48,18 @@ async def get_current_trip(
     Returns the most recent trip that is in 'loading' or 'on-route' status.
     """
     try:
-        service = DriverService(db)
-        trip = await service.get_current_active_trip()
+        trip = await driver_service.get_current_active_trip(company_id=company_id)
         return trip
     except Exception as e:
+        logger.error(f"Error getting current trip: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/trips/{trip_id}", response_model=DriverTripDetailResponse)
+@router.get("/trips/{trip_id}")
 async def get_trip_detail(
     trip_id: str,
-    db: AsyncSession = Depends(get_db)
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    driver_service=Depends(get_driver_service)
 ):
     """
     Get detailed information about a specific trip.
@@ -71,8 +72,10 @@ async def get_trip_detail(
         raise HTTPException(status_code=400, detail="Invalid trip ID")
 
     try:
-        service = DriverService(db)
-        trip_detail = await service.get_trip_detail(trip_id)
+        trip_detail = await driver_service.get_trip_detail(
+            trip_id=trip_id,
+            company_id=company_id
+        )
 
         if not trip_detail:
             raise HTTPException(status_code=404, detail="Trip not found")
@@ -81,15 +84,17 @@ async def get_trip_detail(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error getting trip detail: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/trips/{trip_id}/orders/{order_id}/delivery", response_model=TripOrderResponse)
+@router.put("/trips/{trip_id}/orders/{order_id}/delivery")
 async def update_order_delivery_status(
     trip_id: str,
     order_id: str,
-    update_data: DeliveryUpdate,
-    db: AsyncSession = Depends(get_db)
+    update_data: Dict[str, str],
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    driver_service=Depends(get_driver_service)
 ):
     """
     Update the delivery status of an order.
@@ -103,30 +108,29 @@ async def update_order_delivery_status(
     if not order_id or order_id == "undefined" or order_id.strip() == "":
         raise HTTPException(status_code=400, detail="Invalid order ID")
 
+    if not update_data or "status" not in update_data:
+        raise HTTPException(status_code=400, detail="Status is required in request body")
+
     try:
-        service = DriverService(db)
-        updated_order = await service.update_order_delivery_status(
-            trip_id, order_id, update_data
+        result = await driver_service.update_order_delivery_status(
+            trip_id=trip_id,
+            order_id=order_id,
+            status=update_data["status"],
+            company_id=company_id
         )
-
-        if not updated_order:
-            raise HTTPException(status_code=404, detail="Order not found")
-
-        return updated_order
+        return result
     except HTTPException:
         raise
-    except ValueError as e:
-        # Handle business logic validation errors (sequential delivery, status transitions)
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.error(f"Error updating order delivery status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/trips/{trip_id}/maintenance", response_model=ApiResponse)
+@router.post("/trips/{trip_id}/maintenance")
 async def report_truck_maintenance(
     trip_id: str,
-    maintenance_request: TruckMaintenanceRequest,
-    db: AsyncSession = Depends(get_db)
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    driver_service=Depends(get_driver_service)
 ):
     """
     Report truck maintenance and update trip status.
@@ -135,36 +139,35 @@ async def report_truck_maintenance(
     status to 'truck-malfunction' for real-time visibility.
     """
     try:
-        service = DriverService(db)
-
-        # Set trip_id from path parameter
-        maintenance_request.trip_id = trip_id
-
-        success = await service.report_truck_maintenance(maintenance_request)
+        success = await driver_service.report_truck_maintenance(
+            trip_id=trip_id,
+            company_id=company_id
+        )
 
         if not success:
             raise HTTPException(status_code=404, detail="Trip not found")
 
-        return ApiResponse(
-            success=True,
-            message="Truck maintenance reported successfully",
-            data={
+        return {
+            "success": True,
+            "message": "Truck maintenance reported successfully",
+            "data": {
                 "trip_id": trip_id,
-                "maintenance_type": maintenance_request.maintenance_type,
                 "driver_id": settings.DRIVER_ID
             }
-        )
+        }
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error reporting maintenance: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/trips/{trip_id}/orders/{order_id}/status", response_model=TripOrderResponse)
+@router.get("/trips/{trip_id}/orders/{order_id}/status")
 async def get_order_status(
     trip_id: str,
     order_id: str,
-    db: AsyncSession = Depends(get_db)
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    driver_service=Depends(get_driver_service)
 ):
     """
     Get the current status of a specific order in a trip.
@@ -172,34 +175,25 @@ async def get_order_status(
     Returns the delivery status and other details of the order.
     """
     try:
-        service = DriverService(db)
-        trip_detail = await service.get_trip_detail(trip_id)
-
-        if not trip_detail:
-            raise HTTPException(status_code=404, detail="Trip not found")
-
-        # Find the specific order
-        order = None
-        for o in trip_detail.orders:
-            if o.order_id == order_id:
-                order = o
-                break
-
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found in trip")
-
-        return order
+        order_status = await driver_service.get_order_status(
+            trip_id=trip_id,
+            order_id=order_id,
+            company_id=company_id
+        )
+        return order_status
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error getting order status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/trips/{trip_id}/orders/{order_id}/deliver", response_model=ApiResponse)
+@router.post("/trips/{trip_id}/orders/{order_id}/deliver")
 async def mark_order_delivered(
     trip_id: str,
     order_id: str,
-    db: AsyncSession = Depends(get_db)
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    driver_service=Depends(get_driver_service)
 ):
     """
     Mark an order as delivered.
@@ -207,26 +201,22 @@ async def mark_order_delivered(
     This is a convenience endpoint to quickly mark an order as delivered.
     """
     try:
-        service = DriverService(db)
-        update_data = DeliveryUpdate(delivery_status=DeliveryStatus.DELIVERED)
-
-        updated_order = await service.update_order_delivery_status(
-            trip_id, order_id, update_data
+        result = await driver_service.mark_order_delivered(
+            trip_id=trip_id,
+            order_id=order_id,
+            company_id=company_id
         )
-
-        if not updated_order:
-            raise HTTPException(status_code=404, detail="Order not found")
-
-        return ApiResponse(
-            success=True,
-            message="Order marked as delivered successfully",
-            data={
+        return {
+            "success": True,
+            "message": "Order marked as delivered successfully",
+            "data": {
                 "trip_id": trip_id,
                 "order_id": order_id,
                 "delivery_status": "delivered"
             }
-        )
+        }
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error marking order as delivered: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

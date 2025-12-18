@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Driver Service URL from environment
-const DRIVER_SERVICE_URL = process.env.DRIVER_SERVICE_URL || 'http://localhost:8005';
+const NEXT_PUBLIC_DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || 'http://localhost:8005';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     if (status) queryParams.append('status', status);
     if (trip_date) queryParams.append('trip_date', trip_date);
 
-    const url = `${DRIVER_SERVICE_URL}/api/v1/driver/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `${NEXT_PUBLIC_DRIVER_SERVICE_URL}/api/v1/driver/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',

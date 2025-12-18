@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Driver Service URL from environment
-const DRIVER_SERVICE_URL = process.env.DRIVER_SERVICE_URL || 'http://localhost:8005';
+const NEXT_PUBLIC_DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || 'http://localhost:8005';
 
 export async function POST(
   request: NextRequest,
@@ -11,7 +11,7 @@ export async function POST(
     const { id: tripId } = params;
     const body = await request.json();
 
-    const url = `${DRIVER_SERVICE_URL}/api/v1/driver/trips/${tripId}/maintenance`;
+    const url = `${NEXT_PUBLIC_DRIVER_SERVICE_URL}/api/v1/driver/trips/${tripId}/maintenance`;
 
     const response = await fetch(url, {
       method: 'POST',

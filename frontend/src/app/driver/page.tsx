@@ -239,13 +239,13 @@ export default function DriverDashboard() {
                             <span className="font-medium">Customer:</span> {order.customer}
                           </p>
                           <p>
-                            <span className="font-medium">Items:</span> {order.items} items
+                            <span className="font-medium">Items:</span> {order.items || 0} items
                           </p>
                           <p>
-                            <span className="font-medium">Weight:</span> {order.weight} kg
+                            <span className="font-medium">Weight:</span> {order.weight || 0} kg
                           </p>
                           <p>
-                            <span className="font-medium">Total:</span> ₹{order.total.toLocaleString()}
+                            <span className="font-medium">Total:</span> ₹{order.total?.toLocaleString() || '0'}
                           </p>
                         </div>
                         {order.address && (

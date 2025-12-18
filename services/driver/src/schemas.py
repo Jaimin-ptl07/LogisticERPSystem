@@ -1,8 +1,7 @@
 """Pydantic schemas for Driver Service."""
 
 from datetime import datetime, date
-from typing import Optional, List
-from decimal import Decimal
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
