@@ -197,7 +197,7 @@ class ProductCategory(Base):
 
     # Self-referential relationship
     parent = relationship("ProductCategory", remote_side=[id])
-    children = relationship("ProductCategory")
+    children = relationship("ProductCategory", cascade="all, delete-orphan")
 
 
 class Product(Base):
