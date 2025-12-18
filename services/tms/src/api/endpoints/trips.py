@@ -1,16 +1,16 @@
-"""Trip API endpoints"""
+"""Trip API endpoints with reordering functionality"""
 
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, update
 from datetime import date
 
 from src.database import get_async_session, Trip, TripOrder
 from src.schemas import (
     TripCreate, TripUpdate, TripResponse, TripWithOrders,
     AssignOrdersRequest, TripOrderCreate, TripOrderResponse,
-    MessageResponse
+    MessageResponse, ReorderOrdersRequest
 )
 
 router = APIRouter()
@@ -49,8 +49,8 @@ async def get_trips(
     # Convert to response models with orders
     trip_responses = []
     for trip in trips:
-        # Get orders for this trip
-        orders_query = select(TripOrder).where(TripOrder.trip_id == trip.id)
+        # Get orders for this trip ordered by sequence_number
+        orders_query = select(TripOrder).where(TripOrder.trip_id == trip.id).order_by(TripOrder.sequence_number)
         if user_id:
             orders_query = orders_query.where(TripOrder.user_id == user_id)
         if company_id:
@@ -112,8 +112,8 @@ async def get_trip(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Get trip orders
-    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id).order_by(TripOrder.assigned_at)
+    # Get trip orders ordered by sequence_number
+    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number)
     orders_result = await db.execute(orders_query)
     orders = orders_result.scalars().all()
 
@@ -231,7 +231,7 @@ async def update_trip(
     await db.refresh(trip)
 
     # Fetch orders for this trip to avoid lazy loading issues
-    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
+    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number)
     if user_id:
         orders_query = orders_query.where(TripOrder.user_id == user_id)
     if company_id:
@@ -279,6 +279,7 @@ async def update_trip(
                 "volume": order.volume,
                 "items": order.items,
                 "priority": order.priority,
+                "sequence_number": order.sequence_number,
                 "address": order.address,
                 "original_order_id": order.original_order_id,
                 "original_items": order.original_items,
@@ -350,14 +351,14 @@ async def get_trip_orders(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Get orders (also filter by user_id and company_id if provided)
+    # Get orders (also filter by user_id and company_id if provided) ordered by sequence_number
     orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
     if user_id:
         orders_query = orders_query.where(TripOrder.user_id == user_id)
     if company_id:
         orders_query = orders_query.where(TripOrder.company_id == company_id)
 
-    orders_query = orders_query.order_by(TripOrder.assigned_at)
+    orders_query = orders_query.order_by(TripOrder.sequence_number)
     result = await db.execute(orders_query)
     orders = result.scalars().all()
 
@@ -405,11 +406,17 @@ async def assign_orders_to_trip(
             detail=f"Orders exceed trip capacity. Current: {trip.capacity_used}kg, New: {total_new_weight}kg, Max: {trip.capacity_total}kg"
         )
 
-    # Add orders to trip
+    # Get the current highest sequence number for this trip
+    max_seq_query = select(TripOrder.sequence_number).where(TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number.desc()).limit(1)
+    max_seq_result = await db.execute(max_seq_query)
+    max_seq = max_seq_result.scalar() or -1
+
+    # Add orders to trip with sequential sequence numbers
     trip_orders = []
-    for order_data in request.orders:
+    for idx, order_data in enumerate(request.orders):
         trip_order = TripOrder(
             trip_id=trip_id,
+            sequence_number=max_seq + idx + 1,  # Assign sequential sequence numbers
             **order_data.dict()
         )
         trip_orders.append(trip_order)
@@ -421,3 +428,149 @@ async def assign_orders_to_trip(
     await db.commit()
 
     return MessageResponse(message=f"Successfully assigned {len(request.orders)} orders to trip {trip_id}")
+
+
+@router.put("/{trip_id}/orders/reorder", response_model=MessageResponse)
+async def reorder_trip_orders(
+    trip_id: str,
+    request: ReorderOrdersRequest,
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    db: AsyncSession = Depends(get_async_session)
+):
+    """Reorder the sequence of orders in a trip"""
+    # Verify trip exists and is in planning status
+    trip_query = select(Trip).where(Trip.id == trip_id)
+
+    # Add user_id and company_id filtering if provided
+    if user_id:
+        trip_query = trip_query.where(Trip.user_id == user_id)
+    if company_id:
+        trip_query = trip_query.where(Trip.company_id == company_id)
+
+    trip_result = await db.execute(trip_query)
+    trip = trip_result.scalar_one_or_none()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    if trip.status != "planning":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only reorder orders in trips with planning status"
+        )
+
+    # Validate all order IDs belong to this trip
+    order_ids = [item["order_id"] for item in request.order_sequences]
+
+    # Check if all orders exist and belong to this trip
+    existing_orders_query = select(TripOrder).where(
+        and_(
+            TripOrder.id.in_(order_ids),
+            TripOrder.trip_id == trip_id
+        )
+    )
+    if user_id:
+        existing_orders_query = existing_orders_query.where(TripOrder.user_id == user_id)
+    if company_id:
+        existing_orders_query = existing_orders_query.where(TripOrder.company_id == company_id)
+
+    existing_orders_result = await db.execute(existing_orders_query)
+    existing_orders = existing_orders_result.scalars().all()
+
+    if len(existing_orders) != len(order_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="One or more orders do not exist or do not belong to this trip"
+        )
+
+    # Update sequence numbers
+    for item in request.order_sequences:
+        order_id = item["order_id"]
+        sequence_number = item["sequence_number"]
+
+        update_query = update(TripOrder).where(
+            and_(
+                TripOrder.id == order_id,
+                TripOrder.trip_id == trip_id
+            )
+        ).values(sequence_number=sequence_number)
+
+        if user_id:
+            update_query = update_query.where(TripOrder.user_id == user_id)
+        if company_id:
+            update_query = update_query.where(TripOrder.company_id == company_id)
+
+        await db.execute(update_query)
+
+    await db.commit()
+
+    return MessageResponse(message=f"Successfully reordered {len(request.order_sequences)} orders in trip {trip_id}")
+
+
+@router.delete("/{trip_id}/orders/remove", response_model=MessageResponse)
+async def remove_order_from_trip(
+    trip_id: str,
+    order_id: str = Query(..., description="Order ID to remove"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    db: AsyncSession = Depends(get_async_session)
+):
+    """Remove an order from a trip"""
+    # Verify trip exists and is in planning status
+    trip_query = select(Trip).where(Trip.id == trip_id)
+
+    # Add user_id and company_id filtering if provided
+    if user_id:
+        trip_query = trip_query.where(Trip.user_id == user_id)
+    if company_id:
+        trip_query = trip_query.where(Trip.company_id == company_id)
+
+    trip_result = await db.execute(trip_query)
+    trip = trip_result.scalar_one_or_none()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    if trip.status != "planning":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only remove orders from trips with planning status"
+        )
+
+    # Find the order to remove
+    order_query = select(TripOrder).where(
+        and_(
+            TripOrder.trip_id == trip_id,
+            TripOrder.order_id == order_id
+        )
+    )
+    if user_id:
+        order_query = order_query.where(TripOrder.user_id == user_id)
+    if company_id:
+        order_query = order_query.where(TripOrder.company_id == company_id)
+
+    order_result = await db.execute(order_query)
+    order = order_result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail="Order not found in this trip"
+        )
+
+    # Store the weight for capacity update
+    removed_weight = order.weight
+
+    # Delete the order
+    await db.delete(order)
+    await db.commit()
+
+    # Update trip capacity
+    if trip.capacity_used is not None:
+        trip.capacity_used = max(0, trip.capacity_used - removed_weight)
+        await db.commit()
+
+    return MessageResponse(message=f"Successfully removed order {order_id} from trip {trip_id}")
+
+

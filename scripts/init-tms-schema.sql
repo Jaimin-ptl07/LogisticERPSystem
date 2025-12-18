@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     status VARCHAR(50) NOT NULL DEFAULT 'assigned' CHECK (
         status IN ('assigned', 'loading', 'on-route', 'completed')
     ),
+    delivery_status VARCHAR(50) DEFAULT 'pending' CHECK (
+        delivery_status IN ('pending', 'out-for-delivery', 'delivered', 'failed', 'returned')
+    ),
     total DECIMAL(12,2) NOT NULL,
     weight INTEGER NOT NULL,
     volume INTEGER NOT NULL,
@@ -49,6 +52,7 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     priority VARCHAR(20) NOT NULL CHECK (
         priority IN ('high', 'medium', 'low')
     ),
+    sequence_number INTEGER NOT NULL DEFAULT 0, -- Delivery sequence for drag & drop ordering
     address TEXT,
     assigned_at TIMESTAMP DEFAULT NOW(),
     original_order_id VARCHAR(50), -- For split orders
@@ -95,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_trips_user_company ON trips(user_id, company_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_trip_id ON trip_orders(trip_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_order_id ON trip_orders(order_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_priority ON trip_orders(priority);
+CREATE INDEX IF NOT EXISTS idx_trip_orders_sequence ON trip_orders(trip_id, sequence_number);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_user_id ON trip_orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_company_id ON trip_orders(company_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_user_company ON trip_orders(user_id, company_id);
@@ -169,6 +174,13 @@ BEGIN
         VALUES (NEW.user_id, NEW.company_id, 'ASSIGN', 'TMS', NEW.trip_id, 'trip_order',
                 CONCAT('Assigned order ', NEW.order_id, ' to trip ', NEW.trip_id));
         RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.sequence_number != NEW.sequence_number THEN
+            INSERT INTO tms_audit_logs (user_id, company_id, action, module, record_id, record_type, details)
+            VALUES (NEW.user_id, NEW.company_id, 'REORDER', 'TMS', NEW.trip_id, 'trip_order',
+                    CONCAT('Changed order sequence for ', NEW.order_id, ' from ', OLD.sequence_number, ' to ', NEW.sequence_number));
+        END IF;
+        RETURN NEW;
     ELSIF TG_OP = 'DELETE' THEN
         INSERT INTO tms_audit_logs (user_id, company_id, action, module, record_id, record_type, details)
         VALUES (OLD.user_id, OLD.company_id, 'UNASSIGN', 'TMS', OLD.trip_id, 'trip_order',
@@ -182,7 +194,7 @@ $$ language 'plpgsql';
 -- Triggers for trip order audit logging
 DROP TRIGGER IF EXISTS audit_trip_order_changes ON trip_orders;
 CREATE TRIGGER audit_trip_order_changes
-    AFTER INSERT OR DELETE ON trip_orders
+    AFTER INSERT OR UPDATE OR DELETE ON trip_orders
     FOR EACH ROW
     EXECUTE FUNCTION log_trip_order_changes();
 
@@ -216,5 +228,6 @@ GROUP BY t.id, t.branch, t.truck_plate, t.driver_name, t.status,
 
 COMMENT ON TABLE trips IS 'Core table storing trip planning information';
 COMMENT ON TABLE trip_orders IS 'Stores order allocations to trips';
+COMMENT ON COLUMN trip_orders.sequence_number IS 'Delivery sequence order for drag and drop functionality (0 = first delivery, 1 = second, etc.)';
 COMMENT ON TABLE trip_routes IS 'Stores delivery route sequence for trips';
 COMMENT ON TABLE tms_audit_logs IS 'Audit trail for all TMS operations';

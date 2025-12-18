@@ -7,11 +7,30 @@ import { Button } from '@/components/ui/Button';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { tmsAPI, tmsResourcesAPI, OrderAssignData, TripCreateData } from '@/lib/api';
 import { Driver, Trip } from '@/types';
-import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Play, Square, Flag, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Play, Square, Flag, AlertTriangle, RotateCcw, Search, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
-
 export default function Trips() {
+  // Utility function to format date in UK timezone
+  const formatUKDateTime = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+
+    try {
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/London'
+      }).format(date);
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
+
   const [showCreateTrip, setShowCreateTrip] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState('');
   const [selectedTruck, setSelectedTruck] = useState('');
@@ -24,6 +43,11 @@ export default function Trips() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
   const [orderPriorityFilter, setOrderPriorityFilter] = useState('all');
+
+  // Search states for trip creation
+  const [branchSearchTerm, setBranchSearchTerm] = useState('');
+  const [truckSearchTerm, setTruckSearchTerm] = useState('');
+  const [driverSearchTerm, setDriverSearchTerm] = useState('');
   const [showSplitOptions, setShowSplitOptions] = useState(false);
   const [splitOrder, setSplitOrder] = useState<any | null>(null);
   const [splitItemsCount, setSplitItemsCount] = useState(0);
@@ -38,6 +62,11 @@ export default function Trips() {
   // Loading states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Drag and drop states
+  const [draggedOrder, setDraggedOrder] = useState<any>(null);
+  const [dragOverTrip, setDragOverTrip] = useState<string | null>(null);
+  const [expandedTrips, setExpandedTrips] = useState<Set<string>>(new Set());
 
   // Fetch data on component mount
   useEffect(() => {
@@ -199,6 +228,9 @@ export default function Trips() {
       setSelectedDriver(null);
       setCurrentStep(1);
       setShowCreateTrip(false);
+      setBranchSearchTerm('');
+      setTruckSearchTerm('');
+      setDriverSearchTerm('');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create trip');
     }
@@ -220,6 +252,9 @@ export default function Trips() {
     setSelectedBranch(branch);
     setSelectedTruck('');
     setSelectedDriver(null);
+    setBranchSearchTerm('');
+    setTruckSearchTerm('');
+    setDriverSearchTerm('');
   };
 
   const handleCloseModal = () => {
@@ -228,6 +263,9 @@ export default function Trips() {
     setSelectedDriver(null);
     setCurrentStep(1);
     setShowCreateTrip(false);
+    setBranchSearchTerm('');
+    setTruckSearchTerm('');
+    setDriverSearchTerm('');
   };
 
   const getPriorityVariant = (priority: string) => {
@@ -243,9 +281,52 @@ export default function Trips() {
     }
   };
 
+  const getDeliveryStatusVariant = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'default';
+      case 'out-for-delivery':
+        return 'default';
+      case 'delivered':
+        return 'success';
+      case 'failed':
+        return 'destructive';
+      case 'returned':
+        return 'destructive';
+      default:
+        return 'default';
+    }
+  };
+
   const getApprovedOrders = () => availableOrders.filter(order => order.status === 'approved');
   const getTrucksAvailable = () => availableTrucks.filter(truck => truck.status === 'available');
   const getDriversAvailable = () => availableDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
+
+  // Filter functions for trip creation
+  const getFilteredBranches = () => {
+    return branches.filter(branch =>
+      branch.name.toLowerCase().includes(branchSearchTerm.toLowerCase()) ||
+      branch.location.toLowerCase().includes(branchSearchTerm.toLowerCase())
+    );
+  };
+
+  const getFilteredTrucks = () => {
+    const available = getTrucksAvailable();
+    return available.filter(truck =>
+      truck.plate.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
+      truck.model.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
+      truck.capacity.toString().includes(truckSearchTerm)
+    );
+  };
+
+  const getFilteredDrivers = () => {
+    const available = getDriversAvailable();
+    return available.filter(driver =>
+      driver.name.toLowerCase().includes(driverSearchTerm.toLowerCase()) ||
+      driver.phone.includes(driverSearchTerm) ||
+      driver.license.toLowerCase().includes(driverSearchTerm.toLowerCase())
+    );
+  };
 
   // Order assignment helper functions
   const getAvailableOrders = () => {
@@ -262,12 +343,146 @@ export default function Trips() {
 
   // Check if order is already assigned to any trip
   const isOrderAssigned = (orderId: string) => {
-    return trips.some(trip =>
+    return allTrips.some(trip =>
       trip.orders.some(order => order.id === orderId)
     );
   };
 
-  // Split order logic
+  // Toggle trip expansion
+  const toggleTripExpansion = (tripId: string) => {
+    const newExpanded = new Set(expandedTrips);
+    if (newExpanded.has(tripId)) {
+      newExpanded.delete(tripId);
+    } else {
+      newExpanded.add(tripId);
+    }
+    setExpandedTrips(newExpanded);
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, order: any, sourceTripId?: string, sourceIndex?: number) => {
+    setDraggedOrder({ ...order, sourceTripId, sourceIndex });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, tripId: string, targetIndex?: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverTrip(tripId);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear if we're actually leaving the trip container
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOverTrip(null);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetTripId: string, targetIndex?: number) => {
+    e.preventDefault();
+    setDragOverTrip(null);
+
+    if (!draggedOrder || !targetTripId) return;
+
+    try {
+      // If dropping on the same trip, we need to reorder
+      if (draggedOrder.sourceTripId === targetTripId && targetIndex !== undefined) {
+        const sourceTrip = allTrips.find(t => t.id === targetTripId);
+        if (!sourceTrip || sourceTrip.status !== 'planning') return;
+
+        // Get the current orders
+        const currentOrders = [...sourceTrip.orders];
+
+        // Remove the dragged order from its original position
+        const reorderedOrders = currentOrders.filter(order => order.id !== draggedOrder.id);
+
+        // Insert it at the new position
+        reorderedOrders.splice(targetIndex, 0, draggedOrder);
+
+        // Update the order in the UI immediately for better UX
+        const updatedTrips = allTrips.map(trip => {
+          if (trip.id === targetTripId) {
+            return { ...trip, orders: reorderedOrders };
+          }
+          return trip;
+        });
+        setAllTrips(updatedTrips);
+
+        // Call the reorder API to persist the change
+        await handleReorderOrders(targetTripId, reorderedOrders);
+      }
+      // If dropping on a different trip, move the order
+      else if (draggedOrder.sourceTripId !== targetTripId) {
+        // Get target trip
+        const targetTrip = allTrips.find(t => t.id === targetTripId);
+        if (!targetTrip || targetTrip.status !== 'planning') {
+          alert('Can only add orders to trips in planning status');
+          setDraggedOrder(null);
+          return;
+        }
+
+        // Check capacity
+        const newCapacityUsed = (targetTrip.capacityUsed || 0) + draggedOrder.weight;
+        if (newCapacityUsed > (targetTrip.capacityTotal || 0)) {
+          alert('Order exceeds trip capacity');
+          setDraggedOrder(null);
+          return;
+        }
+
+        // If order is from another trip, we need to handle reassignment
+        if (draggedOrder.sourceTripId) {
+          await tmsAPI.removeOrderFromTrip(draggedOrder.sourceTripId, draggedOrder.id);
+        }
+
+        // Assign order to new trip
+        const orderData = {
+          order_id: draggedOrder.id,
+          customer: draggedOrder.customer,
+          customerAddress: draggedOrder.customerAddress,
+          total: draggedOrder.total,
+          weight: draggedOrder.weight,
+          volume: draggedOrder.volume,
+          items: draggedOrder.items,
+          priority: draggedOrder.priority,
+          address: draggedOrder.address,
+        };
+
+        await tmsAPI.assignOrdersToTrip(targetTripId, [orderData]);
+
+        // Refresh trips
+        fetchTrips();
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to move order');
+      // Refresh to restore original state
+      fetchTrips();
+    }
+
+    setDraggedOrder(null);
+  };
+
+  // Reorder orders within a trip
+  const handleReorderOrders = async (tripId: string, orders: any[]) => {
+    try {
+      // Prepare the sequence data
+      const orderSequences = orders.map((order, index) => ({
+        order_id: order.id,
+        sequence_number: index
+      }));
+
+      // Call the reorder API
+      await tmsAPI.reorderTripOrders(tripId, { order_sequences: orderSequences });
+
+      // Refresh trips
+      fetchTrips();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to reorder orders');
+      fetchTrips(); // Refresh to restore original order
+    }
+  };
+
+  
+  // Split order logic (same as original)
   const handleSplitOrder = (order: any) => {
     if (!selectedTripForOrders) return;
 
@@ -353,7 +568,6 @@ export default function Trips() {
     }, 0);
   };
 
-  
   const getCapacityPercentage = (used: number, total: number) => {
     if (total === 0) return 0;
     return Math.round((used / total) * 100);
@@ -466,7 +680,7 @@ export default function Trips() {
         )}
 
         {!loading && !error && (
-          <>
+        <>
         {/* Page Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -672,15 +886,21 @@ export default function Trips() {
                     activeTrips.map((trip) => (
                     <div
                       key={trip.id}
-                      className={`border border-gray-200 rounded-lg overflow-hidden ${
+                      className={`border border-gray-200 rounded-lg overflow-hidden transition-all ${
                         isTripLocked(trip.status) ? 'bg-gray-50' : 'bg-white'
-                      }`}
+                      } ${dragOverTrip === trip.id ? 'ring-2 ring-blue-400 bg-blue-50' : ''}`}
+                      onDragOver={(e) => handleDragOver(e, trip.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, trip.id)}
                     >
                       {/* Trip Header */}
                       <div className="p-4 border-b border-gray-200">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-4">
-                            <h3 className="font-bold text-lg text-gray-900">{trip.id}</h3>
+                            <div>
+                              <h3 className="font-bold text-lg text-gray-900">{trip.id}</h3>
+                              <p className="text-xs text-gray-500">Created: {formatUKDateTime(trip.createdAt)}</p>
+                            </div>
                             <Badge variant={getStatusVariant(trip.status)} className="mt-1">
                               {trip.status.toUpperCase().replace('-', ' ')}
                             </Badge>
@@ -691,28 +911,27 @@ export default function Trips() {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">{trip.date}</span>
+
                             {getNextStatusOptions(trip.status).length > 0 && (
                               <div className="flex gap-1">
                                 {getNextStatusOptions(trip.status).map((option) => (
                                   <Button
                                     key={option.value}
                                     size="sm"
-                                    variant="outline"
                                     onClick={() => handleStatusChange(trip.id, option.value)}
-                                    className={`text-xs ${
-                                      option.color === 'red' ? 'text-red-600 border-red-300 hover:bg-red-50' :
-                                      option.color === 'green' ? 'text-green-600 border-green-300 hover:bg-green-50' :
-                                      option.color === 'blue' ? 'text-blue-600 border-blue-300 hover:bg-blue-50' :
-                                      option.color === 'yellow' ? 'text-yellow-600 border-yellow-300 hover:bg-yellow-50' :
-                                      'text-gray-600 border-gray-300 hover:bg-gray-50'
+                                    className={`text-xs text-white border-transparent hover:opacity-90 ${
+                                      option.color === 'red' ? 'bg-red-600 hover:bg-red-700' :
+                                      option.color === 'green' ? 'bg-green-600 hover:bg-green-700' :
+                                      option.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
+                                      option.color === 'yellow' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                                      'bg-gray-600 hover:bg-gray-700'
                                     }`}
                                   >
-                                    {option.color === 'red' && <XCircle className="w-3 h-3 mr-1" />}
-                                    {option.color === 'green' && <CheckCircle className="w-3 h-3 mr-1" />}
-                                    {option.color === 'blue' && <Play className="w-3 h-3 mr-1" />}
-                                    {option.color === 'yellow' && <Package className="w-3 h-3 mr-1" />}
-                                    {option.color === 'gray' && <RotateCcw className="w-3 h-3 mr-1" />}
+                                    {option.color === 'red' && <XCircle className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'green' && <CheckCircle className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'blue' && <Play className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'yellow' && <Package className="w-3 h-3 mr-1 text-white" />}
+                                    {option.color === 'gray' && <RotateCcw className="w-3 h-3 mr-1 text-white" />}
                                     {option.label}
                                   </Button>
                                 ))}
@@ -810,41 +1029,127 @@ export default function Trips() {
                             <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                               <Package className="w-4 h-4" />
                               Orders ({trip.orders.length})
+                              {trip.orders.length > 3 && (
+                                <span className="text-sm text-gray-500 font-normal">
+                                  (Showing {expandedTrips.has(trip.id) ? 'all' : 'first 3'})
+                                </span>
+                              )}
                             </h4>
-                            {trip.status === 'planning' && (
-                              <Button
-                                size="sm"
-                                className="bg-blue-600 hover:bg-blue-700 text-white"
-                                onClick={() => handleAddOrderClick(trip)}
-                              >
-                                <Plus className="w-4 h-4 mr-1" />
-                                Add Order
-                              </Button>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {trip.status === 'planning' && (
+                                <Button
+                                  size="sm"
+                                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                                  onClick={() => handleAddOrderClick(trip)}
+                                >
+                                  <Plus className="w-4 h-4 mr-1" />
+                                  Add Order
+                                </Button>
+                              )}
+                              {trip.orders.length > 3 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => toggleTripExpansion(trip.id)}
+                                  className="text-gray-700"
+                                >
+                                  {expandedTrips.has(trip.id) ? (
+                                    <ChevronUp className="w-4 h-4" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4" />
+                                  )}
+                                  {expandedTrips.has(trip.id) ? 'Show Less' : 'Show More'}
+                                </Button>
+                              )}
+                            </div>
                           </div>
                           {trip.orders.length > 0 && (
-                            <div className="space-y-2">
-                              {trip.orders.map((order) => (
+                            <div
+                              className="space-y-2"
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDragOver(e, trip.id, 0);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDrop(e, trip.id, 0);
+                              }}
+                            >
+                              {(expandedTrips.has(trip.id) ? trip.orders : trip.orders.slice(0, 3)).map((order, index) => (
                                 <div
                                   key={order.id}
-                                  className={`flex items-center justify-between p-3 rounded-lg ${
-                                    isTripLocked(trip.status)
-                                      ? 'bg-gray-100 border border-gray-300'
-                                      : 'bg-gray-50 border border-gray-200'
+                                  draggable={trip.status === 'planning'}
+                                  onDragStart={(e) => handleDragStart(e, order, trip.id, index)}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleDragOver(e, trip.id, index);
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleDrop(e, trip.id, index);
+                                  }}
+                                  className={`flex items-center justify-between p-3 rounded-lg transition-all ${
+                                    trip.status === 'planning' ? 'cursor-move' : ''
+                                  } ${draggedOrder?.id === order.id ? 'opacity-50' : ''} ${
+                                    !isTripLocked(trip.status)
+                                      ? 'bg-gray-50 border border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                                      : 'bg-gray-100 border border-gray-300 cursor-not-allowed'
+                                  } ${
+                                    dragOverTrip === trip.id && draggedOrder?.id !== order.id && draggedOrder?.sourceTripId === trip.id
+                                      ? 'border-t-4 border-t-blue-500'
+                                      : ''
                                   }`}
                                 >
                                   <div className="flex items-center gap-3">
+                                    {trip.status === 'planning' && (
+                                      <GripVertical className="w-4 h-4 text-gray-400" />
+                                    )}
+                                    <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                                      #{order.sequence_number !== undefined ? order.sequence_number + 1 : index + 1}
+                                    </span>
                                     <span className="font-medium text-gray-900">{order.id}</span>
                                     <span className="text-gray-900">{order.customer}</span>
                                     <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
                                       {order.priority.toUpperCase()}
                                     </Badge>
+                                    {trip.status === 'on-route' && order.delivery_status && (
+                                      <Badge
+                                        variant={getDeliveryStatusVariant(order.delivery_status)}
+                                        className="text-xs"
+                                      >
+                                        {order.delivery_status.replace('-', ' ').toUpperCase()}
+                                      </Badge>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-4 text-sm">
                                     <span className="text-gray-900">{order.items} items</span>
                                     <span className="font-medium text-gray-900">{order.weight}kg</span>
                                     {!isTripLocked(trip.status) && (
-                                      <Button size="sm" variant="outline">Edit</Button>
+                                      <div className="flex gap-1">
+                                        <Button size="sm" variant="outline">Edit</Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            // Handle remove from trip
+                                            if (confirm(`Remove order ${order.id} from this trip?`)) {
+                                              try {
+                                                await tmsAPI.removeOrderFromTrip(trip.id, order.id);
+                                                fetchTrips();
+                                              } catch (err) {
+                                                alert(err instanceof Error ? err.message : 'Failed to remove order');
+                                              }
+                                            }
+                                          }}
+                                        >
+                                          Remove
+                                        </Button>
+                                      </div>
                                     )}
                                   </div>
                                 </div>
@@ -865,6 +1170,15 @@ export default function Trips() {
                             </div>
                           )}
                         </div>
+
+                        {/* Drag Instructions */}
+                        {trip.status === 'planning' && trip.orders.length > 0 && (
+                          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-sm text-blue-800">
+                              <strong>Drag & Drop:</strong> You can drag orders to reorder them within this trip or move them to another trip in planning status.
+                            </p>
+                          </div>
+                        )}
 
                         {/* Lock Status Message */}
                         {isTripLocked(trip.status) && (
@@ -892,7 +1206,12 @@ export default function Trips() {
               <CardContent>
                 <div className="space-y-4">
                   {getApprovedOrders().map((order) => (
-                    <div key={order.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                    <div
+                      key={order.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, order)}
+                    >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-4">
                           <h3 className="font-semibold text-gray-900">{order.id}</h3>
@@ -995,7 +1314,7 @@ export default function Trips() {
           </TabsContent>
         </Tabs>
 
-        {/* Create Trip Modal */}
+        {/* Create Trip Modal - Same as original */}
         {showCreateTrip && (
           <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1051,15 +1370,28 @@ export default function Trips() {
                 </div>
               </div>
 
-              {/* Step Content */}
+              {/* Step Content - Same as original */}
               <div className="px-6 py-6">
                 {/* Step 1: Select Branch */}
                 {currentStep === 1 && (
                   <div>
                     <h3 className="text-lg font-semibold text-black mb-4">Select Branch</h3>
-                    <p className="text-gray-600 mb-6">Choose the branch for this trip</p>
-                    <div className="space-y-3">
-                      {branches.map((branch) => (
+                    <p className="text-gray-600 mb-4">Choose the branch for this trip</p>
+
+                    {/* Search Input */}
+                    <div className="relative mb-6">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder="Search branches by name or location..."
+                        value={branchSearchTerm}
+                        onChange={(e) => setBranchSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                      />
+                    </div>
+
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {getFilteredBranches().map((branch) => (
                         <div
                           key={branch.id}
                           onClick={() => handleBranchSelect(branch.name)}
@@ -1103,12 +1435,25 @@ export default function Trips() {
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">Available Trucks:</p>
-                          <p className="text-sm text-gray-500">{getTrucksAvailable().length} trucks available</p>
+                          <p className="text-sm text-gray-500">{getFilteredTrucks().length} trucks found</p>
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-3">
-                      {getTrucksAvailable().map((truck) => (
+
+                    {/* Search Input */}
+                    <div className="relative mb-6">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder="Search trucks by plate, model, or capacity..."
+                        value={truckSearchTerm}
+                        onChange={(e) => setTruckSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                      />
+                    </div>
+
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {getFilteredTrucks().map((truck) => (
                         <div
                           key={truck.id}
                           onClick={() => setSelectedTruck(truck.id)}
@@ -1171,12 +1516,24 @@ export default function Trips() {
                         </div>
                       </div>
                       <div className="text-sm text-gray-600 border-t pt-2">
-                        Available Drivers: <span className="font-medium text-black">{getDriversAvailable().length} drivers available</span>
+                        Available Drivers: <span className="font-medium text-black">{getFilteredDrivers().length} drivers found</span>
                       </div>
                     </div>
 
+                    {/* Search Input */}
+                    <div className="relative mb-6">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder="Search drivers by name, phone, or license..."
+                        value={driverSearchTerm}
+                        onChange={(e) => setDriverSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-                      {getDriversAvailable().map((driver) => (
+                      {getFilteredDrivers().map((driver) => (
                         <div
                           key={driver.id}
                           onClick={() => setSelectedDriver(driver)}
@@ -1256,7 +1613,7 @@ export default function Trips() {
           </div>
         )}
 
-        {/* Order Assignment Modal */}
+        {/* Order Assignment Modal - Same as original */}
         {showOrderModal && selectedTripForOrders && (
           <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1452,7 +1809,7 @@ export default function Trips() {
           </div>
         )}
 
-        {/* Split Order Confirmation Modal */}
+        {/* Split Order Confirmation Modal - Same as original */}
         {showSplitOptions && splitOrder && (
           <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-auto">

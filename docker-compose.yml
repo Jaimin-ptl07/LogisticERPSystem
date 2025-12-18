@@ -487,7 +487,46 @@ services:
       kafka:
         condition: service_healthy
     networks:
-      - logistics-network      
+      - logistics-network
+
+  # Driver Service
+  driver-service:
+    build:
+      context: ./services/driver
+      dockerfile: Dockerfile
+    container_name: driver-service
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./services/driver/src:/app/src
+      - ./services/driver/pyproject.toml:/app/pyproject.toml
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
+      - REDIS_URL=redis://redis:6379
+      - DRIVER_ID=DRV-002
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - NEXT_PUBLIC_TMS_API_URL=http://tms-service:8004
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s      
 
 volumes:
   postgres_data:
