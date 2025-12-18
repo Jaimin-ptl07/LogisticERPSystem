@@ -146,6 +146,17 @@ INSERT INTO permissions (resource, action, description) VALUES
     ('tenants', 'manage_own', 'Manage own tenant'),
     ('tenants', 'manage_all', 'Manage all tenants'),
 
+-- Company/Branch management permissions
+    ('branches', 'create', 'Create new branches'),
+    ('branches', 'read', 'View branch information'),
+    ('branches', 'read_all', 'View all branches'),
+    ('branches', 'read_own', 'View own assigned branches'),
+    ('branches', 'update', 'Update branch information'),
+    ('branches', 'update_own', 'Update own assigned branches'),
+    ('branches', 'delete', 'Delete branches'),
+    ('branches', 'manage_own', 'Manage own assigned branches'),
+    ('branches', 'manage_all', 'Manage all branches'),
+
 -- Order management permissions
     ('orders', 'create', 'Create new orders'),
     ('orders', 'read', 'View order information'),
@@ -184,7 +195,9 @@ INSERT INTO permissions (resource, action, description) VALUES
     ('customers', 'create', 'Create new customers'),
     ('customers', 'read', 'View customer information'),
     ('customers', 'read_all', 'View all customers'),
+    ('customers', 'read_own', 'View own assigned customers'),
     ('customers', 'update', 'Update customer information'),
+    ('customers', 'update_own', 'Update own assigned customers'),
     ('customers', 'delete', 'Delete customers'),
 
 -- Supplier management permissions
@@ -200,6 +213,37 @@ INSERT INTO permissions (resource, action, description) VALUES
     ('shipping', 'read_all', 'View all shipping records'),
     ('shipping', 'update', 'Update shipping information'),
     ('shipping', 'delete', 'Delete shipping records'),
+
+-- Vehicle management permissions
+    ('vehicles', 'create', 'Create new vehicles'),
+    ('vehicles', 'read', 'View vehicle information'),
+    ('vehicles', 'read_all', 'View all vehicles'),
+    ('vehicles', 'update', 'Update vehicle information'),
+    ('vehicles', 'delete', 'Delete vehicles'),
+    ('vehicles', 'assign', 'Assign vehicles to drivers/routes'),
+    ('vehicles', 'maintenance', 'Manage vehicle maintenance'),
+
+-- Product management permissions
+    ('products', 'create', 'Create new products'),
+    ('products', 'read', 'View product information'),
+    ('products', 'read_all', 'View all products'),
+    ('products', 'update', 'Update product information'),
+    ('products', 'delete', 'Delete products'),
+    ('products', 'stock_adjust', 'Adjust product stock levels'),
+    ('products', 'pricing_update', 'Update product pricing'),
+
+-- Product category permissions
+    ('product_categories', 'create', 'Create product categories'),
+    ('product_categories', 'read', 'View product categories'),
+    ('product_categories', 'read_all', 'View all product categories'),
+    ('product_categories', 'update', 'Update product categories'),
+    ('product_categories', 'delete', 'Delete product categories'),
+
+-- Company reports permissions
+    ('company_reports', 'read', 'View company reports'),
+    ('company_reports', 'read_own', 'View own company reports'),
+    ('company_reports', 'read_all', 'View all company reports'),
+    ('company_reports', 'export', 'Export company reports'),
 
 -- Reporting permissions
     ('reports', 'read', 'View reports'),
@@ -228,41 +272,85 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT 1, id FROM permissions
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- Assign manager permissions (ID = 2)
+-- Assign admin permissions (ID = 2)
 INSERT INTO role_permissions (role_id, permission_id) VALUES
     (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'read_all')),
     (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'update')),
     (2, (SELECT id FROM permissions WHERE resource = 'users' AND action = 'create')),
+
     (2, (SELECT id FROM permissions WHERE resource = 'roles' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'tenants' AND action = 'manage_own')),
+
     (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'read_all')),
     (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'update')),
     (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'create')),
     (2, (SELECT id FROM permissions WHERE resource = 'orders' AND action = 'approve')),
+
     (2, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'read_all')),
     (2, (SELECT id FROM permissions WHERE resource = 'wms' AND action = 'update')),
+
     (2, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'read_all')),
     (2, (SELECT id FROM permissions WHERE resource = 'tms' AND action = 'update')),
+
     (2, (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'read_all')),
     (2, (SELECT id FROM permissions WHERE resource = 'billing' AND action = 'update')),
-    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read')),
-    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read_all')),
-    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'update')),
+
     (2, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'read_all')),
     (2, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'update')),
     (2, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read')),
+    
     (2, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read_all')),
     (2, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'update')),
+    -- Company/Branch permissions for admin
+    (2, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'delete')),
+    (2, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'manage_own')),
+    (2, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'manage_all')),
+    -- Vehicle permissions for admin
+    (2, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'delete')),
+    (2, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'assign')),
+    (2, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'maintenance')),
+    -- Product permissions for admin
+    (2, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'delete')),
+    (2, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'stock_adjust')),
+    (2, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'pricing_update')),
+    -- Product category permissions for admin
+    (2, (SELECT id FROM permissions WHERE resource = 'product_categories' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'product_categories' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'product_categories' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'product_categories' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'product_categories' AND action = 'delete')),
+    -- Company reports permissions for admin
+    (2, (SELECT id FROM permissions WHERE resource = 'company_reports' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'company_reports' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'company_reports' AND action = 'export')),
     (2, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'read')),
     (2, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'create')),
     (2, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'export')),
-    (2, (SELECT id FROM permissions WHERE resource = 'dashboard' AND action = 'read'))
+    (2, (SELECT id FROM permissions WHERE resource = 'dashboard' AND action = 'read')),
+    -- Customer management permissions for admin
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read')),
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'read_all')),
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'create')),
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'update')),
+    (2, (SELECT id FROM permissions WHERE resource = 'customers' AND action = 'delete'))
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Assign employee permissions (ID = 4)
@@ -283,6 +371,14 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
     (4, (SELECT id FROM permissions WHERE resource = 'suppliers' AND action = 'update')),
     (4, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'read')),
     (4, (SELECT id FROM permissions WHERE resource = 'shipping' AND action = 'update')),
+    -- Basic company permissions for users
+    (4, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'branches' AND action = 'read_own')),
+    (4, (SELECT id FROM permissions WHERE resource = 'vehicles' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'products' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'product_categories' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'company_reports' AND action = 'read')),
+    (4, (SELECT id FROM permissions WHERE resource = 'company_reports' AND action = 'read_own')),
     (4, (SELECT id FROM permissions WHERE resource = 'reports' AND action = 'read')),
     (4, (SELECT id FROM permissions WHERE resource = 'dashboard' AND action = 'read'))
 ON CONFLICT (role_id, permission_id) DO NOTHING;

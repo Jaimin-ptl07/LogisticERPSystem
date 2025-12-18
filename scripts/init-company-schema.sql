@@ -42,10 +42,22 @@ CREATE TABLE IF NOT EXISTS branches (
     phone VARCHAR(20),
     email VARCHAR(100),
     manager_id VARCHAR(255),
+    created_by VARCHAR(255),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE
 );
+
+-- Add created_by column if it doesn't exist (for migrations)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='branches' AND column_name='created_by'
+    ) THEN
+        ALTER TABLE branches ADD COLUMN created_by VARCHAR(255);
+    END IF;
+END $$;
 
 -- Create customers table
 CREATE TABLE IF NOT EXISTS customers (

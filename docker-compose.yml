@@ -416,9 +416,13 @@ services:
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - AUTH_SERVICE_URL=http://auth-service:8001
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
       - ENV=development
       - PORT=8002
       - CORS_ORIGINS=http://localhost:3000
+      - RATE_LIMIT_ENABLED=true
+      - AUDIT_LOG_ENABLED=true
+      - LOG_LEVEL=INFO
     depends_on:
       postgres:
         condition: service_healthy

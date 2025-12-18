@@ -114,7 +114,7 @@ class ApiHelper {
   }
 
   // Make authenticated requests with automatic token refresh
-  private async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  public async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
