@@ -9,13 +9,24 @@ import logging
 from src.config import settings
 from src.database import engine, Base
 from src.api.endpoints import trips, orders, resources
+from src.middleware import (
+    AuthenticationMiddleware,
+    TenantContextMiddleware,
+    TenantIsolationMiddleware,
+    SecurityHeadersMiddleware,
+    AuditLoggingMiddleware,
+    RateLimitMiddleware,
+)
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(settings, 'log_level', 'INFO'),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Configure audit logger
+audit_logger = logging.getLogger("tms_audit")
 
 
 @asynccontextmanager
@@ -45,11 +56,41 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=getattr(settings, 'allowed_origins', ["*"]),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=getattr(settings, 'allowed_methods', ["*"]),
+    allow_headers=getattr(settings, 'allowed_headers', ["*"]),
+    expose_headers=getattr(settings, 'expose_headers', []),
 )
+
+# Add security middleware (order is important)
+if getattr(settings, 'enable_audit_trail', True):
+    app.add_middleware(AuditLoggingMiddleware)
+
+if getattr(settings, 'enable_rate_limiting', True):
+    app.add_middleware(RateLimitMiddleware)
+
+if getattr(settings, 'enable_security_headers', True):
+    app.add_middleware(SecurityHeadersMiddleware)
+
+# Authentication and authorization middleware
+app.add_middleware(
+    AuthenticationMiddleware,
+    skip_paths=[
+        "/",
+        "/health",
+        "/ready",
+        "/metrics",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/favicon.ico"
+    ]
+)
+
+# Tenant isolation middleware
+app.add_middleware(TenantContextMiddleware)
+app.add_middleware(TenantIsolationMiddleware)
 
 # Include API routers
 app.include_router(trips.router, prefix="/api/v1/trips", tags=["trips"])
@@ -131,8 +172,8 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8004,
+        host=getattr(settings, 'service_host', '0.0.0.0'),
+        port=getattr(settings, 'service_port', 8004),
         reload=True,
-        log_level="info"
+        log_level=getattr(settings, 'log_level', 'info').lower()
     )

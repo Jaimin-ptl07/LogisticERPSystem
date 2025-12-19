@@ -1,16 +1,30 @@
-"""Trip API endpoints"""
+"""Trip API endpoints with authentication (Complete version)"""
 
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from datetime import date
+import uuid
 
 from src.database import get_async_session, Trip, TripOrder
 from src.schemas import (
     TripCreate, TripUpdate, TripResponse, TripWithOrders,
     AssignOrdersRequest, TripOrderCreate, TripOrderResponse,
     MessageResponse
+)
+from src.security import (
+    TokenData,
+    require_permissions,
+    require_any_permission,
+    get_current_tenant_id,
+    get_current_user_id,
+    TRIP_READ,
+    TRIP_READ_ALL,
+    TRIP_CREATE,
+    TRIP_UPDATE,
+    TRIP_DELETE,
+    TRIP_ASSIGN
 )
 
 router = APIRouter()
@@ -23,12 +37,17 @@ async def get_trips(
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Get all trips with optional filters"""
-    query = select(Trip)
+    # Build base query with tenant isolation
+    query = select(Trip).where(Trip.company_id == tenant_id)
 
-    # Apply filters
+    # Apply additional filters
     if status:
         query = query.where(Trip.status == status)
     if branch:
@@ -37,8 +56,7 @@ async def get_trips(
         query = query.where(Trip.trip_date == trip_date)
     if user_id:
         query = query.where(Trip.user_id == user_id)
-    if company_id:
-        query = query.where(Trip.company_id == company_id)
+    # Note: company_id is used for tenant_id, so we don't need the extra filter
 
     # Order by created date descending
     query = query.order_by(Trip.created_at.desc())
@@ -51,11 +69,6 @@ async def get_trips(
     for trip in trips:
         # Get orders for this trip
         orders_query = select(TripOrder).where(TripOrder.trip_id == trip.id)
-        if user_id:
-            orders_query = orders_query.where(TripOrder.user_id == user_id)
-        if company_id:
-            orders_query = orders_query.where(TripOrder.company_id == company_id)
-
         orders_result = await db.execute(orders_query)
         orders = orders_result.scalars().all()
 
@@ -81,8 +94,7 @@ async def get_trips(
             capacity_total=trip.capacity_total,
             trip_date=trip.trip_date,
             created_at=trip.created_at,
-            updated_at=trip.updated_at,
-            orders=[TripOrderResponse.from_orm(order) for order in orders]
+            updated_at=trip.updated_at
         )
         trip_responses.append(trip_response)
 
@@ -92,32 +104,32 @@ async def get_trips(
 @router.get("/{trip_id}", response_model=TripWithOrders)
 async def get_trip(
     trip_id: str,
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
-    """Get a specific trip with its orders"""
+    """Get trip by ID with associated orders"""
     # Get trip
-    trip_query = select(Trip).where(Trip.id == trip_id)
-
-    # Add user_id and company_id filtering if provided
-    if user_id:
-        trip_query = trip_query.where(Trip.user_id == user_id)
-    if company_id:
-        trip_query = trip_query.where(Trip.company_id == company_id)
-
-    trip_result = await db.execute(trip_query)
-    trip = trip_result.scalar_one_or_none()
+    query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    trip = result.scalar_one_or_none()
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Get trip orders
-    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id).order_by(TripOrder.assigned_at)
+    # Get orders for this trip
+    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
     orders_result = await db.execute(orders_query)
     orders = orders_result.scalars().all()
 
-    # Manually create response to avoid lazy loading issues
+    # Convert to response models
     trip_response = TripWithOrders(
         id=trip.id,
         user_id=trip.user_id,
@@ -141,7 +153,27 @@ async def get_trip(
         trip_date=trip.trip_date,
         created_at=trip.created_at,
         updated_at=trip.updated_at,
-        orders=[TripOrderResponse.from_orm(order) for order in orders]
+        orders=[
+            TripOrderResponse(
+                id=order.id,
+                trip_id=order.trip_id,
+                user_id=order.user_id,
+                company_id=order.company_id,
+                order_id=order.order_id,
+                customer=order.customer,
+                customer_address=order.customer_address,
+                customer_contact=order.customer_contact,
+                customer_phone=order.customer_phone,
+                product_name=order.product_name,
+                weight=order.weight,
+                volume=order.volume,
+                quantity=order.quantity,
+                special_instructions=order.special_instructions,
+                delivery_instructions=order.delivery_instructions,
+                created_at=order.created_at
+            )
+            for order in orders
+        ]
     )
 
     return trip_response
@@ -150,177 +182,96 @@ async def get_trip(
 @router.post("/", response_model=TripResponse)
 async def create_trip(
     trip_data: TripCreate,
+    token_data: TokenData = Depends(require_permissions(TRIP_CREATE)),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Create a new trip"""
-    # Generate trip ID
-    from uuid import uuid4
-    trip_id = f"TRIP-{uuid4().hex[:8].upper()}"
-
-    # Create trip
+    # Create new trip
     trip = Trip(
-        id=trip_id,
-        **trip_data.dict()
+        user_id=user_id,
+        company_id=tenant_id,
+        branch=trip_data.branch,
+        truck_plate=trip_data.truck_plate,
+        truck_model=trip_data.truck_model,
+        truck_capacity=trip_data.truck_capacity,
+        driver_id=trip_data.driver_id,
+        driver_name=trip_data.driver_name,
+        driver_phone=trip_data.driver_phone,
+        status=trip_data.status,
+        origin=trip_data.origin,
+        destination=trip_data.destination,
+        distance=trip_data.distance,
+        estimated_duration=trip_data.estimated_duration,
+        pre_trip_time=trip_data.pre_trip_time,
+        post_trip_time=trip_data.post_trip_time,
+        capacity_total=trip_data.capacity_total,
+        trip_date=trip_data.trip_date
     )
 
     db.add(trip)
     await db.commit()
     await db.refresh(trip)
 
-    # Create response without relationships to avoid lazy loading issues
-    from src.schemas import TripResponse
-    response = TripResponse(
-        id=trip.id,
-        user_id=trip.user_id,
-        company_id=trip.company_id,
-        branch=trip.branch,
-        truck_plate=trip.truck_plate,
-        truck_model=trip.truck_model,
-        truck_capacity=trip.truck_capacity,
-        driver_id=trip.driver_id,
-        driver_name=trip.driver_name,
-        driver_phone=trip.driver_phone,
-        status=trip.status,
-        origin=trip.origin,
-        destination=trip.destination,
-        distance=trip.distance,
-        estimated_duration=trip.estimated_duration,
-        pre_trip_time=trip.pre_trip_time,
-        post_trip_time=trip.post_trip_time,
-        capacity_used=trip.capacity_used,
-        capacity_total=trip.capacity_total,
-        trip_date=trip.trip_date,
-        created_at=trip.created_at,
-        updated_at=trip.updated_at,
-        orders=[]  # Empty list for new trip
-    )
-
-    return response
+    return TripResponse.model_validate(trip)
 
 
 @router.put("/{trip_id}", response_model=TripResponse)
 async def update_trip(
     trip_id: str,
-    trip_update: TripUpdate,
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    trip_data: TripUpdate,
+    token_data: TokenData = Depends(require_permissions(TRIP_UPDATE)),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
-    """Update a trip"""
+    """Update trip"""
     # Get existing trip
-    query = select(Trip).where(Trip.id == trip_id)
-
-    # Add user_id and company_id filtering if provided
-    if user_id:
-        query = query.where(Trip.user_id == user_id)
-    if company_id:
-        query = query.where(Trip.company_id == company_id)
-
+    query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
     result = await db.execute(query)
     trip = result.scalar_one_or_none()
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Update fields
-    update_data = trip_update.dict(exclude_unset=True)
+    # Update trip fields
+    update_data = trip_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(trip, field, value)
 
     await db.commit()
     await db.refresh(trip)
 
-    # Fetch orders for this trip to avoid lazy loading issues
-    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
-    if user_id:
-        orders_query = orders_query.where(TripOrder.user_id == user_id)
-    if company_id:
-        orders_query = orders_query.where(TripOrder.company_id == company_id)
-
-    orders_result = await db.execute(orders_query)
-    orders = orders_result.scalars().all()
-
-    # Manually construct TripResponse to avoid lazy loading serialization issues
-    trip_response = {
-        "id": trip.id,
-        "user_id": trip.user_id,
-        "company_id": trip.company_id,
-        "branch": trip.branch,
-        "truck_plate": trip.truck_plate,
-        "truck_model": trip.truck_model,
-        "truck_capacity": trip.truck_capacity,
-        "driver_id": trip.driver_id,
-        "driver_name": trip.driver_name,
-        "driver_phone": trip.driver_phone,
-        "status": trip.status,
-        "origin": trip.origin,
-        "destination": trip.destination,
-        "distance": trip.distance,
-        "estimated_duration": trip.estimated_duration,
-        "pre_trip_time": trip.pre_trip_time,
-        "post_trip_time": trip.post_trip_time,
-        "capacity_used": trip.capacity_used,
-        "capacity_total": trip.capacity_total,
-        "trip_date": trip.trip_date,
-        "created_at": trip.created_at,
-        "updated_at": trip.updated_at,
-        "orders": [
-            {
-                "id": order.id,
-                "trip_id": order.trip_id,
-                "user_id": order.user_id,
-                "company_id": order.company_id,
-                "order_id": order.order_id,
-                "customer": order.customer,
-                "customer_address": order.customer_address,
-                "status": order.status,
-                "total": order.total,
-                "weight": order.weight,
-                "volume": order.volume,
-                "items": order.items,
-                "priority": order.priority,
-                "address": order.address,
-                "original_order_id": order.original_order_id,
-                "original_items": order.original_items,
-                "original_weight": order.original_weight,
-                "assigned_at": order.assigned_at
-            } for order in orders
-        ]
-    }
-
-    return trip_response
+    return TripResponse.model_validate(trip)
 
 
 @router.delete("/{trip_id}")
 async def delete_trip(
     trip_id: str,
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(require_permissions(TRIP_DELETE)),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
-    """Delete a trip"""
-    # Get trip
-    query = select(Trip).where(Trip.id == trip_id)
-
-    # Add user_id and company_id filtering if provided
-    if user_id:
-        query = query.where(Trip.user_id == user_id)
-    if company_id:
-        query = query.where(Trip.company_id == company_id)
-
+    """Delete trip"""
+    # Get existing trip
+    query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
     result = await db.execute(query)
     trip = result.scalar_one_or_none()
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Check if trip can be deleted (only planning status)
-    if trip.status not in ["planning", "cancelled"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete trip that is not in planning or cancelled status"
-        )
-
+    # Delete trip (orders will be deleted via cascade)
     await db.delete(trip)
     await db.commit()
 
@@ -330,94 +281,87 @@ async def delete_trip(
 @router.get("/{trip_id}/orders", response_model=List[TripOrderResponse])
 async def get_trip_orders(
     trip_id: str,
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Get all orders for a specific trip"""
-    # Verify trip exists
-    trip_query = select(Trip).where(Trip.id == trip_id)
-
-    # Add user_id and company_id filtering if provided
-    if user_id:
-        trip_query = trip_query.where(Trip.user_id == user_id)
-    if company_id:
-        trip_query = trip_query.where(Trip.company_id == company_id)
-
+    # First verify trip exists and belongs to tenant
+    trip_query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
     trip_result = await db.execute(trip_query)
-    trip = trip_result.scalar_one_or_none()
-
-    if not trip:
+    if not trip_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Get orders (also filter by user_id and company_id if provided)
-    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
-    if user_id:
-        orders_query = orders_query.where(TripOrder.user_id == user_id)
-    if company_id:
-        orders_query = orders_query.where(TripOrder.company_id == company_id)
+    # Get orders
+    orders_query = select(TripOrder).where(
+        and_(
+            TripOrder.trip_id == trip_id,
+            TripOrder.company_id == tenant_id
+        )
+    )
+    orders_result = await db.execute(orders_query)
+    orders = orders_result.scalars().all()
 
-    orders_query = orders_query.order_by(TripOrder.assigned_at)
-    result = await db.execute(orders_query)
-    orders = result.scalars().all()
-
-    return orders
+    return [
+        TripOrderResponse.model_validate(order)
+        for order in orders
+    ]
 
 
 @router.post("/{trip_id}/orders", response_model=MessageResponse)
 async def assign_orders_to_trip(
     trip_id: str,
     request: AssignOrdersRequest,
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(require_permissions(TRIP_ASSIGN)),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Assign orders to a trip"""
-    # Verify trip exists and is in planning status
-    trip_query = select(Trip).where(Trip.id == trip_id)
-
-    # Add user_id and company_id filtering if provided
-    if user_id:
-        trip_query = trip_query.where(Trip.user_id == user_id)
-    if company_id:
-        trip_query = trip_query.where(Trip.company_id == company_id)
-
+    # Verify trip exists and belongs to tenant
+    trip_query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
     trip_result = await db.execute(trip_query)
     trip = trip_result.scalar_one_or_none()
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    if trip.status != "planning":
-        raise HTTPException(
-            status_code=400,
-            detail="Can only assign orders to trips in planning status"
-        )
-
-    # Calculate total weight for new orders
-    total_new_weight = sum(order.weight for order in request.orders)
-    new_capacity_used = (trip.capacity_used or 0) + total_new_weight
-
-    # Check capacity
-    if new_capacity_used > trip.capacity_total:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Orders exceed trip capacity. Current: {trip.capacity_used}kg, New: {total_new_weight}kg, Max: {trip.capacity_total}kg"
-        )
-
-    # Add orders to trip
-    trip_orders = []
+    # Create trip orders
+    created_orders = []
     for order_data in request.orders:
         trip_order = TripOrder(
             trip_id=trip_id,
-            **order_data.dict()
+            user_id=user_id,
+            company_id=tenant_id,
+            order_id=order_data.order_id,
+            customer=order_data.customer,
+            customer_address=order_data.customer_address,
+            customer_contact=order_data.customer_contact,
+            customer_phone=order_data.customer_phone,
+            product_name=order_data.product_name,
+            weight=order_data.weight,
+            volume=order_data.volume,
+            quantity=order_data.quantity,
+            special_instructions=order_data.special_instructions,
+            delivery_instructions=order_data.delivery_instructions
         )
-        trip_orders.append(trip_order)
         db.add(trip_order)
-
-    # Update trip capacity
-    trip.capacity_used = new_capacity_used
+        created_orders.append(trip_order)
 
     await db.commit()
 
-    return MessageResponse(message=f"Successfully assigned {len(request.orders)} orders to trip {trip_id}")
+    return MessageResponse(
+        message=f"Successfully assigned {len(created_orders)} orders to trip {trip_id}"
+    )

@@ -1,13 +1,25 @@
-"""Resources API endpoints - dummy data service"""
+"""Resources API endpoints with authentication"""
 
 from datetime import date
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import List, Optional
 
 from src.schemas import Truck, Driver, Order, Branch
+from src.security import (
+    TokenData,
+    require_any_permission,
+    get_current_tenant_id,
+    RESOURCES_READ,
+    RESOURCES_READ_ALL,
+    DRIVERS_UPDATE,
+    VEHICLES_TRACK,
+    VEHICLES_UPDATE
+)
 
 router = APIRouter()
 
 # Dummy data - in production, this would come from other services
+# Note: These should be filtered by tenant_id in a real implementation
 TRUCKS = [
     Truck(id="TRK-001", plate="ABC-1234", model="Ford Transit", capacity=2000, status="available"),
     Truck(id="TRK-002", plate="XYZ-5678", model="Mercedes Sprinter", capacity=3000, status="available"),
@@ -52,85 +64,106 @@ ORDERS = [
     ),
     Order(
         id="ORD-003",
-        customer="City Mart",
-        customerAddress="789 Main St, Downtown",
-        status="approved",
+        customer="Tech Solutions Ltd",
+        customerAddress="789 Tech Park Avenue, Innovation District",
+        status="pending",
         total=3200,
         weight=1200,
         volume=1800,
         date=date(2024, 1, 17),
         priority="high",
-        items=22,
-        address="789 Main St, Downtown"
+        items=25,
+        address="789 Tech Park Avenue, Innovation District"
     ),
     Order(
         id="ORD-004",
-        customer="SuperStore Chain",
-        customerAddress="321 Commercial Ave, Industrial Zone",
+        customer="Fresh Foods Market",
+        customerAddress="101 Fresh Street, Downtown",
         status="approved",
-        total=4500,
-        weight=1800,
-        volume=2400,
+        total=950,
+        weight=400,
+        volume=500,
         date=date(2024, 1, 18),
         priority="low",
-        items=35,
-        address="321 Commercial Ave, Industrial Zone"
-    ),
-    Order(
-        id="ORD-005",
-        customer="Local Pharmacy",
-        customerAddress="555 Health St, Medical District",
-        status="approved",
-        total=1500,
-        weight=300,
-        volume=450,
-        date=date(2024, 1, 19),
-        priority="high",
-        items=12,
-        address="555 Health St, Medical District"
-    ),
-    Order(
-        id="ORD-006",
-        customer="Heavy Industry Corp",
-        customerAddress="789 Industrial Blvd, Manufacturing Zone",
-        status="approved",
-        total=50000,
-        weight=10000,
-        volume=2500,
-        date=date(2024, 1, 20),
-        priority="high",
-        items=50,
-        address="789 Industrial Blvd, Manufacturing Zone"
+        items=6,
+        address="101 Fresh Street, Downtown"
     ),
 ]
 
 BRANCHES = [
-    Branch(id="BR-001", code="NB001", name="North Branch", location="Cairo, Egypt", manager="Ahmed Ali", phone="+201000000010", status="active"),
-    Branch(id="BR-002", code="SB001", name="South Branch", location="Giza, Egypt", manager="Mohamed Hassan", phone="+201000000011", status="active"),
-    Branch(id="BR-003", code="EB001", name="East Branch", location="Suez, Egypt", manager="Khalid Omar", phone="+201000000012", status="active"),
-    Branch(id="BR-004", code="WB001", name="West Branch", location="Alexandria, Egypt", manager="Sami Mahmoud", phone="+201000000013", status="active"),
+    Branch(id="BRN-001", name="Cairo Central", address="123 Main St, Cairo", phone="+201234567890"),
+    Branch(id="BRN-002", name="Alexandria", address="456 Port Said Rd, Alexandria", phone="+201987654321"),
+    Branch(id="BRN-003", name="Giza Branch", address="789 Pyramid Ave, Giza", phone="+201654321098"),
 ]
 
 
-@router.get("/trucks", response_model=list[Truck])
-async def get_trucks():
-    """Get all available trucks"""
-    return [truck for truck in TRUCKS if truck.status == "available"]
+@router.get("/trucks", response_model=List[Truck])
+async def get_trucks(
+    status: Optional[str] = Query(None, description="Filter by truck status"),
+    token_data: TokenData = Depends(
+        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0], VEHICLES_TRACK[0], VEHICLES_UPDATE[0]])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """Get all trucks with optional status filter"""
+    # In production, filter by tenant_id
+    trucks = TRUCKS
+
+    # Filter by status if provided
+    if status:
+        trucks = [truck for truck in trucks if truck.status == status]
+
+    return trucks
 
 
-@router.get("/drivers", response_model=list[Driver])
-async def get_drivers():
-    """Get all available drivers"""
-    return [driver for driver in DRIVERS if driver.status == "active"]
+@router.get("/drivers", response_model=List[Driver])
+async def get_drivers(
+    status: Optional[str] = Query(None, description="Filter by driver status"),
+    token_data: TokenData = Depends(
+        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0], DRIVERS_UPDATE[0]])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """Get all drivers with optional status filter"""
+    # In production, filter by tenant_id
+    drivers = DRIVERS
+
+    # Filter by status if provided
+    if status:
+        drivers = [driver for driver in drivers if driver.status == status]
+
+    return drivers
 
 
-@router.get("/orders", response_model=list[Order])
-async def get_orders():
-    """Get all approved orders"""
-    return [order for order in ORDERS if order.status == "approved"]
+@router.get("/orders", response_model=List[Order])
+async def get_orders(
+    status: Optional[str] = Query(None, description="Filter by order status"),
+    priority: Optional[str] = Query(None, description="Filter by priority"),
+    token_data: TokenData = Depends(
+        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0]])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """Get all orders with optional filters"""
+    # In production, filter by tenant_id
+    orders = ORDERS
+
+    # Apply filters
+    if status:
+        orders = [order for order in orders if order.status == status]
+    if priority:
+        orders = [order for order in orders if order.priority == priority]
+
+    return orders
 
 
-@router.get("/branches", response_model=list[Branch])
-async def get_branches():
-    """Get all active branches"""
-    return [branch for branch in BRANCHES if branch.status == "active"]
+@router.get("/branches", response_model=List[Branch])
+async def get_branches(
+    token_data: TokenData = Depends(
+        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0]])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """Get all branches"""
+    # In production, filter by tenant_id
+    return BRANCHES
