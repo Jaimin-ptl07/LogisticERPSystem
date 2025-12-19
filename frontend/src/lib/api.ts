@@ -700,8 +700,8 @@ export const tmsAPI = {
 
 // Resources API functions
 export const tmsResourcesAPI = {
-  async getTrucks() {
-    return fetchWithError(`${TMS_BASE}/resources/trucks`);
+  async getTrucks(tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/trucks?tenant_id=${tenantId}`);
   },
 
   async getDrivers() {
@@ -712,8 +712,12 @@ export const tmsResourcesAPI = {
     return fetchWithError(`${TMS_BASE}/resources/orders`);
   },
 
-  async getBranches() {
-    return fetchWithError(`${TMS_BASE}/resources/branches`);
+  async getBranches(tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/branches?tenant_id=${tenantId}`);
+  },
+
+  async getTrucksByBranch(branchId: string, tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/branches/${branchId}/trucks?tenant_id=${tenantId}`);
   },
 };
 
