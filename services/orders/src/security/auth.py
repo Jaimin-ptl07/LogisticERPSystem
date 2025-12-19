@@ -4,10 +4,60 @@ JWT Authentication utilities for Orders Service
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Request
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class TokenExpiredError(Exception):
+    """Token has expired"""
+    pass
+
+
+class TokenInvalidError(Exception):
+    """Token is invalid"""
+    pass
+
+
+class RateLimitExceededError(Exception):
+    """Rate limit exceeded"""
+    pass
+
+
+def log_authentication_event(
+    event_type: str,
+    request: Request = None,
+    token_data: 'TokenData' = None,
+    success: bool = False,
+    reason: str = None
+):
+    """Log authentication events"""
+    log_data = {
+        "event_type": event_type,
+        "success": success,
+        "reason": reason,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    if request:
+        log_data.update({
+            "path": request.url.path,
+            "method": request.method,
+            "client_ip": request.client.host if request.client else None,
+        })
+
+    if token_data:
+        log_data.update({
+            "user_id": token_data.user_id,
+            "tenant_id": token_data.tenant_id,
+            "role_id": token_data.role_id,
+        })
+
+    if success:
+        logger.info(f"Auth event: {event_type}", extra={"auth_data": log_data})
+    else:
+        logger.warning(f"Auth event: {event_type} - {reason}", extra={"auth_data": log_data})
 
 
 class TokenData:
@@ -52,12 +102,6 @@ def verify_token(token: str) -> TokenData:
     """
     from src.config_local import settings
 
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
     try:
         # Add debug logging
         logger.debug(f"Attempting to decode token with algorithm: {settings.GLOBAL_JWT_ALGORITHM}")
@@ -78,7 +122,7 @@ def verify_token(token: str) -> TokenData:
 
         if user_id is None or tenant_id is None or role_id is None:
             logger.warning("Token missing required fields")
-            raise credentials_exception
+            raise TokenInvalidError("Token missing required fields")
 
         token_data = TokenData(
             user_id=user_id,
@@ -91,10 +135,12 @@ def verify_token(token: str) -> TokenData:
     except JWTError as e:
         logger.warning(f"JWT validation failed: {str(e)}")
         logger.warning(f"Token received (first 20 chars): {token[:20]}...")
-        raise credentials_exception
+        if "expired" in str(e).lower():
+            raise TokenExpiredError("Token has expired")
+        raise TokenInvalidError(f"Invalid token: {str(e)}")
     except Exception as e:
         logger.warning(f"Unexpected error during token validation: {str(e)}")
-        raise credentials_exception
+        raise TokenInvalidError(f"Token validation error: {str(e)}")
 
 
 def extract_token_from_header(authorization: str) -> str:

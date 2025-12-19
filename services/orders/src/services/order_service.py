@@ -67,7 +67,7 @@ class OrderService:
         """Get order by ID and tenant"""
         query = select(Order).where(
             and_(
-                Order.id == order_id,
+                Order.id == str(order_id),  # Convert to string to match VARCHAR column
                 Order.tenant_id == tenant_id,
                 Order.is_active == True
             )
@@ -246,7 +246,7 @@ class OrderService:
         user_id: str
     ) -> Order:
         """Update an existing order"""
-        query = select(Order).where(Order.id == order_id)
+        query = select(Order).where(Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
         order = result.scalar_one_or_none()
 
@@ -268,7 +268,7 @@ class OrderService:
 
     async def delete_order(self, order_id: str) -> None:
         """Soft delete an order"""
-        query = select(Order).where(Order.id == order_id)
+        query = select(Order).where(Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
         order = result.scalar_one_or_none()
 
@@ -441,7 +441,7 @@ class OrderService:
     ) -> List[OrderStatusHistory]:
         """Get order status history"""
         query = select(OrderStatusHistory).where(
-            OrderStatusHistory.order_id == order_id
+            OrderStatusHistory.order_id == str(order_id)  # Convert to string
         ).order_by(desc(OrderStatusHistory.created_at))
 
         result = await self.db.execute(query)

@@ -913,6 +913,95 @@ VALUES
     'View all dashboards'
 ),
 
+-- Order documents permissions
+(
+    'order_documents',
+    'create',
+    'Create order documents'
+),
+(
+    'order_documents',
+    'read',
+    'View order documents'
+),
+(
+    'order_documents',
+    'read_all',
+    'View all order documents'
+),
+(
+    'order_documents',
+    'read_own',
+    'View own order documents'
+),
+(
+    'order_documents',
+    'update',
+    'Update order documents'
+),
+(
+    'order_documents',
+    'delete',
+    'Delete order documents'
+),
+(
+    'order_documents',
+    'download',
+    'Download order documents'
+),
+(
+    'order_documents',
+    'upload',
+    'Upload order documents'
+),
+
+-- Additional orders permissions (some may be specific to logistics operations)
+(
+    'orders',
+    'delivery_confirm',
+    'Confirm order delivery'
+),
+(
+    'orders',
+    'export',
+    'Export orders'
+),
+(
+    'orders',
+    'import',
+    'Import orders'
+),
+(
+    'orders',
+    'logistics_edit',
+    'Edit logistics information'
+),
+(
+    'orders',
+    'logistics_view',
+    'View logistics information'
+),
+(
+    'orders',
+    'payment_process',
+    'Process order payments'
+),
+(
+    'orders',
+    'refund_process',
+    'Process order refunds'
+),
+(
+    'orders',
+    'shipment_create',
+    'Create shipments'
+),
+(
+    'orders',
+    'tracking_update',
+    'Update order tracking'
+),
+
 -- Superuser permission
 ( 'superuser', 'access', 'Full system access' ) ON CONFLICT DO NOTHING;
 

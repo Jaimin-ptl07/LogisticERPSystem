@@ -1,7 +1,15 @@
 """
 Security module for Orders Service
 """
-from .auth import TokenData, verify_token, extract_token_from_header
+from .auth import (
+    TokenData,
+    verify_token,
+    extract_token_from_header,
+    TokenExpiredError,
+    TokenInvalidError,
+    RateLimitExceededError,
+    log_authentication_event
+)
 from .dependencies import (
     get_current_token_data,
     require_permissions,
@@ -40,6 +48,10 @@ __all__ = [
     "TokenData",
     "verify_token",
     "extract_token_from_header",
+    "TokenExpiredError",
+    "TokenInvalidError",
+    "RateLimitExceededError",
+    "log_authentication_event",
     "get_current_token_data",
     "require_permissions",
     "require_any_permission",

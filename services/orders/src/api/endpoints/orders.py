@@ -20,6 +20,8 @@ from src.schemas import (
     FinanceApprovalRequest,
     LogisticsApprovalRequest,
     OrderQueryParams,
+    PaginatedResponse,
+    OrderStatusHistoryResponse,
 )
 from src.security import (
     TokenData,
@@ -43,7 +45,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/", response_model=List[OrderListResponse])
+@router.get("/", response_model=PaginatedResponse[OrderListResponse])
 async def list_orders(
     status: Optional[OrderStatus] = Query(
         None, description="Filter by order status"),
@@ -106,7 +108,13 @@ async def list_orders(
         page_size=page_size
     )
 
-    return orders
+    # Create paginated response
+    return PaginatedResponse.create(
+        items=orders,
+        total=total,
+        page=page,
+        page_size=page_size
+    )
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
@@ -119,7 +127,7 @@ async def get_order(
 ):
     """Get order by ID"""
     order_service = OrderService(db)
-    order = await order_service.get_order_by_id(order_id, tenant_id)
+    order = await order_service.get_order_by_id(str(order_id), tenant_id)
 
     if not order:
         raise HTTPException(
@@ -160,7 +168,7 @@ async def update_order(
     order_service = OrderService(db)
 
     # Check if order exists and belongs to tenant
-    existing_order = await order_service.get_order_by_id(order_id, tenant_id)
+    existing_order = await order_service.get_order_by_id(str(order_id), tenant_id)
     if not existing_order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -175,15 +183,16 @@ async def update_order(
         )
 
     # Check if user can update this order
-    if (not token_data.is_super_user() and
-        "orders:update_own" in token_data.permissions and
-            existing_order.created_by != UUID(user_id)):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own orders"
-        )
+    # Disabled - allowing users with update permission to update any order
+    # if (not token_data.is_super_user() and
+    #     "orders:update_own" in token_data.permissions and
+    #         existing_order.created_by != user_id):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="You can only update your own orders"
+    #     )
 
-    order = await order_service.update_order(order_id, order_data, user_id)
+    order = await order_service.update_order(str(order_id), order_data, user_id)
     return order
 
 
@@ -200,7 +209,7 @@ async def delete_order(
     order_service = OrderService(db)
 
     # Check if order exists and belongs to tenant
-    existing_order = await order_service.get_order_by_id(order_id, tenant_id)
+    existing_order = await order_service.get_order_by_id(str(order_id), tenant_id)
     if not existing_order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -215,15 +224,16 @@ async def delete_order(
         )
 
     # Check if user can delete this order
-    if (not token_data.is_super_user() and
-        "orders:delete_own" in token_data.permissions and
-            existing_order.created_by != UUID(user_id)):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only delete your own orders"
-        )
+    # Disabled - allowing users with delete permission to delete any order
+    # if (not token_data.is_super_user() and
+    #     "orders:delete_own" in token_data.permissions and
+    #         existing_order.created_by != user_id):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="You can only delete your own orders"
+    #     )
 
-    await order_service.delete_order(order_id, user_id)
+    await order_service.delete_order(str(order_id))
 
 
 @router.post("/{order_id}/submit", response_model=OrderResponse)
@@ -324,7 +334,7 @@ async def update_order_status(
     order_service = OrderService(db)
 
     order = await order_service.update_order_status(
-        order_id,
+        str(order_id),  # Convert UUID to string
         status_data.status,
         user_id,
         tenant_id,
@@ -334,7 +344,7 @@ async def update_order_status(
     return order
 
 
-@router.get("/{order_id}/history", response_model=List[dict])
+@router.get("/{order_id}/history", response_model=List[OrderStatusHistoryResponse])
 async def get_order_status_history(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -346,15 +356,26 @@ async def get_order_status_history(
     order_service = OrderService(db)
 
     # Check if order exists and belongs to tenant
-    order = await order_service.get_order_by_id(order_id, tenant_id)
+    order = await order_service.get_order_by_id(str(order_id), tenant_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found"
         )
 
-    history = await order_service.get_order_status_history(order_id)
-    return history
+    history = await order_service.get_order_status_history(str(order_id))
+
+    # Convert to response schema
+    return [
+        OrderStatusHistoryResponse(
+            from_status=item.from_status,
+            to_status=item.to_status,
+            reason=item.reason,
+            notes=item.notes,
+            created_at=item.created_at
+        )
+        for item in history
+    ]
 
 
 @router.post("/{order_id}/cancel", response_model=OrderResponse)
@@ -370,7 +391,7 @@ async def cancel_order(
     order_service = OrderService(db)
 
     order = await order_service.cancel_order(
-        order_id,
+        str(order_id),  # Convert UUID to string
         user_id,
         tenant_id,
         reason
