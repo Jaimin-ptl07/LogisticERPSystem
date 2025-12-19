@@ -175,12 +175,20 @@ async def get_trip(
                 customer_contact=order.customer_contact,
                 customer_phone=order.customer_phone,
                 product_name=order.product_name,
+                status=order.status,
+                total=order.total,
                 weight=order.weight,
                 volume=order.volume,
+                items=order.items,
                 quantity=order.quantity,
+                priority=order.priority,
+                address=order.address,
                 special_instructions=order.special_instructions,
                 delivery_instructions=order.delivery_instructions,
-                created_at=order.created_at
+                original_order_id=order.original_order_id,
+                original_items=order.original_items,
+                original_weight=order.original_weight,
+                assigned_at=order.assigned_at
             )
             for order in orders
         ]
@@ -377,12 +385,20 @@ async def get_trip_orders(
             customer_contact=order.customer_contact,
             customer_phone=order.customer_phone,
             product_name=order.product_name,
+            status=order.status,
+            total=order.total,
             weight=order.weight,
             volume=order.volume,
+            items=order.items,
             quantity=order.quantity,
+            priority=order.priority,
+            address=order.address,
             special_instructions=order.special_instructions,
             delivery_instructions=order.delivery_instructions,
-            created_at=order.created_at
+            original_order_id=order.original_order_id,
+            original_items=order.original_items,
+            original_weight=order.original_weight,
+            assigned_at=order.assigned_at
         )
         for order in orders
     ]
