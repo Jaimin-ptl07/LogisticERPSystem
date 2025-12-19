@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
-from src.database import get_async_session, TripOrder, Trip
+from src.database import get_db, TripOrder, Trip
 from src.schemas import TripOrderResponse, TripResponse
 from src.security import (
     TokenData,
@@ -30,7 +30,7 @@ async def split_order(
     token_data: TokenData = Depends(require_permissions(ORDER_SPLIT)),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Split an order between trips"""
     # Verify the trip belongs to the tenant
@@ -105,7 +105,7 @@ async def reassign_order(
     token_data: TokenData = Depends(require_permissions(ORDER_REASSIGN)),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Reassign an order to a different trip"""
     # Verify both trips belong to the tenant

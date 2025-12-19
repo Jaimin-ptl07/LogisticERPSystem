@@ -91,9 +91,9 @@ ORDERS = [
 ]
 
 BRANCHES = [
-    Branch(id="BRN-001", name="Cairo Central", address="123 Main St, Cairo", phone="+201234567890"),
-    Branch(id="BRN-002", name="Alexandria", address="456 Port Said Rd, Alexandria", phone="+201987654321"),
-    Branch(id="BRN-003", name="Giza Branch", address="789 Pyramid Ave, Giza", phone="+201654321098"),
+    Branch(id="BRN-001", code="CAI-001", name="Cairo Central", location="123 Main St, Cairo", manager="Ahmed Mohamed", phone="+201234567890", status="active"),
+    Branch(id="BRN-002", code="ALX-001", name="Alexandria", location="456 Port Said Rd, Alexandria", manager="Sara Ali", phone="+201987654321", status="active"),
+    Branch(id="BRN-003", code="GIZ-001", name="Giza Branch", location="789 Pyramid Ave, Giza", manager="Mahmoud Hassan", phone="+201654321098", status="active"),
 ]
 
 

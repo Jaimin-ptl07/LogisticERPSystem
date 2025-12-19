@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS permissions (
     description TEXT,
     created_at TIMESTAMP
     WITH
-        TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (resource, action)
 );
 
 -- Create role_permissions association table
@@ -580,30 +581,112 @@ VALUES
 ),
 
 -- Transportation management permissions (TMS)
+-- Trip specific permissions
 (
-    'tms',
+    'trips',
     'create',
-    'Create transportation entries'
+    'Create new trips'
 ),
 (
-    'tms',
+    'trips',
     'read',
-    'View transportation information'
+    'Read own trips'
 ),
 (
-    'tms',
+    'trips',
     'read_all',
-    'View all transportation'
+    'Read all trips across branches'
 ),
 (
-    'tms',
+    'trips',
     'update',
-    'Update transportation information'
+    'Update existing trips'
 ),
 (
-    'tms',
+    'trips',
     'delete',
-    'Delete transportation entries'
+    'Delete trips'
+),
+(
+    'trips',
+    'assign',
+    'Assign orders to trips'
+),
+(
+    'trips',
+    'track',
+    'Track trip status'
+),
+-- Order specific permissions for TMS
+(
+    'orders',
+    'split',
+    'Split orders'
+),
+(
+    'orders',
+    'reassign',
+    'Reassign orders to different trips'
+),
+-- Resource permissions
+(
+    'resources',
+    'read',
+    'Read own resources (trucks, drivers)'
+),
+(
+    'resources',
+    'read_all',
+    'Read all resources across branches'
+),
+-- Driver permissions
+(
+    'drivers',
+    'assign',
+    'Assign drivers to trips'
+),
+(
+    'drivers',
+    'update',
+    'Update driver information'
+),
+-- Vehicle permissions
+(
+    'vehicles',
+    'track',
+    'Track vehicle location'
+),
+(
+    'vehicles',
+    'update',
+    'Update vehicle information'
+),
+-- Route permissions
+(
+    'routes',
+    'create',
+    'Create new routes'
+),
+(
+    'routes',
+    'optimize',
+    'Optimize routes'
+),
+(
+    'routes',
+    'update',
+    'Update existing routes'
+),
+-- Schedule permissions
+(
+    'schedules',
+    'read',
+    'Read schedule information'
+),
+(
+    'schedules',
+    'update',
+    'Update schedules'
 ),
 
 -- Billing permissions
@@ -1003,7 +1086,7 @@ VALUES
 ),
 
 -- Superuser permission
-( 'superuser', 'access', 'Full system access' ) ON CONFLICT DO NOTHING;
+( 'superuser', 'access', 'Full system access' ) ON CONFLICT (resource, action) DO NOTHING;
 
 -- Assign all permissions to super admin role (ID = 1)
 INSERT INTO
@@ -1154,13 +1237,24 @@ VALUES (
                 AND action = 'update'
         )
     ),
+    -- TMS Trip permissions for admin
     (
         2,
         (
             SELECT id
             FROM permissions
             WHERE
-                resource = 'tms'
+                resource = 'trips'
+                AND action = 'create'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
                 AND action = 'read'
         )
     ),
@@ -1170,7 +1264,7 @@ VALUES (
             SELECT id
             FROM permissions
             WHERE
-                resource = 'tms'
+                resource = 'trips'
                 AND action = 'read_all'
         )
     ),
@@ -1180,7 +1274,173 @@ VALUES (
             SELECT id
             FROM permissions
             WHERE
-                resource = 'tms'
+                resource = 'trips'
+                AND action = 'update'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'delete'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'assign'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'track'
+        )
+    ),
+    -- TMS Order permissions
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'split'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'reassign'
+        )
+    ),
+    -- TMS Resource permissions
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'resources'
+                AND action = 'read'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'resources'
+                AND action = 'read_all'
+        )
+    ),
+    -- TMS Driver permissions
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'drivers'
+                AND action = 'assign'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'drivers'
+                AND action = 'update'
+        )
+    ),
+    -- TMS Vehicle permissions
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'vehicles'
+                AND action = 'track'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'vehicles'
+                AND action = 'update'
+        )
+    ),
+    -- TMS Route permissions
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'routes'
+                AND action = 'create'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'routes'
+                AND action = 'optimize'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'routes'
+                AND action = 'update'
+        )
+    ),
+    -- TMS Schedule permissions
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'schedules'
+                AND action = 'read'
+        )
+    ),
+    (
+        2,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'schedules'
                 AND action = 'update'
         )
     ),
@@ -2387,34 +2647,14 @@ VALUES
                 AND action = 'download'
         )
     ),
-    -- Transportation management
+    -- Transportation management (TMS) - Manager role
     (
         5,
         (
             SELECT id
             FROM permissions
             WHERE
-                resource = 'tms'
-                AND action = 'read'
-        )
-    ),
-    (
-        5,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'tms'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        5,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'tms'
+                resource = 'trips'
                 AND action = 'create'
         )
     ),
@@ -2424,8 +2664,138 @@ VALUES
             SELECT id
             FROM permissions
             WHERE
-                resource = 'tms'
+                resource = 'trips'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
                 AND action = 'update'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'assign'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'track'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'split'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'reassign'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'resources'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'resources'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'drivers'
+                AND action = 'assign'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'vehicles'
+                AND action = 'track'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'routes'
+                AND action = 'create'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'routes'
+                AND action = 'optimize'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'schedules'
+                AND action = 'read'
         )
     ),
     -- Shipping management

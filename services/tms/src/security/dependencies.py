@@ -78,7 +78,7 @@ async def get_current_token_data(
         )
 
 
-async def require_permissions(required_permissions: List[str]):
+def require_permissions(required_permissions: List[str]):
     """
     Dependency factory that creates a dependency requiring specific permissions
 
@@ -110,7 +110,7 @@ async def require_permissions(required_permissions: List[str]):
     return permission_checker
 
 
-async def require_any_permission(required_permissions: List[str]):
+def require_any_permission(required_permissions: List[str]):
     """
     Dependency factory that creates a dependency requiring at least one of specified permissions
 

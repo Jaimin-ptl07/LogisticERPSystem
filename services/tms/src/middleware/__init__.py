@@ -1,17 +1,23 @@
 """
 Middleware package for TMS Service
 """
-from .auth import AuthenticationMiddleware
-from .security import SecurityHeadersMiddleware
-from .tenant import TenantContextMiddleware, TenantIsolationMiddleware
-from .audit import AuditLoggingMiddleware
-from .rate_limit import RateLimitMiddleware
+from .auth import AuthenticationMiddleware, SecurityHeadersMiddleware, AuditLoggingMiddleware, RateLimitMiddleware
+from .tenant import (
+    TenantContextMiddleware,
+    TenantIsolationMiddleware,
+    TripAccessMiddleware,
+    OrderAccessMiddleware,
+    ResourceAccessMiddleware,
+)
 
 __all__ = [
     "AuthenticationMiddleware",
     "SecurityHeadersMiddleware",
-    "TenantContextMiddleware",
-    "TenantIsolationMiddleware",
     "AuditLoggingMiddleware",
     "RateLimitMiddleware",
+    "TenantContextMiddleware",
+    "TenantIsolationMiddleware",
+    "TripAccessMiddleware",
+    "OrderAccessMiddleware",
+    "ResourceAccessMiddleware",
 ]

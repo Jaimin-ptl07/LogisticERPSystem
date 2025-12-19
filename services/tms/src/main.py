@@ -50,10 +50,66 @@ app = FastAPI(
     title="TMS Service",
     description="Transport Management System API",
     version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
     lifespan=lifespan,
 )
 
-# Configure CORS
+# Add OpenAPI security scheme for JWT Bearer tokens
+from fastapi.openapi.utils import get_openapi
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="TMS Service",
+        version="0.1.0",
+        description="Transport Management System API",
+        routes=app.routes,
+    )
+    # Add security scheme for JWT Bearer tokens
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter your Bearer token (JWT) without the 'Bearer ' prefix"
+        }
+    }
+
+    # Apply security to all paths except public ones
+    public_paths = [
+        "/",
+        "/health",
+        "/ready",
+        "/metrics",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/favicon.ico"
+    ]
+
+    for path in openapi_schema.get("paths", {}):
+        # Skip public paths
+        if path in public_paths:
+            continue
+
+        for method in openapi_schema["paths"][path]:
+            if method in ["get", "post", "put", "delete", "patch"]:
+                # Add security requirement to all operations
+                openapi_schema["paths"][path][method]["security"] = [{"BearerAuth": []}]
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
+# Add security middleware (order matters - middleware executes in reverse order of addition)
+# 1. Security headers (outermost - executes last)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 2. CORS (executes after security headers)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=getattr(settings, 'allowed_origins', ["*"]),
@@ -63,21 +119,24 @@ app.add_middleware(
     expose_headers=getattr(settings, 'expose_headers', []),
 )
 
-# Add security middleware (order is important)
-if getattr(settings, 'enable_audit_trail', True):
+# 3. Audit logging (captures all requests)
+if getattr(settings, 'AUDIT_LOG_ENABLED', True):
     app.add_middleware(AuditLoggingMiddleware)
 
-if getattr(settings, 'enable_rate_limiting', True):
+# 4. Rate limiting (if enabled)
+if getattr(settings, 'RATE_LIMIT_ENABLED', True):
     app.add_middleware(RateLimitMiddleware)
 
-if getattr(settings, 'enable_security_headers', True):
-    app.add_middleware(SecurityHeadersMiddleware)
+# 5. Tenant context for database operations
+app.add_middleware(TenantContextMiddleware)
 
-# Authentication and authorization middleware
+# 6. Tenant isolation for multi-tenancy (executes after authentication)
+app.add_middleware(TenantIsolationMiddleware)
+
+# 7. Authentication middleware (innermost - executes first)
 app.add_middleware(
     AuthenticationMiddleware,
     skip_paths=[
-        "/",
         "/health",
         "/ready",
         "/metrics",
@@ -88,9 +147,20 @@ app.add_middleware(
     ]
 )
 
-# Tenant isolation middleware
-app.add_middleware(TenantContextMiddleware)
-app.add_middleware(TenantIsolationMiddleware)
+# Add security exception handlers
+from src.security.exceptions import (
+    SecurityException,
+    security_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
+
+app.add_exception_handler(SecurityException, security_exception_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 # Include API routers
 app.include_router(trips.router, prefix="/api/v1/trips", tags=["trips"])
@@ -119,7 +189,11 @@ async def metrics():
     """Prometheus metrics endpoint"""
     # Initialize metrics if not already done
     if not hasattr(app, '_metrics_initialized'):
-        from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, Gauge
+        try:
+            from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, Gauge
+        except ImportError:
+            # prometheus_client not available, return simple metrics
+            return {"error": "Prometheus client not available"}
 
         app.metrics_registry = CollectorRegistry()
 
@@ -158,14 +232,6 @@ async def metrics():
     return Response(generate_latest(app.metrics_registry), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """Global HTTP exception handler"""
-    logger.error(f"HTTP {exc.status_code}: {exc.detail}")
-    return {
-        "error": exc.detail,
-        "status_code": exc.status_code
-    }
 
 
 if __name__ == "__main__":

@@ -2,12 +2,13 @@
 
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from datetime import date
 import uuid
 
-from src.database import get_async_session, Trip, TripOrder
+from src.database import get_db, Trip, TripOrder
 from src.schemas import (
     TripCreate, TripUpdate, TripResponse, TripWithOrders,
     AssignOrdersRequest, TripOrderCreate, TripOrderResponse,
@@ -27,21 +28,32 @@ from src.security import (
     TRIP_ASSIGN
 )
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[Depends(HTTPBearer())],
+    responses={
+        401: {"description": "Unauthorized - Invalid or missing token"},
+        403: {"description": "Forbidden - Insufficient permissions"}
+    },
+    tags=["trips"]
+)
 
 
-@router.get("/", response_model=List[TripResponse])
+@router.get(
+    "/",
+    response_model=List[TripResponse],
+    responses={401: {"description": "Unauthorized"}, 403: {"description": "Forbidden"}},
+    summary="Get all trips",
+    description="Retrieve a list of all trips with optional filtering"
+)
 async def get_trips(
     status: Optional[str] = Query(None, description="Filter by trip status"),
     branch: Optional[str] = Query(None, description="Filter by branch"),
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
-    token_data: TokenData = Depends(
-        require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])
-    ),
+    token_data: TokenData = Depends(require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get all trips with optional filters"""
     # Build base query with tenant isolation
@@ -104,11 +116,9 @@ async def get_trips(
 @router.get("/{trip_id}", response_model=TripWithOrders)
 async def get_trip(
     trip_id: str,
-    token_data: TokenData = Depends(
-        require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])
-    ),
+    token_data: TokenData = Depends(require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get trip by ID with associated orders"""
     # Get trip
@@ -182,10 +192,10 @@ async def get_trip(
 @router.post("/", response_model=TripResponse)
 async def create_trip(
     trip_data: TripCreate,
-    token_data: TokenData = Depends(require_permissions(TRIP_CREATE)),
+    token_data: TokenData = Depends(require_permissions([TRIP_CREATE[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Create a new trip"""
     # Create new trip
@@ -214,16 +224,39 @@ async def create_trip(
     await db.commit()
     await db.refresh(trip)
 
-    return TripResponse.model_validate(trip)
+    return TripResponse(
+        id=trip.id,
+        user_id=trip.user_id,
+        company_id=trip.company_id,
+        branch=trip.branch,
+        truck_plate=trip.truck_plate,
+        truck_model=trip.truck_model,
+        truck_capacity=trip.truck_capacity,
+        driver_id=trip.driver_id,
+        driver_name=trip.driver_name,
+        driver_phone=trip.driver_phone,
+        status=trip.status,
+        origin=trip.origin,
+        destination=trip.destination,
+        distance=trip.distance,
+        estimated_duration=trip.estimated_duration,
+        pre_trip_time=trip.pre_trip_time,
+        post_trip_time=trip.post_trip_time,
+        capacity_used=trip.capacity_used or 0,
+        capacity_total=trip.capacity_total,
+        trip_date=trip.trip_date,
+        created_at=trip.created_at,
+        updated_at=trip.updated_at
+    )
 
 
 @router.put("/{trip_id}", response_model=TripResponse)
 async def update_trip(
     trip_id: str,
     trip_data: TripUpdate,
-    token_data: TokenData = Depends(require_permissions(TRIP_UPDATE)),
+    token_data: TokenData = Depends(require_permissions([TRIP_UPDATE[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Update trip"""
     # Get existing trip
@@ -247,15 +280,38 @@ async def update_trip(
     await db.commit()
     await db.refresh(trip)
 
-    return TripResponse.model_validate(trip)
+    return TripResponse(
+        id=trip.id,
+        user_id=trip.user_id,
+        company_id=trip.company_id,
+        branch=trip.branch,
+        truck_plate=trip.truck_plate,
+        truck_model=trip.truck_model,
+        truck_capacity=trip.truck_capacity,
+        driver_id=trip.driver_id,
+        driver_name=trip.driver_name,
+        driver_phone=trip.driver_phone,
+        status=trip.status,
+        origin=trip.origin,
+        destination=trip.destination,
+        distance=trip.distance,
+        estimated_duration=trip.estimated_duration,
+        pre_trip_time=trip.pre_trip_time,
+        post_trip_time=trip.post_trip_time,
+        capacity_used=trip.capacity_used or 0,
+        capacity_total=trip.capacity_total,
+        trip_date=trip.trip_date,
+        created_at=trip.created_at,
+        updated_at=trip.updated_at
+    )
 
 
 @router.delete("/{trip_id}")
 async def delete_trip(
     trip_id: str,
-    token_data: TokenData = Depends(require_permissions(TRIP_DELETE)),
+    token_data: TokenData = Depends(require_permissions([TRIP_DELETE[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Delete trip"""
     # Get existing trip
@@ -285,7 +341,7 @@ async def get_trip_orders(
         require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])
     ),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get all orders for a specific trip"""
     # First verify trip exists and belongs to tenant
@@ -310,7 +366,24 @@ async def get_trip_orders(
     orders = orders_result.scalars().all()
 
     return [
-        TripOrderResponse.model_validate(order)
+        TripOrderResponse(
+            id=order.id,
+            trip_id=order.trip_id,
+            user_id=order.user_id,
+            company_id=order.company_id,
+            order_id=order.order_id,
+            customer=order.customer,
+            customer_address=order.customer_address,
+            customer_contact=order.customer_contact,
+            customer_phone=order.customer_phone,
+            product_name=order.product_name,
+            weight=order.weight,
+            volume=order.volume,
+            quantity=order.quantity,
+            special_instructions=order.special_instructions,
+            delivery_instructions=order.delivery_instructions,
+            created_at=order.created_at
+        )
         for order in orders
     ]
 
@@ -319,10 +392,10 @@ async def get_trip_orders(
 async def assign_orders_to_trip(
     trip_id: str,
     request: AssignOrdersRequest,
-    token_data: TokenData = Depends(require_permissions(TRIP_ASSIGN)),
+    token_data: TokenData = Depends(require_permissions([TRIP_ASSIGN[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_db)
 ):
     """Assign orders to a trip"""
     # Verify trip exists and belongs to tenant
@@ -351,9 +424,13 @@ async def assign_orders_to_trip(
             customer_contact=order_data.customer_contact,
             customer_phone=order_data.customer_phone,
             product_name=order_data.product_name,
+            total=order_data.total,
             weight=order_data.weight,
             volume=order_data.volume,
-            quantity=order_data.quantity,
+            items=order_data.items,
+            quantity=order_data.quantity or 1,
+            priority=order_data.priority.value if hasattr(order_data.priority, 'value') else order_data.priority,
+            address=order_data.address,
             special_instructions=order_data.special_instructions,
             delivery_instructions=order_data.delivery_instructions
         )

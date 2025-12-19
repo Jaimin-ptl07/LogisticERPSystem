@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 1440  # 24 hours
 
     # Global JWT settings (shared across services)
-    global_jwt_secret: str = "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
-    global_jwt_algorithm: str = "HS256"
+    GLOBAL_JWT_SECRET: str = "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
+    GLOBAL_JWT_ALGORITHM: str = "HS256"
 
     # Rate limiting
     enable_rate_limiting: bool = True

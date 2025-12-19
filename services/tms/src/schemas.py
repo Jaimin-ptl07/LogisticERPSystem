@@ -91,13 +91,19 @@ class Branch(BaseSchema):
 class TripOrderCreate(BaseModel):
     order_id: str
     customer: str
-    customer_address: Optional[str] = Field(None, alias="customerAddress")
+    customer_address: Optional[str] = None
+    customer_contact: Optional[str] = None
+    customer_phone: Optional[str] = None
+    product_name: Optional[str] = None
     total: float
     weight: int
     volume: int
     items: int
+    quantity: Optional[int] = 1
     priority: Priority
     address: Optional[str] = None
+    special_instructions: Optional[str] = None
+    delivery_instructions: Optional[str] = None
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
     original_weight: Optional[int] = None
@@ -116,14 +122,20 @@ class TripOrderResponse(BaseSchema):
     company_id: str
     order_id: str
     customer: str
-    customerAddress: Optional[str] = Field(None, alias="customer_address")
+    customer_address: Optional[str] = None
+    customer_contact: Optional[str] = None
+    customer_phone: Optional[str] = None
+    product_name: Optional[str] = None
     status: OrderStatus
     total: float
     weight: int
     volume: int
     items: int
+    quantity: int
     priority: Priority
     address: Optional[str] = None
+    special_instructions: Optional[str] = None
+    delivery_instructions: Optional[str] = None
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
     original_weight: Optional[int] = None
@@ -136,8 +148,6 @@ class TripOrderResponse(BaseSchema):
 
 # Trip Schemas
 class TripCreate(BaseModel):
-    user_id: str
-    company_id: str
     branch: str
     truck_plate: str
     truck_model: str
@@ -153,6 +163,7 @@ class TripCreate(BaseModel):
     estimated_duration: Optional[int] = None
     pre_trip_time: Optional[int] = 30
     post_trip_time: Optional[int] = 15
+    status: Optional[TripStatus] = TripStatus.PLANNING
 
 
 class TripUpdate(BaseModel):
