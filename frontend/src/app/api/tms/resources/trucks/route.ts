@@ -1,6 +1,22 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-// Dummy trucks data - will come from other service in future
+// TMS Service URL from environment
+const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+
+// Helper function to get auth token from request
+function getAuthToken(request: NextRequest): string | null {
+  // Try to get token from Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  // Try to get token from cookies (if using httpOnly cookies)
+  const tokenCookie = request.cookies.get('access_token');
+  return tokenCookie?.value || null;
+}
+
+// Dummy trucks data as fallback
 const dummyTrucks = [
   {
     id: 'TRK-001',
@@ -39,15 +55,39 @@ const dummyTrucks = [
   },
 ];
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Filter only available trucks
+    // Get auth token
+    const token = getAuthToken(request);
+
+    // Try to fetch from resource service first
+    try {
+      const response = await fetch(`${TMS_SERVICE_URL}/api/v1/resources/trucks`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Filter only available trucks
+        const availableTrucks = data.filter((truck: any) => truck.status === 'available');
+        return NextResponse.json(availableTrucks);
+      }
+    } catch (error) {
+      console.warn('Resource service not available, using dummy data:', error);
+    }
+
+    // Fallback to dummy data
     const availableTrucks = dummyTrucks.filter(truck => truck.status === 'available');
     return NextResponse.json(availableTrucks);
+
   } catch (error) {
     console.error('Error fetching trucks:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch trucks' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch trucks' },
       { status: 500 }
     );
   }
