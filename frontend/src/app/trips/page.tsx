@@ -5,12 +5,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
 import { AppLayout } from "@/components/layout/AppLayout";
-import {
-  tmsAPI,
-  tmsResourcesAPI,
-  OrderAssignData,
-  TripCreateData,
-} from "@/lib/api";
+import { tmsAPI, tmsResourcesAPI, OrderAssignData } from "@/lib/api";
+
 import { Driver, Trip } from "@/types";
 import {
   Truck,
@@ -30,36 +26,32 @@ import {
   Flag,
   AlertTriangle,
   RotateCcw,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
-import { Button } from '@/components/ui/Button';
-import { AppLayout } from '@/components/layout/AppLayout';
-import { tmsAPI, tmsResourcesAPI, OrderAssignData, TripCreateData } from '@/lib/api';
-import { Driver, Trip } from '@/types';
-import { Truck, MapPin, User, Package, Plus, Weight, CheckCircle, XCircle, X, Phone, Award, CreditCard, Play, Square, Flag, AlertTriangle, RotateCcw, Search, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { TripCreateData } from "@/types/common";
 
 export default function Trips() {
   // Utility function to format date in UK timezone
   const formatUKDateTime = (dateString?: string) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return "N/A";
 
     try {
       const date = new Date(dateString);
-      return new Intl.DateTimeFormat('en-GB', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
+      return new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
         hour12: false,
-        timeZone: 'Europe/London'
+        timeZone: "Europe/London",
       }).format(date);
     } catch (error) {
-      return 'Invalid date';
+      return "Invalid date";
     }
   };
 
@@ -76,13 +68,11 @@ export default function Trips() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [orderSearchTerm, setOrderSearchTerm] = useState("");
   const [orderPriorityFilter, setOrderPriorityFilter] = useState("all");
-  const [orderSearchTerm, setOrderSearchTerm] = useState('');
-  const [orderPriorityFilter, setOrderPriorityFilter] = useState('all');
 
   // Search states for trip creation
-  const [branchSearchTerm, setBranchSearchTerm] = useState('');
-  const [truckSearchTerm, setTruckSearchTerm] = useState('');
-  const [driverSearchTerm, setDriverSearchTerm] = useState('');
+  const [branchSearchTerm, setBranchSearchTerm] = useState("");
+  const [truckSearchTerm, setTruckSearchTerm] = useState("");
+  const [driverSearchTerm, setDriverSearchTerm] = useState("");
   const [showSplitOptions, setShowSplitOptions] = useState(false);
   const [splitOrder, setSplitOrder] = useState<any | null>(null);
   const [splitItemsCount, setSplitItemsCount] = useState(0);
@@ -131,22 +121,16 @@ export default function Trips() {
   // Fetch all resources
   const fetchResources = async () => {
     try {
-      const [trucksData, driversData, ordersData, branchesData] =
-        await Promise.all([
-          tmsResourcesAPI.getTrucks(),
-          tmsResourcesAPI.getDrivers(),
-          tmsResourcesAPI.getOrders(),
-          tmsResourcesAPI.getBranches(),
-        ]);
       // Use default tenant for now - in production, this would come from auth context
       const tenantId = "default-tenant";
 
-      const [trucksData, driversData, ordersData, branchesData] = await Promise.all([
-        tmsResourcesAPI.getTrucks(tenantId),
-        tmsResourcesAPI.getDrivers(),
-        tmsResourcesAPI.getOrders(),
-        tmsResourcesAPI.getBranches(tenantId),
-      ]);
+      const [trucksData, driversData, ordersData, branchesData] =
+        await Promise.all([
+          tmsResourcesAPI.getTrucks(tenantId),
+          tmsResourcesAPI.getDrivers(),
+          tmsResourcesAPI.getOrders(),
+          tmsResourcesAPI.getBranches(tenantId),
+        ]);
 
       setAvailableTrucks(trucksData);
       setAvailableDrivers(driversData);
@@ -286,9 +270,9 @@ export default function Trips() {
       setSelectedDriver(null);
       setCurrentStep(1);
       setShowCreateTrip(false);
-      setBranchSearchTerm('');
-      setTruckSearchTerm('');
-      setDriverSearchTerm('');
+      setBranchSearchTerm("");
+      setTruckSearchTerm("");
+      setDriverSearchTerm("");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to create trip");
     }
@@ -306,45 +290,42 @@ export default function Trips() {
     }
   };
 
-  const handleBranchSelect = (branch: string) => {
-    setSelectedBranch(branch);
-    setSelectedTruck("");
   const handleBranchSelect = async (branchName: string) => {
     setSelectedBranch(branchName);
-    setSelectedTruck('');
+    setSelectedTruck("");
     setSelectedDriver(null);
-    setBranchSearchTerm('');
-    setTruckSearchTerm('');
-    setDriverSearchTerm('');
+    setBranchSearchTerm("");
+    setTruckSearchTerm("");
+    setDriverSearchTerm("");
 
     // Find the branch object to get its ID
-    const selectedBranchObj = branches.find(b => b.name === branchName);
+    const selectedBranchObj = branches.find((b) => b.name === branchName);
 
     if (selectedBranchObj) {
       try {
         // Fetch trucks for the selected branch
         const tenantId = "default-tenant";
-        const branchTrucks = await tmsResourcesAPI.getTrucksByBranch(selectedBranchObj.id, tenantId);
+        const branchTrucks = await tmsResourcesAPI.getTrucksByBranch(
+          selectedBranchObj.id,
+          tenantId
+        );
         setAvailableTrucks(branchTrucks);
       } catch (err) {
-        console.error('Failed to fetch trucks for branch:', err);
+        console.error("Failed to fetch trucks for branch:", err);
         // Keep existing trucks if fetch fails
       }
     }
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = async () => {
     setSelectedBranch("");
     setSelectedTruck("");
-  const handleCloseModal = async () => {
-    setSelectedBranch('');
-    setSelectedTruck('');
     setSelectedDriver(null);
     setCurrentStep(1);
     setShowCreateTrip(false);
-    setBranchSearchTerm('');
-    setTruckSearchTerm('');
-    setDriverSearchTerm('');
+    setBranchSearchTerm("");
+    setTruckSearchTerm("");
+    setDriverSearchTerm("");
 
     // Reset to fetch all trucks again
     await fetchResources();
@@ -359,24 +340,26 @@ export default function Trips() {
       case "low":
         return "default";
       default:
-        return 'default';
+        return "default";
     }
   };
 
-  const getDeliveryStatusVariant = (status: string) => {
+  const getDeliveryStatusVariant = (
+    status: string
+  ): "default" | "success" | "warning" | "danger" | "info" => {
     switch (status) {
-      case 'pending':
-        return 'default';
-      case 'out-for-delivery':
-        return 'default';
-      case 'delivered':
-        return 'success';
-      case 'failed':
-        return 'destructive';
-      case 'returned':
-        return 'destructive';
+      case "pending":
+        return "default";
+      case "out-for-delivery":
+        return "default";
+      case "delivered":
+        return "success";
+      case "failed":
+        return "danger";
+      case "returned":
+        return "danger";
       default:
-        return 'default';
+        return "default";
     }
   };
 
@@ -388,33 +371,33 @@ export default function Trips() {
     availableDrivers.filter(
       (driver) => driver.status === "active" && !driver.currentTruck
     );
-  const getApprovedOrders = () => availableOrders.filter(order => order.status === 'approved');
-  const getTrucksAvailable = () => availableTrucks.filter(truck => truck.status === 'available');
-  const getDriversAvailable = () => availableDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
 
   // Filter functions for trip creation
   const getFilteredBranches = () => {
-    return branches.filter(branch =>
-      branch.name.toLowerCase().includes(branchSearchTerm.toLowerCase()) ||
-      branch.location.toLowerCase().includes(branchSearchTerm.toLowerCase())
+    return branches.filter(
+      (branch) =>
+        branch.name.toLowerCase().includes(branchSearchTerm.toLowerCase()) ||
+        branch.location.toLowerCase().includes(branchSearchTerm.toLowerCase())
     );
   };
 
   const getFilteredTrucks = () => {
     const available = getTrucksAvailable();
-    return available.filter(truck =>
-      truck.plate.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
-      truck.model.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
-      truck.capacity.toString().includes(truckSearchTerm)
+    return available.filter(
+      (truck) =>
+        truck.plate.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
+        truck.model.toLowerCase().includes(truckSearchTerm.toLowerCase()) ||
+        truck.capacity.toString().includes(truckSearchTerm)
     );
   };
 
   const getFilteredDrivers = () => {
     const available = getDriversAvailable();
-    return available.filter(driver =>
-      driver.name.toLowerCase().includes(driverSearchTerm.toLowerCase()) ||
-      driver.phone.includes(driverSearchTerm) ||
-      driver.license.toLowerCase().includes(driverSearchTerm.toLowerCase())
+    return available.filter(
+      (driver) =>
+        driver.name.toLowerCase().includes(driverSearchTerm.toLowerCase()) ||
+        driver.phone.includes(driverSearchTerm) ||
+        driver.license.toLowerCase().includes(driverSearchTerm.toLowerCase())
     );
   };
 
@@ -435,10 +418,8 @@ export default function Trips() {
 
   // Check if order is already assigned to any trip
   const isOrderAssigned = (orderId: string) => {
-    return trips.some((trip) =>
+    return allTrips.some((trip) =>
       trip.orders.some((order) => order.id === orderId)
-    return allTrips.some(trip =>
-      trip.orders.some(order => order.id === orderId)
     );
   };
 
@@ -454,14 +435,23 @@ export default function Trips() {
   };
 
   // Drag and drop handlers
-  const handleDragStart = (e: React.DragEvent, order: any, sourceTripId?: string, sourceIndex?: number) => {
+  const handleDragStart = (
+    e: React.DragEvent,
+    order: any,
+    sourceTripId?: string,
+    sourceIndex?: number
+  ) => {
     setDraggedOrder({ ...order, sourceTripId, sourceIndex });
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = "move";
   };
 
-  const handleDragOver = (e: React.DragEvent, tripId: string, targetIndex?: number) => {
+  const handleDragOver = (
+    e: React.DragEvent,
+    tripId: string,
+    targetIndex?: number
+  ) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = "move";
     setDragOverTrip(tripId);
   };
 
@@ -472,7 +462,11 @@ export default function Trips() {
     }
   };
 
-  const handleDrop = async (e: React.DragEvent, targetTripId: string, targetIndex?: number) => {
+  const handleDrop = async (
+    e: React.DragEvent,
+    targetTripId: string,
+    targetIndex?: number
+  ) => {
     e.preventDefault();
     setDragOverTrip(null);
 
@@ -480,21 +474,26 @@ export default function Trips() {
 
     try {
       // If dropping on the same trip, we need to reorder
-      if (draggedOrder.sourceTripId === targetTripId && targetIndex !== undefined) {
-        const sourceTrip = allTrips.find(t => t.id === targetTripId);
-        if (!sourceTrip || sourceTrip.status !== 'planning') return;
+      if (
+        draggedOrder.sourceTripId === targetTripId &&
+        targetIndex !== undefined
+      ) {
+        const sourceTrip = allTrips.find((t) => t.id === targetTripId);
+        if (!sourceTrip || sourceTrip.status !== "planning") return;
 
         // Get the current orders
         const currentOrders = [...sourceTrip.orders];
 
         // Remove the dragged order from its original position
-        const reorderedOrders = currentOrders.filter(order => order.id !== draggedOrder.id);
+        const reorderedOrders = currentOrders.filter(
+          (order) => order.id !== draggedOrder.id
+        );
 
         // Insert it at the new position
         reorderedOrders.splice(targetIndex, 0, draggedOrder);
 
         // Update the order in the UI immediately for better UX
-        const updatedTrips = allTrips.map(trip => {
+        const updatedTrips = allTrips.map((trip) => {
           if (trip.id === targetTripId) {
             return { ...trip, orders: reorderedOrders };
           }
@@ -508,24 +507,28 @@ export default function Trips() {
       // If dropping on a different trip, move the order
       else if (draggedOrder.sourceTripId !== targetTripId) {
         // Get target trip
-        const targetTrip = allTrips.find(t => t.id === targetTripId);
-        if (!targetTrip || targetTrip.status !== 'planning') {
-          alert('Can only add orders to trips in planning status');
+        const targetTrip = allTrips.find((t) => t.id === targetTripId);
+        if (!targetTrip || targetTrip.status !== "planning") {
+          alert("Can only add orders to trips in planning status");
           setDraggedOrder(null);
           return;
         }
 
         // Check capacity
-        const newCapacityUsed = (targetTrip.capacityUsed || 0) + draggedOrder.weight;
+        const newCapacityUsed =
+          (targetTrip.capacityUsed || 0) + draggedOrder.weight;
         if (newCapacityUsed > (targetTrip.capacityTotal || 0)) {
-          alert('Order exceeds trip capacity');
+          alert("Order exceeds trip capacity");
           setDraggedOrder(null);
           return;
         }
 
         // If order is from another trip, we need to handle reassignment
         if (draggedOrder.sourceTripId) {
-          await tmsAPI.removeOrderFromTrip(draggedOrder.sourceTripId, draggedOrder.id);
+          await tmsAPI.removeOrderFromTrip(
+            draggedOrder.sourceTripId,
+            draggedOrder.id
+          );
         }
 
         // Assign order to new trip
@@ -547,7 +550,7 @@ export default function Trips() {
         fetchTrips();
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to move order');
+      alert(err instanceof Error ? err.message : "Failed to move order");
       // Refresh to restore original state
       fetchTrips();
     }
@@ -561,21 +564,22 @@ export default function Trips() {
       // Prepare the sequence data
       const orderSequences = orders.map((order, index) => ({
         order_id: order.id,
-        sequence_number: index
+        sequence_number: index,
       }));
 
       // Call the reorder API
-      await tmsAPI.reorderTripOrders(tripId, { order_sequences: orderSequences });
+      await tmsAPI.reorderTripOrders(tripId, {
+        order_sequences: orderSequences,
+      });
 
       // Refresh trips
       fetchTrips();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to reorder orders');
+      alert(err instanceof Error ? err.message : "Failed to reorder orders");
       fetchTrips(); // Refresh to restore original order
     }
   };
 
-  
   // Split order logic (same as original)
   const handleSplitOrder = (order: any) => {
     if (!selectedTripForOrders) return;
@@ -813,21 +817,6 @@ export default function Trips() {
                 Create New Trip
               </Button>
             </div>
-        <>
-        {/* Page Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-black">Logistics Manager</h1>
-            <p className="text-gray-500 mt-2">Create trip plans and manage truck/driver assignments</p>
-          </div>
-          <Button
-            onClick={() => setShowCreateTrip(true)}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
-          >
-            <Plus className="w-4 h-4" />
-            Create New Trip
-          </Button>
-        </div>
 
             {/* Status Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -1124,19 +1113,32 @@ export default function Trips() {
                         activeTrips.map((trip) => (
                           <div
                             key={trip.id}
-                            className={`border border-gray-200 rounded-lg overflow-hidden ${
+                            className={`border border-gray-200 rounded-lg overflow-hidden transition-all ${
                               isTripLocked(trip.status)
                                 ? "bg-gray-50"
                                 : "bg-white"
+                            } ${
+                              dragOverTrip === trip.id
+                                ? "ring-2 ring-blue-400 bg-blue-50"
+                                : ""
                             }`}
+                            onDragOver={(e) => handleDragOver(e, trip.id)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, trip.id)}
                           >
                             {/* Trip Header */}
                             <div className="p-4 border-b border-gray-200">
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-4">
-                                  <h3 className="font-bold text-lg text-gray-900">
-                                    {trip.id}
-                                  </h3>
+                                  <div>
+                                    <h3 className="font-bold text-lg text-gray-900">
+                                      {trip.id}
+                                    </h3>
+                                    <p className="text-xs text-gray-500">
+                                      Created:{" "}
+                                      {formatUKDateTime(trip.createdAt)}
+                                    </p>
+                                  </div>
                                   <Badge
                                     variant={getStatusVariant(trip.status)}
                                     className="mt-1"
@@ -1155,9 +1157,6 @@ export default function Trips() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm text-gray-500">
-                                    {trip.date}
-                                  </span>
                                   {getNextStatusOptions(trip.status).length >
                                     0 && (
                                     <div className="flex gap-1">
@@ -1166,39 +1165,38 @@ export default function Trips() {
                                           <Button
                                             key={option.value}
                                             size="sm"
-                                            variant="outline"
                                             onClick={() =>
                                               handleStatusChange(
                                                 trip.id,
                                                 option.value
                                               )
                                             }
-                                            className={`text-xs ${
+                                            className={`text-xs text-white border-transparent hover:opacity-90 ${
                                               option.color === "red"
-                                                ? "text-red-600 border-red-300 hover:bg-red-50"
+                                                ? "bg-red-600 hover:bg-red-700"
                                                 : option.color === "green"
-                                                ? "text-green-600 border-green-300 hover:bg-green-50"
+                                                ? "bg-green-600 hover:bg-green-700"
                                                 : option.color === "blue"
-                                                ? "text-blue-600 border-blue-300 hover:bg-blue-50"
+                                                ? "bg-blue-600 hover:bg-blue-700"
                                                 : option.color === "yellow"
-                                                ? "text-yellow-600 border-yellow-300 hover:bg-yellow-50"
-                                                : "text-gray-600 border-gray-300 hover:bg-gray-50"
+                                                ? "bg-yellow-600 hover:bg-yellow-700"
+                                                : "bg-gray-600 hover:bg-gray-700"
                                             }`}
                                           >
                                             {option.color === "red" && (
-                                              <XCircle className="w-3 h-3 mr-1" />
+                                              <XCircle className="w-3 h-3 mr-1 text-white" />
                                             )}
                                             {option.color === "green" && (
-                                              <CheckCircle className="w-3 h-3 mr-1" />
+                                              <CheckCircle className="w-3 h-3 mr-1 text-white" />
                                             )}
                                             {option.color === "blue" && (
-                                              <Play className="w-3 h-3 mr-1" />
+                                              <Play className="w-3 h-3 mr-1 text-white" />
                                             )}
                                             {option.color === "yellow" && (
-                                              <Package className="w-3 h-3 mr-1" />
+                                              <Package className="w-3 h-3 mr-1 text-white" />
                                             )}
                                             {option.color === "gray" && (
-                                              <RotateCcw className="w-3 h-3 mr-1" />
+                                              <RotateCcw className="w-3 h-3 mr-1 text-white" />
                                             )}
                                             {option.label}
                                           </Button>
@@ -1208,110 +1206,6 @@ export default function Trips() {
                                   )}
                                 </div>
                               </div>
-          {/* Trips Tab */}
-          <TabsContent value="trips">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-black">All Trips</CardTitle>
-                  {statusFilter && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">
-                        Filter: <span className="font-medium text-blue-600">{statusFilter.replace('-', ' ').toUpperCase()}</span>
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setStatusFilter(null)}
-                        className="text-gray-500 hover:text-gray-700"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {activeTrips.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        {statusFilter ? `No ${statusFilter.replace('-', ' ')} trips` : 'No trips available'}
-                      </h3>
-                      <p className="text-gray-500">
-                        {statusFilter
-                          ? `There are no trips with ${statusFilter.replace('-', ' ')} status.`
-                          : 'Create your first trip to get started.'
-                        }
-                      </p>
-                      {statusFilter && (
-                        <Button
-                          onClick={() => setStatusFilter(null)}
-                          variant="outline"
-                          className="mt-4"
-                        >
-                          Clear Filter
-                        </Button>
-                      )}
-                    </div>
-                  ) : (
-                    activeTrips.map((trip) => (
-                    <div
-                      key={trip.id}
-                      className={`border border-gray-200 rounded-lg overflow-hidden transition-all ${
-                        isTripLocked(trip.status) ? 'bg-gray-50' : 'bg-white'
-                      } ${dragOverTrip === trip.id ? 'ring-2 ring-blue-400 bg-blue-50' : ''}`}
-                      onDragOver={(e) => handleDragOver(e, trip.id)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, trip.id)}
-                    >
-                      {/* Trip Header */}
-                      <div className="p-4 border-b border-gray-200">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-4">
-                            <div>
-                              <h3 className="font-bold text-lg text-gray-900">{trip.id}</h3>
-                              <p className="text-xs text-gray-500">Created: {formatUKDateTime(trip.createdAt)}</p>
-                            </div>
-                            <Badge variant={getStatusVariant(trip.status)} className="mt-1">
-                              {trip.status.toUpperCase().replace('-', ' ')}
-                            </Badge>
-                            {isTripLocked(trip.status) && (
-                              <Badge variant="warning" className="text-xs">
-                                LOCKED
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-
-                            {getNextStatusOptions(trip.status).length > 0 && (
-                              <div className="flex gap-1">
-                                {getNextStatusOptions(trip.status).map((option) => (
-                                  <Button
-                                    key={option.value}
-                                    size="sm"
-                                    onClick={() => handleStatusChange(trip.id, option.value)}
-                                    className={`text-xs text-white border-transparent hover:opacity-90 ${
-                                      option.color === 'red' ? 'bg-red-600 hover:bg-red-700' :
-                                      option.color === 'green' ? 'bg-green-600 hover:bg-green-700' :
-                                      option.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
-                                      option.color === 'yellow' ? 'bg-yellow-600 hover:bg-yellow-700' :
-                                      'bg-gray-600 hover:bg-gray-700'
-                                    }`}
-                                  >
-                                    {option.color === 'red' && <XCircle className="w-3 h-3 mr-1 text-white" />}
-                                    {option.color === 'green' && <CheckCircle className="w-3 h-3 mr-1 text-white" />}
-                                    {option.color === 'blue' && <Play className="w-3 h-3 mr-1 text-white" />}
-                                    {option.color === 'yellow' && <Package className="w-3 h-3 mr-1 text-white" />}
-                                    {option.color === 'gray' && <RotateCcw className="w-3 h-3 mr-1 text-white" />}
-                                    {option.label}
-                                  </Button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
 
                               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                                 <div>
@@ -1451,30 +1345,119 @@ export default function Trips() {
                                   <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                                     <Package className="w-4 h-4" />
                                     Orders ({trip.orders.length})
+                                    {trip.orders.length > 3 && (
+                                      <span className="text-sm text-gray-500 font-normal">
+                                        (Showing{" "}
+                                        {expandedTrips.has(trip.id)
+                                          ? "all"
+                                          : "first 3"}
+                                        )
+                                      </span>
+                                    )}
                                   </h4>
-                                  {trip.status === "planning" && (
-                                    <Button
-                                      size="sm"
-                                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                                      onClick={() => handleAddOrderClick(trip)}
-                                    >
-                                      <Plus className="w-4 h-4 mr-1" />
-                                      Add Order
-                                    </Button>
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    {trip.status === "planning" && (
+                                      <Button
+                                        size="sm"
+                                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                                        onClick={() =>
+                                          handleAddOrderClick(trip)
+                                        }
+                                      >
+                                        <Plus className="w-4 h-4 mr-1" />
+                                        Add Order
+                                      </Button>
+                                    )}
+                                    {trip.orders.length > 3 && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          toggleTripExpansion(trip.id)
+                                        }
+                                        className="text-gray-700"
+                                      >
+                                        {expandedTrips.has(trip.id) ? (
+                                          <ChevronUp className="w-4 h-4" />
+                                        ) : (
+                                          <ChevronDown className="w-4 h-4" />
+                                        )}
+                                        {expandedTrips.has(trip.id)
+                                          ? "Show Less"
+                                          : "Show More"}
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                                 {trip.orders.length > 0 && (
-                                  <div className="space-y-2">
-                                    {trip.orders.map((order) => (
+                                  <div
+                                    className="space-y-2"
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleDragOver(e, trip.id, 0);
+                                    }}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleDrop(e, trip.id, 0);
+                                    }}
+                                  >
+                                    {(expandedTrips.has(trip.id)
+                                      ? trip.orders
+                                      : trip.orders.slice(0, 3)
+                                    ).map((order, index) => (
                                       <div
                                         key={order.id}
-                                        className={`flex items-center justify-between p-3 rounded-lg ${
-                                          isTripLocked(trip.status)
-                                            ? "bg-gray-100 border border-gray-300"
-                                            : "bg-gray-50 border border-gray-200"
+                                        draggable={trip.status === "planning"}
+                                        onDragStart={(e) =>
+                                          handleDragStart(
+                                            e,
+                                            order,
+                                            trip.id,
+                                            index
+                                          )
+                                        }
+                                        onDragOver={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          handleDragOver(e, trip.id, index);
+                                        }}
+                                        onDrop={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          handleDrop(e, trip.id, index);
+                                        }}
+                                        className={`flex items-center justify-between p-3 rounded-lg transition-all ${
+                                          trip.status === "planning"
+                                            ? "cursor-move"
+                                            : ""
+                                        } ${
+                                          draggedOrder?.id === order.id
+                                            ? "opacity-50"
+                                            : ""
+                                        } ${
+                                          !isTripLocked(trip.status)
+                                            ? "bg-gray-50 border border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+                                            : "bg-gray-100 border border-gray-300 cursor-not-allowed"
+                                        } ${
+                                          dragOverTrip === trip.id &&
+                                          draggedOrder?.id !== order.id &&
+                                          draggedOrder?.sourceTripId === trip.id
+                                            ? "border-t-4 border-t-blue-500"
+                                            : ""
                                         }`}
                                       >
                                         <div className="flex items-center gap-3">
+                                          {trip.status === "planning" && (
+                                            <GripVertical className="w-4 h-4 text-gray-400" />
+                                          )}
+                                          <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                                            #
+                                            {order.sequence_number !== undefined
+                                              ? order.sequence_number + 1
+                                              : index + 1}
+                                          </span>
                                           <span className="font-medium text-gray-900">
                                             {order.id}
                                           </span>
@@ -1489,6 +1472,19 @@ export default function Trips() {
                                           >
                                             {order.priority.toUpperCase()}
                                           </Badge>
+                                          {trip.status === "on-route" &&
+                                            order.delivery_status && (
+                                              <Badge
+                                                variant={getDeliveryStatusVariant(
+                                                  order.delivery_status
+                                                )}
+                                                className="text-xs"
+                                              >
+                                                {order.delivery_status
+                                                  .replace("-", " ")
+                                                  .toUpperCase()}
+                                              </Badge>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-4 text-sm">
                                           <span className="text-gray-900">
@@ -1498,9 +1494,43 @@ export default function Trips() {
                                             {order.weight}kg
                                           </span>
                                           {!isTripLocked(trip.status) && (
-                                            <Button size="sm" variant="outline">
-                                              Edit
-                                            </Button>
+                                            <div className="flex gap-1">
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                              >
+                                                Edit
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={async (e) => {
+                                                  e.stopPropagation();
+                                                  // Handle remove from trip
+                                                  if (
+                                                    confirm(
+                                                      `Remove order ${order.id} from this trip?`
+                                                    )
+                                                  ) {
+                                                    try {
+                                                      await tmsAPI.removeOrderFromTrip(
+                                                        trip.id,
+                                                        order.id
+                                                      );
+                                                      fetchTrips();
+                                                    } catch (err) {
+                                                      alert(
+                                                        err instanceof Error
+                                                          ? err.message
+                                                          : "Failed to remove order"
+                                                      );
+                                                    }
+                                                  }
+                                                }}
+                                              >
+                                                Remove
+                                              </Button>
+                                            </div>
                                           )}
                                         </div>
                                       </div>
@@ -1525,162 +1555,19 @@ export default function Trips() {
                                   </div>
                                 )}
                               </div>
-                        {/* Orders Section */}
-                        <div className="mt-6 pt-4 border-t border-gray-200">
-                          <div className="flex items-center justify-between mb-3">
-                            <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                              <Package className="w-4 h-4" />
-                              Orders ({trip.orders.length})
-                              {trip.orders.length > 3 && (
-                                <span className="text-sm text-gray-500 font-normal">
-                                  (Showing {expandedTrips.has(trip.id) ? 'all' : 'first 3'})
-                                </span>
-                              )}
-                            </h4>
-                            <div className="flex items-center gap-2">
-                              {trip.status === 'planning' && (
-                                <Button
-                                  size="sm"
-                                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                                  onClick={() => handleAddOrderClick(trip)}
-                                >
-                                  <Plus className="w-4 h-4 mr-1" />
-                                  Add Order
-                                </Button>
-                              )}
-                              {trip.orders.length > 3 && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => toggleTripExpansion(trip.id)}
-                                  className="text-gray-700"
-                                >
-                                  {expandedTrips.has(trip.id) ? (
-                                    <ChevronUp className="w-4 h-4" />
-                                  ) : (
-                                    <ChevronDown className="w-4 h-4" />
-                                  )}
-                                  {expandedTrips.has(trip.id) ? 'Show Less' : 'Show More'}
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          {trip.orders.length > 0 && (
-                            <div
-                              className="space-y-2"
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleDragOver(e, trip.id, 0);
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleDrop(e, trip.id, 0);
-                              }}
-                            >
-                              {(expandedTrips.has(trip.id) ? trip.orders : trip.orders.slice(0, 3)).map((order, index) => (
-                                <div
-                                  key={order.id}
-                                  draggable={trip.status === 'planning'}
-                                  onDragStart={(e) => handleDragStart(e, order, trip.id, index)}
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleDragOver(e, trip.id, index);
-                                  }}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleDrop(e, trip.id, index);
-                                  }}
-                                  className={`flex items-center justify-between p-3 rounded-lg transition-all ${
-                                    trip.status === 'planning' ? 'cursor-move' : ''
-                                  } ${draggedOrder?.id === order.id ? 'opacity-50' : ''} ${
-                                    !isTripLocked(trip.status)
-                                      ? 'bg-gray-50 border border-gray-200 hover:border-blue-300 hover:bg-blue-50'
-                                      : 'bg-gray-100 border border-gray-300 cursor-not-allowed'
-                                  } ${
-                                    dragOverTrip === trip.id && draggedOrder?.id !== order.id && draggedOrder?.sourceTripId === trip.id
-                                      ? 'border-t-4 border-t-blue-500'
-                                      : ''
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    {trip.status === 'planning' && (
-                                      <GripVertical className="w-4 h-4 text-gray-400" />
-                                    )}
-                                    <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                                      #{order.sequence_number !== undefined ? order.sequence_number + 1 : index + 1}
-                                    </span>
-                                    <span className="font-medium text-gray-900">{order.id}</span>
-                                    <span className="text-gray-900">{order.customer}</span>
-                                    <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
-                                      {order.priority.toUpperCase()}
-                                    </Badge>
-                                    {trip.status === 'on-route' && order.delivery_status && (
-                                      <Badge
-                                        variant={getDeliveryStatusVariant(order.delivery_status)}
-                                        className="text-xs"
-                                      >
-                                        {order.delivery_status.replace('-', ' ').toUpperCase()}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-4 text-sm">
-                                    <span className="text-gray-900">{order.items} items</span>
-                                    <span className="font-medium text-gray-900">{order.weight}kg</span>
-                                    {!isTripLocked(trip.status) && (
-                                      <div className="flex gap-1">
-                                        <Button size="sm" variant="outline">Edit</Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            // Handle remove from trip
-                                            if (confirm(`Remove order ${order.id} from this trip?`)) {
-                                              try {
-                                                await tmsAPI.removeOrderFromTrip(trip.id, order.id);
-                                                fetchTrips();
-                                              } catch (err) {
-                                                alert(err instanceof Error ? err.message : 'Failed to remove order');
-                                              }
-                                            }
-                                          }}
-                                        >
-                                          Remove
-                                        </Button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {trip.orders.length === 0 && (
-                            <div className="text-center py-8 text-gray-500">
-                              <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                              <p>No orders assigned to this trip yet</p>
-                              {trip.status === 'planning' ? (
-                                <p className="text-sm mt-1">Click &quot;Add Order&quot; to assign orders to this trip</p>
-                              ) : (
-                                <p className="text-sm mt-1 text-yellow-600">
-                                  Orders cannot be added to trips that are {trip.status.replace('-', ' ')}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
 
-                        {/* Drag Instructions */}
-                        {trip.status === 'planning' && trip.orders.length > 0 && (
-                          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <p className="text-sm text-blue-800">
-                              <strong>Drag & Drop:</strong> You can drag orders to reorder them within this trip or move them to another trip in planning status.
-                            </p>
-                          </div>
-                        )}
+                              {/* Drag Instructions */}
+                              {trip.status === "planning" &&
+                                trip.orders.length > 0 && (
+                                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-sm text-blue-800">
+                                      <strong>Drag & Drop:</strong> You can drag
+                                      orders to reorder them within this trip or
+                                      move them to another trip in planning
+                                      status.
+                                    </p>
+                                  </div>
+                                )}
 
                               {/* Lock Status Message */}
                               {isTripLocked(trip.status) && (
@@ -1715,6 +1602,8 @@ export default function Trips() {
                         <div
                           key={order.id}
                           className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, order)}
                         >
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-4">
@@ -1741,36 +1630,6 @@ export default function Trips() {
                               </p>
                             </div>
                           </div>
-          {/* Approved Orders Tab */}
-          <TabsContent value="orders">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-black">Approved Orders ({getApprovedOrders().length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {getApprovedOrders().map((order) => (
-                    <div
-                      key={order.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, order)}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-4">
-                          <h3 className="font-semibold text-gray-900">{order.id}</h3>
-                          <Badge variant={getPriorityVariant(order.priority)} className="mt-1">
-                            {order.priority}
-                          </Badge>
-                          <Badge variant="success">
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                          </Badge>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-sm text-gray-500">{order.date}</span>
-                          <p className="text-lg font-semibold text-gray-900">₹{order.total.toLocaleString()}</p>
-                        </div>
-                      </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>
@@ -1884,7 +1743,7 @@ export default function Trips() {
               </TabsContent>
             </Tabs>
 
-            {/* Create Trip Modal */}
+            {/* Create Trip Modal - Same as original */}
             {showCreateTrip && (
               <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
                 <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1903,23 +1762,6 @@ export default function Trips() {
                       </Button>
                     </div>
                   </div>
-        {/* Create Trip Modal - Same as original */}
-        {showCreateTrip && (
-          <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-black">Create New Trip</h2>
-                  <Button
-                    onClick={handleCloseModal}
-                    variant="outline"
-                    size="sm"
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
 
                   {/* Progress Steps */}
                   <div className="px-6 py-4 border-b border-gray-200">
@@ -1997,7 +1839,7 @@ export default function Trips() {
                     </div>
                   </div>
 
-                  {/* Step Content */}
+                  {/* Step Content - Same as original */}
                   <div className="px-6 py-6">
                     {/* Step 1: Select Branch */}
                     {currentStep === 1 && (
@@ -2005,11 +1847,26 @@ export default function Trips() {
                         <h3 className="text-lg font-semibold text-black mb-4">
                           Select Branch
                         </h3>
-                        <p className="text-gray-600 mb-6">
+                        <p className="text-gray-600 mb-4">
                           Choose the branch for this trip
                         </p>
-                        <div className="space-y-3">
-                          {branches.map((branch) => (
+
+                        {/* Search Input */}
+                        <div className="relative mb-6">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                          <input
+                            type="text"
+                            placeholder="Search branches by name or location..."
+                            value={branchSearchTerm}
+                            onChange={(e) =>
+                              setBranchSearchTerm(e.target.value)
+                            }
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                          />
+                        </div>
+
+                        <div className="space-y-3 max-h-64 overflow-y-auto">
+                          {getFilteredBranches().map((branch) => (
                             <div
                               key={branch.id}
                               onClick={() => handleBranchSelect(branch.name)}
@@ -2048,58 +1905,6 @@ export default function Trips() {
                         </div>
                       </div>
                     )}
-              {/* Step Content - Same as original */}
-              <div className="px-6 py-6">
-                {/* Step 1: Select Branch */}
-                {currentStep === 1 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-black mb-4">Select Branch</h3>
-                    <p className="text-gray-600 mb-4">Choose the branch for this trip</p>
-
-                    {/* Search Input */}
-                    <div className="relative mb-6">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      <input
-                        type="text"
-                        placeholder="Search branches by name or location..."
-                        value={branchSearchTerm}
-                        onChange={(e) => setBranchSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
-                      />
-                    </div>
-
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                      {getFilteredBranches().map((branch) => (
-                        <div
-                          key={branch.id}
-                          onClick={() => handleBranchSelect(branch.name)}
-                          className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                            selectedBranch === branch.name
-                              ? 'border-green-500 bg-green-50'
-                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="font-medium text-black">{branch.name}</h4>
-                              <p className="text-sm text-gray-600">{branch.location}</p>
-                              <p className="text-sm text-gray-600">Manager: {branch.manager}</p>
-                            </div>
-                            <div className={`w-5 h-5 rounded-full border-2 ${
-                              selectedBranch === branch.name
-                                ? 'border-green-500 bg-green-500'
-                                : 'border-gray-300'
-                            }`}>
-                              {selectedBranch === branch.name && (
-                                <div className="w-full h-full rounded-full bg-white"></div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                     {/* Step 2: Select Truck */}
                     {currentStep === 2 && (
@@ -2122,13 +1927,26 @@ export default function Trips() {
                                 Available Trucks:
                               </p>
                               <p className="text-sm text-gray-500">
-                                {getTrucksAvailable().length} trucks available
+                                {getFilteredTrucks().length} trucks found
                               </p>
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-3">
-                          {getTrucksAvailable().map((truck) => (
+
+                        {/* Search Input */}
+                        <div className="relative mb-6">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                          <input
+                            type="text"
+                            placeholder="Search trucks by plate, model, or capacity..."
+                            value={truckSearchTerm}
+                            onChange={(e) => setTruckSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                          />
+                        </div>
+
+                        <div className="space-y-3 max-h-64 overflow-y-auto">
+                          {getFilteredTrucks().map((truck) => (
                             <div
                               key={truck.id}
                               onClick={() => setSelectedTruck(truck.id)}
@@ -2172,72 +1990,6 @@ export default function Trips() {
                         </div>
                       </div>
                     )}
-                {/* Step 2: Select Truck */}
-                {currentStep === 2 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-black mb-4">Select Truck</h3>
-                    <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-600">Selected Branch:</p>
-                          <p className="font-medium text-black">{selectedBranch || 'Not selected'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Available Trucks:</p>
-                          <p className="text-sm text-gray-500">{getFilteredTrucks().length} trucks found</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Search Input */}
-                    <div className="relative mb-6">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      <input
-                        type="text"
-                        placeholder="Search trucks by plate, model, or capacity..."
-                        value={truckSearchTerm}
-                        onChange={(e) => setTruckSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
-                      />
-                    </div>
-
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                      {getFilteredTrucks().map((truck) => (
-                        <div
-                          key={truck.id}
-                          onClick={() => setSelectedTruck(truck.id)}
-                          className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                            selectedTruck === truck.id
-                              ? 'border-green-500 bg-green-50'
-                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className="p-2 bg-gray-100 rounded-lg">
-                                <Truck className="w-6 h-6 text-gray-600" />
-                              </div>
-                              <div>
-                                <h4 className="font-medium text-black">{truck.plate}</h4>
-                                <p className="text-sm text-gray-600">{truck.model}</p>
-                                <p className="text-sm text-gray-600">Capacity: {truck.capacity}kg</p>
-                              </div>
-                            </div>
-                            <div className={`w-5 h-5 rounded-full border-2 ${
-                              selectedTruck === truck.id
-                                ? 'border-green-500 bg-green-500'
-                                : 'border-gray-300'
-                            }`}>
-                              {selectedTruck === truck.id && (
-                                <div className="w-full h-full rounded-full bg-white"></div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                     {/* Step 3: Select Driver */}
                     {currentStep === 3 && (
@@ -2283,46 +2035,27 @@ export default function Trips() {
                           <div className="text-sm text-gray-600 border-t pt-2">
                             Available Drivers:{" "}
                             <span className="font-medium text-black">
-                              {getDriversAvailable().length} drivers available
+                              {getFilteredDrivers().length} drivers found
                             </span>
                           </div>
                         </div>
-                    {/* Previous Selections Summary */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
-                      <h4 className="font-medium text-black mb-2">Trip Configuration:</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-gray-500" />
-                          <span className="text-gray-600">Selected Branch:</span>
-                          <span className="font-medium text-black">{selectedBranch}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Truck className="h-4 w-4 text-gray-500" />
-                          <span className="text-gray-600">Selected Truck:</span>
-                          <span className="font-medium text-black">
-                            {selectedTruck ? availableTrucks.find(t => t.id === selectedTruck)?.plate : 'Not selected'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-sm text-gray-600 border-t pt-2">
-                        Available Drivers: <span className="font-medium text-black">{getFilteredDrivers().length} drivers found</span>
-                      </div>
-                    </div>
 
-                    {/* Search Input */}
-                    <div className="relative mb-6">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      <input
-                        type="text"
-                        placeholder="Search drivers by name, phone, or license..."
-                        value={driverSearchTerm}
-                        onChange={(e) => setDriverSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
-                      />
-                    </div>
+                        {/* Search Input */}
+                        <div className="relative mb-6">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                          <input
+                            type="text"
+                            placeholder="Search drivers by name, phone, or license..."
+                            value={driverSearchTerm}
+                            onChange={(e) =>
+                              setDriverSearchTerm(e.target.value)
+                            }
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                          />
+                        </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-                          {getDriversAvailable().map((driver) => (
+                          {getFilteredDrivers().map((driver) => (
                             <div
                               key={driver.id}
                               onClick={() => setSelectedDriver(driver)}
@@ -2371,52 +2104,6 @@ export default function Trips() {
                       </div>
                     )}
                   </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-                      {getFilteredDrivers().map((driver) => (
-                        <div
-                          key={driver.id}
-                          onClick={() => setSelectedDriver(driver)}
-                          className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
-                            selectedDriver?.id === driver.id
-                              ? 'border-blue-500 bg-blue-50 shadow-sm'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-black">{driver.name}</span>
-                            {selectedDriver?.id === driver.id && (
-                              <CheckCircle className="h-5 w-5 text-blue-500" />
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-600 space-y-1">
-                            <div className="flex items-center gap-1">
-                              <Phone className="h-3 w-3" />
-                              {driver.phone}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Award className="h-3 w-3" />
-                              {driver.experience}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <CreditCard className="h-3 w-3" />
-                              {driver.license}
-                            </div>
-                          </div>
-                          <div className="mt-2">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              driver.status === 'active'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {driver.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
 
                   {/* Action Buttons */}
                   <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
@@ -2455,7 +2142,7 @@ export default function Trips() {
               </div>
             )}
 
-            {/* Order Assignment Modal */}
+            {/* Order Assignment Modal - Same as original */}
             {showOrderModal && selectedTripForOrders && (
               <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
                 <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -2490,30 +2177,6 @@ export default function Trips() {
                       </Button>
                     </div>
                   </div>
-        {/* Order Assignment Modal - Same as original */}
-        {showOrderModal && selectedTripForOrders && (
-          <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold text-black">Add Orders to Trip</h2>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Trip: <span className="font-medium">{selectedTripForOrders.id}</span> •
-                      Truck: <span className="font-medium">{selectedTripForOrders.truck?.plate}</span> •
-                      Capacity: <span className="font-medium">{selectedTripForOrders.capacityTotal}kg</span>
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => setShowOrderModal(false)}
-                    variant="outline"
-                    size="sm"
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
 
                   <div className="px-6 py-6">
                     {/* Capacity Summary */}
@@ -2736,7 +2399,7 @@ export default function Trips() {
               </div>
             )}
 
-            {/* Split Order Confirmation Modal */}
+            {/* Split Order Confirmation Modal - Same as original */}
             {showSplitOptions && splitOrder && (
               <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-auto">
@@ -2760,28 +2423,6 @@ export default function Trips() {
                       </Button>
                     </div>
                   </div>
-        {/* Split Order Confirmation Modal - Same as original */}
-        {showSplitOptions && splitOrder && (
-          <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-auto">
-              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 rounded-t-xl">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold text-black">Split Order</h2>
-                  <Button
-                    onClick={() => {
-                      setShowSplitOptions(false);
-                      setSplitOrder(null);
-                      setSplitItemsCount(0);
-                      setSplitWeight(0);
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
 
                   <div className="px-6 py-6">
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
