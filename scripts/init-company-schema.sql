@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS product_categories (
 CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
+    branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,  -- Added branch reference
     category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
     code VARCHAR(50) UNIQUE NOT NULL,
     name VARCHAR(100) NOT NULL,
@@ -169,6 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_code ON products(code);
 CREATE INDEX IF NOT EXISTS idx_products_stock ON products(current_stock, min_stock_level);
+CREATE INDEX idx_products_branch_id ON products(branch_id);
 CREATE INDEX IF NOT EXISTS idx_product_categories_tenant ON product_categories(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_product_categories_parent ON product_categories(parent_id);
 CREATE INDEX IF NOT EXISTS idx_service_zones_tenant ON service_zones(tenant_id);

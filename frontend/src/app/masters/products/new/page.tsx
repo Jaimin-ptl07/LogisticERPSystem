@@ -16,11 +16,13 @@ import {
   Package,
   Tag,
   DollarSign,
-  Box
+  Box,
+  Building
 } from 'lucide-react';
 import {
   useCreateProductMutation,
-  useGetProductCategoriesQuery
+  useGetProductCategoriesQuery,
+  useGetBranchesQuery
 } from '@/services/api/companyApi';
 import { ProductCreate, ProductCategory } from '@/services/api/companyApi';
 import { toast } from 'react-hot-toast';
@@ -29,9 +31,11 @@ export default function NewProductPage() {
   const router = useRouter();
   const { data: categoriesData } = useGetProductCategoriesQuery({});
   const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData?.items || [];
+  const { data: branches } = useGetBranchesQuery({});
   const [createProduct, { isLoading: isCreating }] = useCreateProductMutation();
 
   const [formData, setFormData] = useState<ProductCreate>({
+    branch_id: '',
     category_id: undefined,
     code: '',
     name: '',
@@ -102,6 +106,7 @@ export default function NewProductPage() {
         current_stock: formData.current_stock,
         is_active: formData.is_active,
         // Only include optional fields if they have meaningful values
+        ...(formData.branch_id && { branch_id: formData.branch_id }),
         ...(formData.category_id && { category_id: formData.category_id }),
         ...(formData.description && { description: formData.description }),
         ...(formData.special_price && formData.special_price > 0 && { special_price: formData.special_price }),
@@ -245,9 +250,10 @@ export default function NewProductPage() {
                   )}
                 </div>
               </div>
-              <div>
-                <Label htmlFor="category_id">Category</Label>
-                <select
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="category_id">Category</Label>
+                  <select
                   id="category_id"
                   value={formData.category_id}
                   onChange={(e) => handleInputChange('category_id', e.target.value)}
@@ -258,6 +264,26 @@ export default function NewProductPage() {
                     <option key={category.id} value={category.id}>{category.name}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <Label htmlFor="branch_id">Assigned Branch</Label>
+                <select
+                  id="branch_id"
+                  value={formData.branch_id}
+                  onChange={(e) => handleInputChange('branch_id', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Branch</option>
+                  {branches?.items?.map((branch: any) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name} ({branch.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Optional: Assign this product to a branch
+                </p>
+              </div>
               </div>
               <div>
                 <Label htmlFor="description">Description</Label>

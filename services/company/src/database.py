@@ -206,6 +206,7 @@ class Product(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     category_id = Column(UUID(as_uuid=True), ForeignKey("product_categories.id"))
     code = Column(String(50), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
@@ -226,6 +227,7 @@ class Product(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
+    branch = relationship("Branch")
     category = relationship("ProductCategory")
 
 
