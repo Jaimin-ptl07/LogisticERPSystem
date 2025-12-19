@@ -35,7 +35,8 @@ export default function NewProductPage() {
   const [createProduct, { isLoading: isCreating }] = useCreateProductMutation();
 
   const [formData, setFormData] = useState<ProductCreate>({
-    branch_id: '',
+    branch_ids: [],
+    available_for_all_branches: true,
     category_id: undefined,
     code: '',
     name: '',
@@ -55,6 +56,8 @@ export default function NewProductPage() {
   } as ProductCreate);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isAvailableForAllBranches, setIsAvailableForAllBranches] = useState(true);
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -105,8 +108,9 @@ export default function NewProductPage() {
         min_stock_level: formData.min_stock_level,
         current_stock: formData.current_stock,
         is_active: formData.is_active,
+        available_for_all_branches: isAvailableForAllBranches,
         // Only include optional fields if they have meaningful values
-        ...(formData.branch_id && { branch_id: formData.branch_id }),
+        ...(!isAvailableForAllBranches && selectedBranches.length > 0 && { branch_ids: selectedBranches }),
         ...(formData.category_id && { category_id: formData.category_id }),
         ...(formData.description && { description: formData.description }),
         ...(formData.special_price && formData.special_price > 0 && { special_price: formData.special_price }),
@@ -250,10 +254,9 @@ export default function NewProductPage() {
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="category_id">Category</Label>
-                  <select
+              <div>
+                <Label htmlFor="category_id">Category</Label>
+                <select
                   id="category_id"
                   value={formData.category_id}
                   onChange={(e) => handleInputChange('category_id', e.target.value)}
@@ -266,24 +269,56 @@ export default function NewProductPage() {
                 </select>
               </div>
               <div>
-                <Label htmlFor="branch_id">Assigned Branch</Label>
-                <select
-                  id="branch_id"
-                  value={formData.branch_id}
-                  onChange={(e) => handleInputChange('branch_id', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Branch</option>
-                  {branches?.items?.map((branch: any) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name} ({branch.code})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Optional: Assign this product to a branch
-                </p>
-              </div>
+                <Label className="text-sm font-medium text-gray-700 mb-3 block">Branch Availability</Label>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="available_for_all_branches"
+                      checked={isAvailableForAllBranches}
+                      onChange={(e) => setIsAvailableForAllBranches(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <Label htmlFor="available_for_all_branches" className="text-sm font-medium text-gray-900">
+                      Available for all branches
+                    </Label>
+                  </div>
+
+                  {!isAvailableForAllBranches && (
+                    <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                      <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                        Select specific branches:
+                      </Label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {branches?.items?.map((branch: any) => (
+                          <div key={branch.id} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`branch_${branch.id}`}
+                              checked={selectedBranches.includes(branch.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBranches([...selectedBranches, branch.id]);
+                                } else {
+                                  setSelectedBranches(selectedBranches.filter(id => id !== branch.id));
+                                }
+                              }}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <Label htmlFor={`branch_${branch.id}`} className="text-sm text-gray-900">
+                              {branch.name} ({branch.code})
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedBranches.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-2">
+                          Please select at least one branch
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <Label htmlFor="description">Description</Label>

@@ -206,7 +206,6 @@ class Product(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
-    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     category_id = Column(UUID(as_uuid=True), ForeignKey("product_categories.id"))
     code = Column(String(50), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
@@ -223,12 +222,28 @@ class Product(Base):
     max_stock_level = Column(Integer)
     current_stock = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
+    available_for_all_branches = Column(Boolean, default=True)  # New field
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    branch = relationship("Branch")
+    branches = relationship("ProductBranch", back_populates="product")
     category = relationship("ProductCategory")
+
+
+class ProductBranch(Base):
+    """Junction table for product-branch relationships"""
+    __tablename__ = "product_branches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"))
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="CASCADE"))
+    tenant_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    product = relationship("Product", back_populates="branches")
+    branch = relationship("Branch")
 
 
 class PricingRule(Base):

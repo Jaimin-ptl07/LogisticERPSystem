@@ -202,6 +202,8 @@ class ProductCategory(ProductCategoryInDB):
 class ProductBase(BaseSchema):
     """Base product schema"""
     branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: bool = True
     category_id: Optional[UUID] = None
     code: str = Field(..., min_length=2, max_length=50)
     name: str = Field(..., min_length=2, max_length=100)
@@ -228,6 +230,8 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseSchema):
     """Schema for updating a product"""
     branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: Optional[bool] = None
     category_id: Optional[UUID] = None
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
@@ -255,8 +259,14 @@ class ProductInDB(ProductBase):
 
 class Product(ProductInDB):
     """Schema for product response"""
-    branch: Optional[Branch] = None
+    available_for_all_branches: bool = True
+    branches: Optional[List["ProductBranch"]] = None
     category: Optional[ProductCategory] = None
+
+
+class ProductBranch(BaseSchema):
+    """Schema for product-branch relationship"""
+    branch: Optional[Branch] = None
 
 
 # Pricing Rule schemas

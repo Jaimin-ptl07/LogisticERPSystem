@@ -342,7 +342,12 @@ export default function ProductsPage() {
                           <TableCell>
                             <div className="flex items-center text-sm text-gray-900">
                               <Building className="w-3 h-3 mr-1" />
-                              {product.branch?.name || 'Not assigned'}
+                              {product.available_for_all_branches
+                                ? 'All Branches'
+                                : product.branches && product.branches.length > 0
+                                  ? product.branches.map((pb: any) => pb.branch?.name).join(', ')
+                                  : 'Not assigned'
+                              }
                             </div>
                           </TableCell>
                           <TableCell>
