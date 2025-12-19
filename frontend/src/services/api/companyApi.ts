@@ -1,4 +1,5 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
+import { createApi } from '@reduxjs/toolkit/query/react'
+import { baseQuery } from './baseApi'
 
 // Types
 export interface Branch {
@@ -198,23 +199,10 @@ export interface PricingRuleCreate {
   is_active?: boolean
 }
 
-// API Base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002/api/v1'
-
-// Create API slice
+// Create API slice using base query with auth
 export const companyApi = createApi({
   reducerPath: 'companyApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: API_BASE_URL,
-    prepareHeaders: (headers) => {
-      // TODO: Add auth when auth slice is available
-      // const token = (getState() as RootState).auth?.token
-      // if (token) {
-      //   headers.set('authorization', `Bearer ${token}`)
-      // }
-      return headers
-    },
-  }),
+  baseQuery: baseQuery,
   tagTypes: ['Branch', 'Customer', 'Vehicle', 'Product', 'ProductCategory', 'PricingRule'],
   endpoints: (builder) => ({
     // Branch endpoints
@@ -225,17 +213,17 @@ export const companyApi = createApi({
         params.append('per_page', per_page.toString())
         if (search) params.append('search', search)
         if (is_active !== undefined) params.append('is_active', is_active.toString())
-        return `branches?${params}`
+        return `company/branches?${params}`
       },
       providesTags: ['Branch'],
     }),
     getBranch: builder.query<Branch, string>({
-      query: (id) => `branches/${id}`,
+      query: (id) => `company/branches/${id}`,
       providesTags: ['Branch'],
     }),
     createBranch: builder.mutation<Branch, BranchCreate>({
       query: (branch) => ({
-        url: 'branches',
+        url: 'company/branches',
         method: 'POST',
         body: branch,
       }),
@@ -243,7 +231,7 @@ export const companyApi = createApi({
     }),
     updateBranch: builder.mutation<Branch, { id: string; branch: Partial<BranchCreate> }>({
       query: ({ id, branch }) => ({
-        url: `branches/${id}`,
+        url: `company/branches/${id}`,
         method: 'PUT',
         body: branch,
       }),
@@ -251,13 +239,13 @@ export const companyApi = createApi({
     }),
     deleteBranch: builder.mutation<void, string>({
       query: (id) => ({
-        url: `branches/${id}`,
+        url: `company/branches/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Branch'],
     }),
     getBranchMetrics: builder.query<any, string>({
-      query: (id) => `branches/${id}/metrics`,
+      query: (id) => `company/branches/${id}/metrics`,
       providesTags: ['Branch'],
     }),
 
@@ -271,17 +259,17 @@ export const companyApi = createApi({
         if (business_type) params.append('business_type', business_type)
         if (home_branch_id) params.append('home_branch_id', home_branch_id)
         if (is_active !== undefined) params.append('is_active', is_active.toString())
-        return `customers?${params}`
+        return `company/customers?${params}`
       },
       providesTags: ['Customer'],
     }),
     getCustomer: builder.query<Customer, string>({
-      query: (id) => `customers/${id}`,
+      query: (id) => `company/customers/${id}`,
       providesTags: ['Customer'],
     }),
     createCustomer: builder.mutation<Customer, CustomerCreate>({
       query: (customer) => ({
-        url: 'customers/',
+        url: 'company/customers/',
         method: 'POST',
         body: customer,
       }),
@@ -289,7 +277,7 @@ export const companyApi = createApi({
     }),
     updateCustomer: builder.mutation<Customer, { id: string; customer: Partial<CustomerCreate> }>({
       query: ({ id, customer }) => ({
-        url: `customers/${id}`,
+        url: `company/customers/${id}`,
         method: 'PUT',
         body: customer,
       }),
@@ -297,13 +285,13 @@ export const companyApi = createApi({
     }),
     deleteCustomer: builder.mutation<void, string>({
       query: (id) => ({
-        url: `customers/${id}`,
+        url: `company/customers/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Customer'],
     }),
     getBusinessTypes: builder.query<string[], void>({
-      query: () => 'customers/business-types/',
+      query: () => 'company/customers/business-types/',
       providesTags: ['Customer'],
     }),
 
@@ -318,7 +306,7 @@ export const companyApi = createApi({
         if (status) params.append('status', status)
         if (branch_id) params.append('branch_id', branch_id)
         if (is_active !== undefined) params.append('is_active', is_active.toString())
-        return `vehicles?${params}`
+        return `company/vehicles?${params}`
       },
       providesTags: ['Vehicle'],
     }),
@@ -328,7 +316,7 @@ export const companyApi = createApi({
     }),
     createVehicle: builder.mutation<Vehicle, VehicleCreate>({
       query: (vehicle) => ({
-        url: 'vehicles/',
+        url: 'company/vehicles/',
         method: 'POST',
         body: vehicle,
       }),
@@ -336,7 +324,7 @@ export const companyApi = createApi({
     }),
     updateVehicle: builder.mutation<Vehicle, { id: string; vehicle: Partial<VehicleCreate> }>({
       query: ({ id, vehicle }) => ({
-        url: `vehicles/${id}`,
+        url: `company/vehicles/${id}`,
         method: 'PUT',
         body: vehicle,
       }),
@@ -344,14 +332,14 @@ export const companyApi = createApi({
     }),
     deleteVehicle: builder.mutation<void, string>({
       query: (id) => ({
-        url: `vehicles/${id}`,
+        url: `company/vehicles/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Vehicle'],
     }),
     updateVehicleStatus: builder.mutation<Vehicle, { id: string; status: string }>({
       query: ({ id, status }) => ({
-        url: `vehicles/${id}/status`,
+        url: `company/vehicles/${id}/status`,
         method: 'PUT',
         body: { status },
       }),
@@ -364,16 +352,16 @@ export const companyApi = createApi({
         params.append('per_page', per_page.toString())
         if (vehicle_type) params.append('vehicle_type', vehicle_type)
         if (branch_id) params.append('branch_id', branch_id)
-        return `vehicles/available?${params}`
+        return `company/vehicles/available?${params}`
       },
       providesTags: ['Vehicle'],
     }),
     getVehicleTypes: builder.query<string[], void>({
-      query: () => 'vehicles/vehicle-types',
+      query: () => 'company/vehicles/vehicle-types',
       providesTags: ['Vehicle'],
     }),
     getVehicleStatusOptions: builder.query<string[], void>({
-      query: () => 'vehicles/status-options',
+      query: () => 'company/vehicles/status-options',
       providesTags: ['Vehicle'],
     }),
 
@@ -387,12 +375,12 @@ export const companyApi = createApi({
         if (parent_id) params.append('parent_id', parent_id)
         if (is_active !== undefined) params.append('is_active', is_active.toString())
         params.append('include_children', include_children.toString())
-        return `product-categories?${params}`
+        return `company/product-categories?${params}`
       },
       providesTags: ['ProductCategory'],
     }),
     getProductCategoryTree: builder.query<ProductCategory[], void>({
-      query: () => 'product-categories/tree',
+      query: () => 'company/product-categories/tree',
       providesTags: ['ProductCategory'],
     }),
     getProductCategory: builder.query<ProductCategory, string>({
@@ -401,7 +389,7 @@ export const companyApi = createApi({
     }),
     createProductCategory: builder.mutation<ProductCategory, ProductCategoryCreate>({
       query: (category) => ({
-        url: 'product-categories/',
+        url: 'company/product-categories/',
         method: 'POST',
         body: category,
       }),
@@ -409,7 +397,7 @@ export const companyApi = createApi({
     }),
     updateProductCategory: builder.mutation<ProductCategory, { id: string; category: Partial<ProductCategoryCreate> }>({
       query: ({ id, category }) => ({
-        url: `product-categories/${id}`,
+        url: `company/product-categories/${id}`,
         method: 'PUT',
         body: category,
       }),
@@ -417,7 +405,7 @@ export const companyApi = createApi({
     }),
     deleteProductCategory: builder.mutation<void, string>({
       query: (id) => ({
-        url: `product-categories/${id}`,
+        url: `company/product-categories/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['ProductCategory'],
@@ -435,7 +423,7 @@ export const companyApi = createApi({
         if (max_price) params.append('max_price', max_price.toString())
         if (is_active !== undefined) params.append('is_active', is_active.toString())
         if (low_stock) params.append('low_stock', 'true')
-        return `products?${params}`
+        return `company/products?${params}`
       },
       providesTags: ['Product'],
     }),
@@ -445,7 +433,7 @@ export const companyApi = createApi({
     }),
     createProduct: builder.mutation<Product, ProductCreate>({
       query: (product) => ({
-        url: 'products/',
+        url: 'company/products/',
         method: 'POST',
         body: product,
       }),
@@ -453,7 +441,7 @@ export const companyApi = createApi({
     }),
     updateProduct: builder.mutation<Product, { id: string; product: Partial<ProductCreate> }>({
       query: ({ id, product }) => ({
-        url: `products/${id}`,
+        url: `company/products/${id}`,
         method: 'PUT',
         body: product,
       }),
@@ -461,7 +449,7 @@ export const companyApi = createApi({
     }),
     deleteProduct: builder.mutation<void, string>({
       query: (id) => ({
-        url: `products/${id}`,
+        url: `company/products/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Product'],
@@ -471,31 +459,31 @@ export const companyApi = createApi({
         const params = new URLSearchParams()
         params.append('page', page.toString())
         params.append('per_page', per_page.toString())
-        return `products/low-stock?${params}`
+        return `company/products/low-stock?${params}`
       },
       providesTags: ['Product'],
     }),
     bulkUpdateProducts: builder.mutation<Product[], { updates: Array<{ id: string; [key: string]: any }> }>({
       query: (updates) => ({
-        url: 'products/bulk-update',
+        url: 'company/products/bulk-update',
         method: 'POST',
         body: updates,
       }),
       invalidatesTags: ['Product'],
     }),
     getProductStockHistory: builder.query<any, string>({
-      query: (id) => `products/${id}/stock-history`,
+      query: (id) => `company/products/${id}/stock-history`,
       providesTags: ['Product'],
     }),
 
     // Pricing Rule endpoints
     getPricingRules: builder.query<PricingRule[], void>({
-      query: () => 'pricing/rules',
+      query: () => 'company/pricing/rules',
       providesTags: ['PricingRule'],
     }),
     createPricingRule: builder.mutation<PricingRule, PricingRuleCreate>({
       query: (rule) => ({
-        url: 'pricing/rules',
+        url: 'company/pricing/rules',
         method: 'POST',
         body: rule,
       }),
@@ -503,7 +491,7 @@ export const companyApi = createApi({
     }),
     updatePricingRule: builder.mutation<PricingRule, { id: string; rule: Partial<PricingRuleCreate> }>({
       query: ({ id, rule }) => ({
-        url: `pricing/rules/${id}`,
+        url: `company/pricing/rules/${id}`,
         method: 'PUT',
         body: rule,
       }),
@@ -511,7 +499,7 @@ export const companyApi = createApi({
     }),
     deletePricingRule: builder.mutation<void, string>({
       query: (id) => ({
-        url: `pricing/rules/${id}`,
+        url: `company/pricing/rules/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['PricingRule'],

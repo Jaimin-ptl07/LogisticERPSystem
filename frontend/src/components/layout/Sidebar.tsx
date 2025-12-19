@@ -19,13 +19,17 @@ import {
   ShoppingCart,
   ChevronLeft,
   Menu,
+  UserCircle,
+  UserCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { logoutAsync } from "@/store/slices/auth.slice";
 import { useState, useEffect } from "react";
+import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
 import { ROLES } from "@/lib/roles";
+import { showSuccessToast } from "@/utils/toast";
 
 interface SubMenuItem {
   label: string;

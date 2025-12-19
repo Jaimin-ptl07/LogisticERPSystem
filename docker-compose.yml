@@ -364,6 +364,10 @@ services:
     restart: unless-stopped
     ports:
       - "8001:8001"
+    volumes:
+      - ./services/auth/src:/app/src
+      - ./services/auth/pyproject.toml:/app/pyproject.toml
+      - ./services/auth/uv.lock:/app/uv.lock
     logging:
       driver: "json-file"
       options:
@@ -373,6 +377,8 @@ services:
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -387,11 +393,6 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
-    # Mount source code for development with auto-reload
-    volumes:
-      - ./services/auth/src:/app/src
-      - ./services/auth/pyproject.toml:/app/pyproject.toml
-      - ./services/auth/uv.lock:/app/uv.lock
 
   company-service:
     build:
@@ -401,9 +402,15 @@ services:
     restart: unless-stopped
     ports:
       - "8002:8002"
+    volumes:
+      - ./services/company/src:/app/src
+      - ./services/company/pyproject.toml:/app/pyproject.toml
+      - ./services/company/uv.lock:/app/uv.lock
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - POSTGRES_COMPANY_DB=company_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -411,6 +418,7 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - ENV=development
       - PORT=8002
+      - CORS_ORIGINS=http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -432,6 +440,9 @@ services:
     restart: unless-stopped
     ports:
       - "8004:8004"
+    volumes:
+      - ./services/tms/src:/app/src
+      - ./services/tms/pyproject.toml:/app/pyproject.toml
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
       - LOG_LEVEL=INFO
@@ -455,6 +466,10 @@ services:
     restart: unless-stopped
     ports:
       - "8003:8003"
+    volumes:
+      - ./services/orders/src:/app/src
+      - ./services/orders/pyproject.toml:/app/pyproject.toml
+      - ./services/orders/uploads:/app/uploads
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -473,8 +488,45 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
+
+  # Driver Service
+  driver-service:
+    build:
+      context: ./services/driver
+      dockerfile: Dockerfile
+    container_name: driver-service
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
     volumes:
-      - ./services/orders/uploads:/app/uploads
+      - ./services/driver/src:/app/src
+      - ./services/driver/pyproject.toml:/app/pyproject.toml
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
+      - REDIS_URL=redis://redis:6379
+      - DRIVER_ID=DRV-002
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - NEXT_PUBLIC_TMS_API_URL=http://tms-service:8004
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s      
 
 volumes:
   postgres_data:

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const TMS_SERVICE_URL = process.env.TMS_SERVICE_URL || 'http://localhost:8004';
+const NEXT_PUBLIC_TMS_API_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
 
 export async function GET(
   request: NextRequest,
@@ -17,7 +17,7 @@ export async function GET(
     queryParams.append('user_id', HARDCODED_USER_ID);
     queryParams.append('company_id', HARDCODED_COMPANY_ID);
 
-    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
+    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -62,7 +62,7 @@ export async function PUT(
     queryParams.append('user_id', HARDCODED_USER_ID);
     queryParams.append('company_id', HARDCODED_COMPANY_ID);
 
-    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
+    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -102,7 +102,7 @@ export async function DELETE(
     queryParams.append('user_id', HARDCODED_USER_ID);
     queryParams.append('company_id', HARDCODED_COMPANY_ID);
 
-    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
+    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

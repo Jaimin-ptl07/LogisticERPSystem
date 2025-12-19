@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # Service
     service_name: str = "tms-service"
     service_version: str = "0.1.0"
+    service_port: int = 8004
 
     class Config:
         env_file = ".env"

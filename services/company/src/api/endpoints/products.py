@@ -9,7 +9,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Product, ProductCategory
+from src.database import get_db, Product, ProductCategory, Branch, ProductBranch
 from src.schemas import (
     Product as ProductSchema,
     ProductCreate,
@@ -36,6 +36,7 @@ async def list_products(
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     category_id: Optional[UUID] = Query(None),
+    branch_id: Optional[UUID] = Query(None),
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
     is_active: Optional[bool] = Query(None),
@@ -63,6 +64,21 @@ async def list_products(
     if category_id:
         query = query.where(Product.category_id == category_id)
 
+    if branch_id:
+        # Filter products available for all branches OR specific branch
+        from sqlalchemy import or_
+        query = query.where(
+            or_(
+                Product.available_for_all_branches == True,
+                Product.id.in_(
+                    select(ProductBranch.product_id).where(
+                        ProductBranch.branch_id == branch_id,
+                        ProductBranch.tenant_id == tenant_id
+                    )
+                )
+            )
+        )
+
     if min_price is not None:
         query = query.where(Product.unit_price >= min_price)
 
@@ -87,8 +103,11 @@ async def list_products(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Product.name)
 
-    # Include category relationship
-    query = query.options(selectinload(Product.category))
+    # Include category relationship with children
+    query = query.options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
 
     # Execute query
     result = await db.execute(query)
@@ -121,7 +140,7 @@ async def get_product(
         Product.id == product_id,
         Product.tenant_id == tenant_id
     ).options(
-        selectinload(Product.category)
+        selectinload(Product.branches).selectinload(ProductBranch.branch), selectinload(Product.category).selectinload(ProductCategory.children)
     )
 
     result = await db.execute(query)
@@ -168,8 +187,33 @@ async def create_product(
                 detail="Invalid product category"
             )
 
+    # Validate branches if product is not available for all branches
+    branch_ids = []
+    if not product_data.available_for_all_branches:
+        if hasattr(product_data, 'branch_ids') and product_data.branch_ids:
+            branch_ids = product_data.branch_ids
+            # Validate all branches exist and belong to tenant
+            for branch_id in branch_ids:
+                branch_query = select(Branch).where(
+                    Branch.id == branch_id,
+                    Branch.tenant_id == tenant_id
+                )
+                branch_result = await db.execute(branch_query)
+                if not branch_result.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid branch: {branch_id}"
+                    )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Branch IDs must be provided when product is not available for all branches"
+            )
+
     # Create new product
     product_data_dict = product_data.model_dump(exclude_unset=True)
+    # Remove branch_ids from product data as it's stored in junction table
+    product_data_dict.pop('branch_ids', None)
 
     # Calculate volume if dimensions are provided but volume is not
     if 'volume' not in product_data_dict and all([
@@ -190,8 +234,28 @@ async def create_product(
     await db.commit()
     await db.refresh(product)
 
-    # Load the category relationship for response
-    await db.refresh(product, ["category"])
+    # Create branch relationships if not available for all branches
+    if not product_data.available_for_all_branches and branch_ids:
+        for branch_id in branch_ids:
+            product_branch = ProductBranch(
+                product_id=product.id,
+                branch_id=branch_id,
+                tenant_id=tenant_id
+            )
+            db.add(product_branch)
+
+        await db.commit()
+
+    # Load the category relationship for response with children
+    result = await db.execute(
+        select(Product)
+        .options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
+        .where(Product.id == product.id)
+    )
+    product = result.scalar_one()
 
     return ProductSchema.model_validate(product)
 
@@ -231,6 +295,19 @@ async def update_product(
                 detail="Invalid product category"
             )
 
+    # Validate branch if provided
+    if product_data.branch_id:
+        branch_query = select(Branch).where(
+            Branch.id == product_data.branch_id,
+            Branch.tenant_id == tenant_id
+        )
+        branch_result = await db.execute(branch_query)
+        if not branch_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid branch"
+            )
+
     # Update product
     update_data = product_data.model_dump(exclude_unset=True)
 
@@ -250,8 +327,16 @@ async def update_product(
     await db.commit()
     await db.refresh(product)
 
-    # Load the category relationship for response
-    await db.refresh(product, ["category"])
+    # Load the category relationship for response with children
+    result = await db.execute(
+        select(Product)
+        .options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
+        .where(Product.id == product.id)
+    )
+    product = result.scalar_one()
 
     return ProductSchema.model_validate(product)
 
@@ -309,8 +394,11 @@ async def get_low_stock_products(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Product.name)
 
-    # Include category relationship
-    query = query.options(selectinload(Product.category))
+    # Include category relationship with children
+    query = query.options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
 
     # Execute query
     result = await db.execute(query)
@@ -369,11 +457,22 @@ async def bulk_update_products(
     # Commit all updates
     await db.commit()
 
-    # Load relationships for all updated products
-    for product in updated_products:
-        await db.refresh(product, ["category"])
+    # Get product IDs
+    product_ids = [p.id for p in updated_products]
 
-    return [ProductSchema.model_validate(product) for product in updated_products]
+    # Load all updated products with relationships
+    result = await db.execute(
+        select(Product)
+        .options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
+        .where(Product.id.in_(product_ids))
+    )
+    loaded_products = {p.id: p for p in result.scalars().all()}
+
+    # Return in the same order as the input
+    return [ProductSchema.model_validate(loaded_products[p.id]) for p in updated_products]
 
 
 @router.get("/{product_id}/stock-history")

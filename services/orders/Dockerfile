@@ -64,4 +64,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8002/health || exit 1
 
 # Start Orders Service
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8003", "--reload"]

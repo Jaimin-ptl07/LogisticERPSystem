@@ -682,12 +682,45 @@ export const tmsAPI = {
       }
     );
   },
+
+  // Reorder orders within a trip
+  async reorderTripOrders(tripId: string, orderSequences: { order_sequences: { order_id: number; sequence_number: number }[] }) {
+    // Use Next.js API route instead of direct TMS service
+    const response = await fetch(`/api/tms/trips/${tripId}/orders/reorder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderSequences),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to reorder orders: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  // Remove order from trip
+  async removeOrderFromTrip(tripId: string, orderId: string) {
+    // Hardcoded user and company values (in production, get from authentication)
+    const HARDCODED_USER_ID = "user-001";
+    const HARDCODED_COMPANY_ID = "company-001";
+
+    const params = new URLSearchParams();
+    params.append('user_id', HARDCODED_USER_ID);
+    params.append('company_id', HARDCODED_COMPANY_ID);
+    params.append('order_id', orderId);
+
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders/remove?${params.toString()}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 // Resources API functions
 export const tmsResourcesAPI = {
-  async getTrucks() {
-    return fetchWithError(`${TMS_BASE}/resources/trucks`);
+  async getTrucks(tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/trucks?tenant_id=${tenantId}`);
   },
 
   async getDrivers() {
@@ -698,8 +731,86 @@ export const tmsResourcesAPI = {
     return fetchWithError(`${TMS_BASE}/resources/orders`);
   },
 
-  async getBranches() {
-    return fetchWithError(`${TMS_BASE}/resources/branches`);
+  async getBranches(tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/branches?tenant_id=${tenantId}`);
+  },
+
+  async getTrucksByBranch(branchId: string, tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/branches/${branchId}/trucks?tenant_id=${tenantId}`);
+  },
+};
+
+// Driver Service API functions
+const DRIVER_BASE = '/api/driver';
+
+export const driverAPI = {
+  // Get all trips for the driver
+  async getDriverTrips(filters?: {
+    status?: string;
+    trip_date?: string;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.trip_date) params.append('trip_date', filters.trip_date);
+
+    const url = `${DRIVER_BASE}/trips${params.toString() ? `?${params.toString()}` : ''}`;
+    return fetchWithError(url);
+  },
+
+  // Get current active trip
+  async getCurrentTrip() {
+    return fetchWithError(`${DRIVER_BASE}/trips/current`);
+  },
+
+  // Get trip details with orders
+  async getTripDetail(tripId: string) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}`);
+  },
+
+  // Update order delivery status
+  async updateOrderDeliveryStatus(
+    tripId: string,
+    orderId: string,
+    deliveryStatus: string,
+    notes?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/orders/${orderId}/delivery`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        delivery_status: deliveryStatus,
+        notes: notes
+      }),
+    });
+  },
+
+  // Mark order as delivered (convenience endpoint)
+  async markOrderDelivered(tripId: string, orderId: string) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/orders/${orderId}/deliver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  },
+
+  // Get order status
+  async getOrderStatus(tripId: string, orderId: string) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/orders/${orderId}/status`);
+  },
+
+  // Report truck maintenance
+  async reportTruckMaintenance(
+    tripId: string,
+    maintenanceType: string,
+    reason: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/maintenance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        maintenance_type: maintenanceType,
+        reason: reason
+      }),
+    });
   },
 };
 export type { OrderAssignData };
