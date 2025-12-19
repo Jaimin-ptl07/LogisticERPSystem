@@ -96,11 +96,14 @@ export default function Trips() {
   // Fetch all resources
   const fetchResources = async () => {
     try {
+      // Use default tenant for now - in production, this would come from auth context
+      const tenantId = "default-tenant";
+
       const [trucksData, driversData, ordersData, branchesData] = await Promise.all([
-        tmsResourcesAPI.getTrucks(),
+        tmsResourcesAPI.getTrucks(tenantId),
         tmsResourcesAPI.getDrivers(),
         tmsResourcesAPI.getOrders(),
-        tmsResourcesAPI.getBranches(),
+        tmsResourcesAPI.getBranches(tenantId),
       ]);
 
       setAvailableTrucks(trucksData);
@@ -248,16 +251,31 @@ export default function Trips() {
     }
   };
 
-  const handleBranchSelect = (branch: string) => {
-    setSelectedBranch(branch);
+  const handleBranchSelect = async (branchName: string) => {
+    setSelectedBranch(branchName);
     setSelectedTruck('');
     setSelectedDriver(null);
     setBranchSearchTerm('');
     setTruckSearchTerm('');
     setDriverSearchTerm('');
+
+    // Find the branch object to get its ID
+    const selectedBranchObj = branches.find(b => b.name === branchName);
+
+    if (selectedBranchObj) {
+      try {
+        // Fetch trucks for the selected branch
+        const tenantId = "default-tenant";
+        const branchTrucks = await tmsResourcesAPI.getTrucksByBranch(selectedBranchObj.id, tenantId);
+        setAvailableTrucks(branchTrucks);
+      } catch (err) {
+        console.error('Failed to fetch trucks for branch:', err);
+        // Keep existing trucks if fetch fails
+      }
+    }
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = async () => {
     setSelectedBranch('');
     setSelectedTruck('');
     setSelectedDriver(null);
@@ -266,6 +284,9 @@ export default function Trips() {
     setBranchSearchTerm('');
     setTruckSearchTerm('');
     setDriverSearchTerm('');
+
+    // Reset to fetch all trucks again
+    await fetchResources();
   };
 
   const getPriorityVariant = (priority: string) => {

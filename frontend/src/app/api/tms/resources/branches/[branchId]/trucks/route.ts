@@ -3,22 +3,19 @@ import { NextResponse } from 'next/server';
 // TMS service URL
 const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
 
-export async function GET(request: Request) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ branchId: string }> }
+) {
   try {
     // Get query parameters
     const { searchParams } = new URL(request.url);
     const tenant_id = searchParams.get('tenant_id') || 'default-tenant';
-    const branch_id = searchParams.get('branch_id');
+    const { branchId } = await params;
 
-    // Determine which endpoint to call based on parameters
-    let url = `${TMS_SERVICE_URL}/api/v1/resources/trucks?tenant_id=${tenant_id}`;
+    // Call TMS service branch-specific trucks endpoint
+    const url = `${TMS_SERVICE_URL}/api/v1/resources/branches/${branchId}/trucks?tenant_id=${tenant_id}`;
 
-    // If branch_id is provided, get trucks for that specific branch
-    if (branch_id) {
-      url = `${TMS_SERVICE_URL}/api/v1/resources/branches/${branch_id}/trucks?tenant_id=${tenant_id}`;
-    }
-
-    // Call TMS service trucks endpoint
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -28,6 +25,8 @@ export async function GET(request: Request) {
 
     if (!response.ok) {
       console.error('TMS service error:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
       return NextResponse.json(
         { error: `Failed to fetch trucks from TMS service: ${response.statusText}` },
         { status: response.status }
