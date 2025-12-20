@@ -1094,832 +1094,133 @@ INSERT INTO
 SELECT 1, id
 FROM permissions ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- Assign admin permissions (ID = 2)
-INSERT INTO
-    role_permissions (role_id, permission_id)
-VALUES (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'users'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'users'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'users'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'users'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'roles'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'tenants'
-                AND action = 'manage_own'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'approve_any'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'wms'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'wms'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'wms'
-                AND action = 'update'
-        )
-    ),
-    -- TMS Trip permissions for admin
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'trips'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'trips'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'trips'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'trips'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'trips'
-                AND action = 'delete'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'trips'
-                AND action = 'assign'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'trips'
-                AND action = 'track'
-        )
-    ),
-    -- TMS Order permissions
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'split'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'reassign'
-        )
-    ),
-    -- TMS Resource permissions
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'resources'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'resources'
-                AND action = 'read_all'
-        )
-    ),
-    -- TMS Driver permissions
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'drivers'
-                AND action = 'assign'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'drivers'
-                AND action = 'update'
-        )
-    ),
-    -- TMS Vehicle permissions
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'track'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'update'
-        )
-    ),
-    -- TMS Route permissions
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'routes'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'routes'
-                AND action = 'optimize'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'routes'
-                AND action = 'update'
-        )
-    ),
-    -- TMS Schedule permissions
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'schedules'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'schedules'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'billing'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'billing'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'billing'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'suppliers'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'suppliers'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'suppliers'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'shipping'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'shipping'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'shipping'
-                AND action = 'update'
-        )
-    ),
-    -- Company/Branch permissions for admin
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'branches'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'branches'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'branches'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'branches'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'branches'
-                AND action = 'delete'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'branches'
-                AND action = 'manage_own'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'branches'
-                AND action = 'manage_all'
-        )
-    ),
-    -- Vehicle permissions for admin
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'delete'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'assign'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'vehicles'
-                AND action = 'maintenance'
-        )
-    ),
-    -- Product permissions for admin
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'products'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'products'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'products'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'products'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'products'
-                AND action = 'delete'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'products'
-                AND action = 'stock_adjust'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'products'
-                AND action = 'pricing_update'
-        )
-    ),
-    -- Product category permissions for admin
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'product_categories'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'product_categories'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'product_categories'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'product_categories'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'product_categories'
-                AND action = 'delete'
-        )
-    ),
-    -- Company reports permissions for admin
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'company_reports'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'company_reports'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'company_reports'
-                AND action = 'export'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'reports'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'reports'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'reports'
-                AND action = 'export'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'dashboard'
-                AND action = 'read'
-        )
-    ),
-    -- Customer management permissions for admin
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'customers'
-                AND action = 'read'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'customers'
-                AND action = 'read_all'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'customers'
-                AND action = 'create'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'customers'
-                AND action = 'update'
-        )
-    ),
-    (
-        2,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'customers'
-                AND action = 'delete'
-        )
-    ) ON CONFLICT (role_id, permission_id) DO NOTHING;
+-- Grant comprehensive permissions to tenant admin role (role_id=2)
+-- Order Management Permissions for tenant admin
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'orders'
+  AND p.action IN ('create', 'read', 'read_own', 'update', 'update_own', 'delete', 'delete_own',
+                   'cancel', 'status_update', 'priority_update', 'assign',
+                   'approve_finance', 'approve_logistics', 'approve_any', 'bulk_approve',
+                   'financial_view', 'financial_edit', 'payment_process', 'refund_process', 'invoice_create',
+                   'logistics_view', 'logistics_edit', 'shipment_create', 'tracking_update', 'delivery_confirm',
+                   'export', 'import', 'bulk_create', 'bulk_update', 'bulk_cancel', 'bulk_delete',
+                   'split', 'reassign')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Order Document Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'order_documents'
+  AND p.action IN ('upload', 'read', 'read_own', 'update', 'update_own', 'delete', 'delete_own',
+                   'verify', 'download', 'create', 'read_all')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Company/Branch Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'branches'
+  AND p.action IN ('create', 'read', 'read_own', 'update', 'delete', 'manage_all', 'manage_own', 'read_all')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Customer Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'customers'
+  AND p.action IN ('create', 'read', 'read_own', 'update', 'delete', 'read_all')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Product Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'products'
+  AND p.action IN ('create', 'read', 'update', 'delete', 'stock_adjust', 'read_all', 'manage_all', 'pricing_update')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Vehicle Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'vehicles'
+  AND p.action IN ('create', 'read', 'update', 'delete', 'assign', 'track', 'update_mileage',
+                   'read_own', 'update_own', 'delete_own', 'read_all', 'maintenance')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- TMS/Trip Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'trips'
+  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'assign', 'track')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Resource Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource IN ('resources', 'drivers')
+  AND p.action IN ('read', 'read_all', 'assign', 'update')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Route Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'routes'
+  AND p.action IN ('create', 'optimize', 'update')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Schedule Management Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'schedules'
+  AND p.action IN ('read', 'update')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Report and Analytics Permissions
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource IN ('reports', 'analytics', 'company_reports')
+  AND p.action IN ('read', 'export', 'financial', 'operational', 'read_all', 'create')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Additional system permissions for tenant admin
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers', 'shipping',
+                     'product_categories', 'dashboard', 'system', 'permissions')
+  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'manage_all', 'manage_own',
+                   'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own')
+  AND p.resource != 'orders'  -- Exclude orders as they are handled above
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Create wildcard permissions for full access to major resources
+INSERT INTO permissions (id, resource, action, description, created_at, updated_at)
+VALUES
+    ('tenant-admin-orders-all', 'orders', '*', 'Tenant admin has full access to all order operations', NOW(), NOW()),
+    ('tenant-admin-products-all', 'products', '*', 'Tenant admin has full access to all product operations', NOW(), NOW()),
+    ('tenant-admin-vehicles-all', 'vehicles', '*', 'Tenant admin has full access to all vehicle operations', NOW(), NOW()),
+    ('tenant-admin-customers-all', 'customers', '*', 'Tenant admin has full access to all customer operations', NOW(), NOW()),
+    ('tenant-admin-branches-all', 'branches', '*', 'Tenant admin has full access to all branch operations', NOW(), NOW())
+ON CONFLICT (id) DO UPDATE
+    updated_at = NOW();
+
+-- Grant wildcard permissions to tenant admin
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.id IN ('tenant-admin-orders-all', 'tenant-admin-products-all',
+                'tenant-admin-vehicles-all', 'tenant-admin-customers-all',
+                'tenant-admin-branches-all')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Assign branch manager permissions (ID = 3) - Full CRUD access to orders
 INSERT INTO

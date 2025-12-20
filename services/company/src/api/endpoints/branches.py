@@ -57,7 +57,8 @@ async def list_branches(
     query = select(Branch).where(Branch.tenant_id == tenant_id)
 
     # Filter branches based on user permissions
-    if not token_data.is_super_user() and "branches:read_all" not in token_data.permissions:
+    has_read_all = await token_data.has_permission("branches:read_all")
+    if not token_data.is_super_user() and not has_read_all:
         # For users with only branches:read permission, filter by assigned branches
         # TODO: Implement branch assignment logic based on user-branch relationships
         # For now, we'll show all branches for users with read permission

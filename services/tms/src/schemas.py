@@ -107,8 +107,9 @@ class TripOrderCreate(BaseModel):
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
     original_weight: Optional[int] = None
-    user_id: str
-    company_id: str
+    # user_id and company_id are extracted from JWT token, not required in request
+    user_id: Optional[str] = None
+    company_id: Optional[str] = None
 
     class Config:
         allow_population_by_field_name = True

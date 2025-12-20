@@ -29,15 +29,6 @@ from src.security import (
     require_any_permission,
     get_current_user_id,
     get_current_tenant_id,
-    ORDER_READ_ALL,
-    ORDER_READ,
-    ORDER_CREATE,
-    ORDER_UPDATE,
-    ORDER_DELETE,
-    ORDER_CANCEL,
-    ORDER_APPROVE_FINANCE,
-    ORDER_APPROVE_LOGISTICS,
-    ORDER_STATUS_UPDATE,
 )
 import logging
 from src.services.order_service import OrderService
@@ -67,7 +58,7 @@ async def list_orders(
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(
-        require_any_permission([ORDER_READ_ALL[0], ORDER_READ[0]])),
+        require_any_permission(["orders:read_all", "orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List orders with filtering and pagination"""
@@ -122,7 +113,7 @@ async def get_order(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(
-        require_any_permission([ORDER_READ_ALL[0], ORDER_READ[0]])),
+        require_any_permission(["orders:read_all", "orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order by ID"""
@@ -142,7 +133,7 @@ async def get_order(
 async def create_order(
     order_data: OrderCreate,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_permissions([ORDER_CREATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["orders:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -160,7 +151,7 @@ async def update_order(
     order_data: OrderUpdate,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_any_permission(
-        [ORDER_UPDATE[0], "orders:update_own"])),
+        ["orders:update", "orders:update_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -201,7 +192,7 @@ async def delete_order(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_any_permission(
-        [ORDER_DELETE[0], "orders:delete_own"])),
+        ["orders:delete", "orders:delete_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -241,7 +232,7 @@ async def submit_order(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_any_permission(
-        [ORDER_UPDATE[0], "orders:update_own"])),
+        ["orders:update", "orders:update_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -275,7 +266,7 @@ async def finance_approval(
     approval_data: FinanceApprovalRequest,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(
-        require_permissions([ORDER_APPROVE_FINANCE[0]])),
+        require_permissions(["orders:approve_finance"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -300,7 +291,7 @@ async def logistics_approval(
     approval_data: LogisticsApprovalRequest,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(
-        require_permissions([ORDER_APPROVE_LOGISTICS[0]])),
+        require_permissions(["orders:approve_logistics"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -326,7 +317,7 @@ async def update_order_status(
     status_data: OrderStatusUpdate,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(
-        require_permissions([ORDER_STATUS_UPDATE[0]])),
+        require_permissions(["orders:status_update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -349,7 +340,7 @@ async def get_order_status_history(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(
-        require_any_permission([ORDER_READ_ALL[0], ORDER_READ[0]])),
+        require_any_permission(["orders:read_all", "orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order status history"""
@@ -383,7 +374,7 @@ async def cancel_order(
     order_id: UUID,
     reason: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_permissions([ORDER_CANCEL[0]])),
+    token_data: TokenData = Depends(require_permissions(["orders:cancel"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):

@@ -1,6 +1,7 @@
 """Order management API endpoints with authentication"""
 
 from typing import List, Optional
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -12,11 +13,7 @@ from src.security import (
     require_permissions,
     require_any_permission,
     get_current_tenant_id,
-    get_current_user_id,
-    ORDER_SPLIT,
-    ORDER_REASSIGN,
-    TRIP_READ,
-    TRIP_UPDATE
+    get_current_user_id
 )
 
 router = APIRouter()
@@ -27,7 +24,7 @@ async def split_order(
     order_id: str,
     split_quantity: int,
     trip_id: str,
-    token_data: TokenData = Depends(require_permissions(ORDER_SPLIT)),
+    token_data: TokenData = Depends(require_permissions(["orders:split"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
@@ -69,7 +66,7 @@ async def split_order(
         trip_id=trip_id,
         user_id=user_id,
         company_id=tenant_id,
-        order_id=f"{order_id}-split-{uuid.uuid4().hex[:8]}",
+        order_id=f"{order_id}-split-{uuid4().hex[:8]}",
         customer=original_order.customer,
         customer_address=original_order.customer_address,
         customer_contact=original_order.customer_contact,
@@ -102,7 +99,7 @@ async def reassign_order(
     order_id: str,
     from_trip_id: str,
     to_trip_id: str,
-    token_data: TokenData = Depends(require_permissions(ORDER_REASSIGN)),
+    token_data: TokenData = Depends(require_permissions(["orders:reassign"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)

@@ -21,13 +21,7 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id,
     require_permissions,
-    require_any_permission,
-    PRODUCT_READ_ALL,
-    PRODUCT_READ,
-    PRODUCT_CREATE,
-    PRODUCT_UPDATE,
-    PRODUCT_DELETE,
-    PRODUCT_STOCK_ADJUST
+    require_any_permission
 )
 
 router = APIRouter()
@@ -43,7 +37,7 @@ async def list_products(
     max_price: Optional[float] = Query(None, ge=0),
     is_active: Optional[bool] = Query(None),
     low_stock: bool = Query(False),
-    token_data: TokenData = Depends(require_any_permission([PRODUCT_READ_ALL[0], PRODUCT_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -117,7 +111,7 @@ async def list_products(
 @router.get("/{product_id}", response_model=ProductSchema)
 async def get_product(
     product_id: UUID,
-    token_data: TokenData = Depends(require_any_permission([PRODUCT_READ_ALL[0], PRODUCT_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -149,7 +143,7 @@ async def get_product(
 @router.post("/", response_model=ProductSchema, status_code=201)
 async def create_product(
     product_data: ProductCreate,
-    token_data: TokenData = Depends(require_permissions([PRODUCT_CREATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["products:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
@@ -223,7 +217,7 @@ async def create_product(
 async def update_product(
     product_id: UUID,
     product_data: ProductUpdate,
-    token_data: TokenData = Depends(require_permissions([PRODUCT_UPDATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -291,7 +285,7 @@ async def update_product(
 @router.delete("/{product_id}", status_code=204)
 async def delete_product(
     product_id: UUID,
-    token_data: TokenData = Depends(require_permissions([PRODUCT_DELETE[0]])),
+    token_data: TokenData = Depends(require_permissions(["products:delete"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -322,7 +316,7 @@ async def delete_product(
 async def get_low_stock_products(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    token_data: TokenData = Depends(require_any_permission([PRODUCT_READ_ALL[0], PRODUCT_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -372,7 +366,7 @@ async def get_low_stock_products(
 @router.post("/bulk-update", response_model=List[ProductSchema])
 async def bulk_update_products(
     updates: List[Dict[str, Any]],
-    token_data: TokenData = Depends(require_permissions([PRODUCT_UPDATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -432,7 +426,7 @@ async def bulk_update_products(
 @router.get("/{product_id}/stock-history")
 async def get_stock_history(
     product_id: UUID,
-    token_data: TokenData = Depends(require_any_permission([PRODUCT_READ_ALL[0], PRODUCT_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):

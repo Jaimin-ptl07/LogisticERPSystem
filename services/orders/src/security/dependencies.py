@@ -86,21 +86,26 @@ def require_permissions(required_permissions: List[str]) -> Callable:
             logger.debug(f"Super user access granted: {token_data.user_id}")
             return token_data
 
-        # Check required permissions
-        user_permissions = set(token_data.permissions)
-        required = set(required_permissions)
+        # Import here to avoid circular imports
+        from src.services.permission_service import OrderServicePermission
 
-        missing_permissions = required - user_permissions
+        # Get permission service and check permissions
+        perm_service = OrderServicePermission()
 
-        if missing_permissions:
-            logger.warning(
-                f"Access denied. User {token_data.user_id} missing permissions: "
-                f"{sorted(missing_permissions)}"
+        for required_perm in required_permissions:
+            has_permission = await perm_service.check_permission(
+                token_data.user_id,
+                int(token_data.role_id),
+                required_perm
             )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions. Required: {sorted(required_permissions)}"
-            )
+            if not has_permission:
+                logger.warning(
+                    f"Access denied. User {token_data.user_id} missing permission: {required_perm}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Insufficient permissions. Required: {required_perm}"
+                )
 
         logger.debug(f"Permission check passed for user {token_data.user_id}")
         return token_data
@@ -126,8 +131,19 @@ def require_any_permission(required_permissions: List[str]) -> Callable:
         if token_data.is_super_user():
             return token_data
 
-        # Check if user has any of the required permissions
-        if not token_data.has_any_permission(required_permissions):
+        # Import here to avoid circular imports
+        from src.services.permission_service import OrderServicePermission
+
+        # Get permission service and check permissions
+        perm_service = OrderServicePermission()
+
+        has_any_permission = await perm_service.check_any_permission(
+            token_data.user_id,
+            int(token_data.role_id),
+            required_permissions
+        )
+
+        if not has_any_permission:
             logger.warning(
                 f"Access denied. User {token_data.user_id} missing all required permissions: "
                 f"{required_permissions}"

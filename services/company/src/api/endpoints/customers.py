@@ -21,12 +21,7 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id,
     require_permissions,
-    require_any_permission,
-    CUSTOMER_CREATE,
-    CUSTOMER_READ,
-    CUSTOMER_READ_ALL,
-    CUSTOMER_UPDATE,
-    CUSTOMER_DELETE
+    require_any_permission
 )
 
 router = APIRouter()
@@ -40,7 +35,7 @@ async def list_customers(
     business_type: Optional[BusinessType] = Query(None),
     home_branch_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
-    token_data: TokenData = Depends(require_any_permission([CUSTOMER_READ_ALL[0], CUSTOMER_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["customers:read_all", "customers:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -104,7 +99,7 @@ async def list_customers(
 @router.get("/{customer_id}", response_model=CustomerSchema)
 async def get_customer(
     customer_id: UUID,
-    token_data: TokenData = Depends(require_any_permission([CUSTOMER_READ_ALL[0], CUSTOMER_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["customers:read_all", "customers:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -136,7 +131,7 @@ async def get_customer(
 @router.post("/", response_model=CustomerSchema, status_code=201)
 async def create_customer(
     customer_data: CustomerCreate,
-    token_data: TokenData = Depends(require_permissions([CUSTOMER_CREATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["customers:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
@@ -193,7 +188,7 @@ async def create_customer(
 async def update_customer(
     customer_id: UUID,
     customer_data: CustomerUpdate,
-    token_data: TokenData = Depends(require_permissions([CUSTOMER_UPDATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["customers:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -246,7 +241,7 @@ async def update_customer(
 @router.delete("/{customer_id}", status_code=204)
 async def delete_customer(
     customer_id: UUID,
-    token_data: TokenData = Depends(require_permissions([CUSTOMER_DELETE[0]])),
+    token_data: TokenData = Depends(require_permissions(["customers:delete"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):

@@ -16,7 +16,7 @@ class TokenData:
         self,
         user_id: str = None,
         tenant_id: str = None,
-        role_id: str = None,
+        role_id: int = None,
         permissions: list = None,
         exp: datetime = None
     ):
@@ -25,22 +25,71 @@ class TokenData:
         self.role_id = role_id
         self.permissions = permissions or []
         self.exp = exp
+        self._is_superuser = False  # Will be set from JWT payload
+        self._perm_service = None  # Will be set when needed
 
-    def has_permission(self, permission: str) -> bool:
-        """Check if user has specific permission"""
+    def set_permission_service(self, perm_service):
+        """Set permission service for database lookups"""
+        self._perm_service = perm_service
+
+    async def has_permission(self, permission: str) -> bool:
+        """Check if user has specific permission (database lookup)"""
+        # Superuser has all permissions
+        if self._is_superuser:
+            return True
+
+        # If permission service is available, check database
+        if self._perm_service:
+            return await self._perm_service.check_permission(
+                self.user_id,
+                self.role_id,
+                permission
+            )
+
+        # Fallback to checking local permissions (should be empty now)
         return permission in self.permissions
 
-    def has_any_permission(self, permissions: list) -> bool:
-        """Check if user has any of the specified permissions"""
+    async def has_any_permission(self, permissions: list) -> bool:
+        """Check if user has any of the specified permissions (database lookup)"""
+        # Superuser has all permissions
+        if self._is_superuser:
+            return True
+
+        # If permission service is available, check database
+        if self._perm_service:
+            return await self._perm_service.check_any_permission(
+                self.user_id,
+                self.role_id,
+                permissions
+            )
+
+        # Fallback to checking local permissions
         return any(perm in self.permissions for perm in permissions)
 
-    def has_all_permissions(self, permissions: list) -> bool:
-        """Check if user has all specified permissions"""
+    async def has_all_permissions(self, permissions: list) -> bool:
+        """Check if user has all specified permissions (database lookup)"""
+        # Superuser has all permissions
+        if self._is_superuser:
+            return True
+
+        # If permission service is available, check database
+        if self._perm_service:
+            for perm in permissions:
+                has_perm = await self._perm_service.check_permission(
+                    self.user_id,
+                    self.role_id,
+                    perm
+                )
+                if not has_perm:
+                    return False
+            return True
+
+        # Fallback to checking local permissions
         return all(perm in self.permissions for perm in permissions)
 
     def is_super_user(self) -> bool:
         """Check if user is super admin"""
-        return "superuser:access" in self.permissions
+        return self._is_superuser
 
     def __str__(self):
         return f"TokenData(user_id={self.user_id}, tenant_id={self.tenant_id}, role_id={self.role_id})"
@@ -66,20 +115,24 @@ def verify_token(token: str) -> TokenData:
         )
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
-        role_id: str = payload.get("role_id")
-        permissions: list = payload.get("permissions", [])
+        role_id: int = payload.get("role_id")
+        email: str = payload.get("email")
+        is_superuser: bool = payload.get("is_superuser", False)
         exp: Optional[datetime] = payload.get("exp")
 
-        if user_id is None or tenant_id is None or role_id is None:
+        if user_id is None or role_id is None:
             raise credentials_exception
 
+        # Create token data with empty permissions (will be fetched from DB when needed)
         token_data = TokenData(
             user_id=user_id,
             tenant_id=tenant_id,
             role_id=role_id,
-            permissions=permissions,
+            permissions=[],  # Permissions no longer stored in JWT
             exp=exp
         )
+        # Store is_superuser for permission checking
+        token_data._is_superuser = is_superuser
         return token_data
     except JWTError:
         raise credentials_exception

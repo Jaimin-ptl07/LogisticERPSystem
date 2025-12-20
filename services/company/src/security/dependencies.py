@@ -2,11 +2,13 @@
 FastAPI dependencies for authentication and authorization
 """
 from typing import List, Optional, Callable, Any
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
 
 from .auth import TokenData, verify_token, extract_token_from_header
+from .permissions import Permission
+from ..services.permission_service import CompanyServicePermission
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +17,14 @@ security = HTTPBearer()
 
 
 async def get_current_token_data(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> TokenData:
     """
-    FastAPI dependency to extract and validate JWT token
+    FastAPI dependency to extract and validate JWT token (from header or cookie)
 
     Args:
+        request: FastAPI Request object
         credentials: HTTP Bearer credentials from Authorization header
 
     Returns:
@@ -29,13 +33,29 @@ async def get_current_token_data(
     Raises:
         HTTPException: If token is invalid or expired
     """
-    try:
-        # Extract token from credentials
-        token = credentials.credentials
+    token = None
 
+    # Try to get token from Authorization header first
+    if credentials:
+        token = credentials.credentials
+    else:
+        # Try to get from cookies (for frontend requests)
+        token = request.cookies.get("access_token")
+        if token:
+            # Decode URI-encoded token
+            from urllib.parse import unquote
+            token = unquote(token)
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
         # Verify token and extract data
         token_data = verify_token(token)
-
         return token_data
 
     except HTTPException:
@@ -49,9 +69,14 @@ async def get_current_token_data(
         )
 
 
+async def get_permission_service() -> CompanyServicePermission:
+    """Get permission service instance"""
+    return CompanyServicePermission()
+
+
 def require_permissions(required_permissions: List[str]) -> Callable:
     """
-    Create a dependency that requires specific permissions
+    Create a dependency that requires specific permissions (database lookup)
 
     Args:
         required_permissions: List of permissions required
@@ -67,13 +92,15 @@ def require_permissions(required_permissions: List[str]) -> Callable:
             pass
     """
     async def permission_checker(
-        token_data: TokenData = Depends(get_current_token_data)
+        token_data: TokenData = Depends(get_current_token_data),
+        perm_service: CompanyServicePermission = Depends(get_permission_service)
     ) -> TokenData:
         """
-        Check if user has required permissions
+        Check if user has required permissions (from database)
 
         Args:
             token_data: Token data from previous dependency
+            perm_service: Permission service for database lookups
 
         Returns:
             TokenData if permissions are valid
@@ -83,26 +110,24 @@ def require_permissions(required_permissions: List[str]) -> Callable:
         """
         # Check for super user access
         if token_data.is_super_user():
-            logger.debug(f"Super user access granted: {token_data.user_id}")
             return token_data
 
-        # Check required permissions
-        user_permissions = set(token_data.permissions)
-        required = set(required_permissions)
+        # Set permission service for token data
+        token_data.set_permission_service(perm_service)
 
-        missing_permissions = required - user_permissions
-
-        if missing_permissions:
-            logger.warning(
-                f"Access denied. User {token_data.user_id} missing permissions: "
-                f"{sorted(missing_permissions)}"
+        # Check if user has all required permissions from database
+        for required_perm in required_permissions:
+            has_permission = await perm_service.check_permission(
+                token_data.user_id,
+                token_data.role_id,
+                required_perm
             )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions. Required: {sorted(required_permissions)}"
-            )
+            if not has_permission:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Insufficient permissions. Missing: {required_perm}"
+                )
 
-        logger.debug(f"Permission check passed for user {token_data.user_id}")
         return token_data
 
     return permission_checker
@@ -110,7 +135,7 @@ def require_permissions(required_permissions: List[str]) -> Callable:
 
 def require_any_permission(required_permissions: List[str]) -> Callable:
     """
-    Create a dependency that requires at least one of the specified permissions
+    Create a dependency that requires at least one of the specified permissions (database lookup)
 
     Args:
         required_permissions: List of permissions (user needs at least one)
@@ -119,19 +144,25 @@ def require_any_permission(required_permissions: List[str]) -> Callable:
         Dependency function that checks permissions
     """
     async def permission_checker(
-        token_data: TokenData = Depends(get_current_token_data)
+        token_data: TokenData = Depends(get_current_token_data),
+        perm_service: CompanyServicePermission = Depends(get_permission_service)
     ) -> TokenData:
-        """Check if user has any of the required permissions"""
+        """Check if user has any of the required permissions (from database)"""
         # Check for super user access
         if token_data.is_super_user():
             return token_data
-        
-        # Check if user has any of the required permissions
-        if not token_data.has_any_permission(required_permissions):
-            logger.warning(
-                f"Access denied. User {token_data.user_id} missing all required permissions: "
-                f"{required_permissions}"
-            )
+
+        # Set permission service for token data
+        token_data.set_permission_service(perm_service)
+
+        # Check if user has any of the required permissions from database
+        has_any_permission = await perm_service.check_any_permission(
+            token_data.user_id,
+            token_data.role_id,
+            required_permissions
+        )
+
+        if not has_any_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Insufficient permissions. Requires at least one of: {required_permissions}"

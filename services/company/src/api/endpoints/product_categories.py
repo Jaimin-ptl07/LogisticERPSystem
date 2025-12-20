@@ -21,12 +21,7 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id,
     require_permissions,
-    require_any_permission,
-    PRODUCT_READ_ALL,
-    PRODUCT_READ,
-    PRODUCT_CREATE,
-    PRODUCT_UPDATE,
-    PRODUCT_DELETE
+    require_any_permission
 )
 
 router = APIRouter()
@@ -75,7 +70,7 @@ async def list_product_categories(
     parent_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
     include_children: bool = Query(True),
-    token_data: TokenData = Depends(require_any_permission([PRODUCT_READ_ALL[0], PRODUCT_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -144,7 +139,7 @@ async def list_product_categories(
 
 @router.get("/tree", response_model=List[ProductCategorySchema])
 async def get_category_tree(
-    token_data: TokenData = Depends(require_any_permission([PRODUCT_READ_ALL[0], PRODUCT_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -187,7 +182,7 @@ async def get_category_tree(
 @router.get("/{category_id}", response_model=ProductCategorySchema)
 async def get_product_category(
     category_id: UUID,
-    token_data: TokenData = Depends(require_any_permission([PRODUCT_READ_ALL[0], PRODUCT_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -220,7 +215,7 @@ async def get_product_category(
 @router.post("/", response_model=ProductCategorySchema, status_code=201)
 async def create_product_category(
     category_data: ProductCategoryCreate,
-    token_data: TokenData = Depends(require_permissions([PRODUCT_CREATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["products:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
@@ -292,7 +287,7 @@ async def create_product_category(
 async def update_product_category(
     category_id: UUID,
     category_data: ProductCategoryUpdate,
-    token_data: TokenData = Depends(require_permissions([PRODUCT_UPDATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -352,7 +347,7 @@ async def update_product_category(
 @router.delete("/{category_id}", status_code=204)
 async def delete_product_category(
     category_id: UUID,
-    token_data: TokenData = Depends(require_permissions([PRODUCT_DELETE[0]])),
+    token_data: TokenData = Depends(require_permissions(["products:delete"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):

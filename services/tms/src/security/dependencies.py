@@ -8,6 +8,7 @@ from functools import wraps
 
 from .auth import TokenData, verify_token, extract_token_from_header, TokenExpiredError, TokenInvalidError
 from src.database import get_db
+from src.services.permission_service import TMSServicePermission
 
 # TMS Permission constants
 TRIP_READ = ["trips:read"]
@@ -78,9 +79,14 @@ async def get_current_token_data(
         )
 
 
+async def get_permission_service() -> TMSServicePermission:
+    """Get permission service instance"""
+    return TMSServicePermission()
+
+
 def require_permissions(required_permissions: List[str]):
     """
-    Dependency factory that creates a dependency requiring specific permissions
+    Dependency factory that creates a dependency requiring specific permissions (database lookup)
 
     Args:
         required_permissions: List of required permissions
@@ -89,21 +95,28 @@ def require_permissions(required_permissions: List[str]):
         Dependency function that checks permissions
     """
     async def permission_checker(
-        token_data: TokenData = Depends(get_current_token_data)
+        token_data: TokenData = Depends(get_current_token_data),
+        perm_service: TMSServicePermission = Depends(get_permission_service)
     ) -> TokenData:
         # Super admin has all permissions
         if token_data.is_super_user():
             return token_data
 
-        # Check if user has all required permissions
-        user_permissions = set(token_data.permissions)
-        required_set = set(required_permissions)
+        # Set permission service for token data
+        token_data.set_permission_service(perm_service)
 
-        if not required_set.issubset(user_permissions):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions. Required: {required_permissions}"
+        # Check if user has all required permissions from database
+        for required_perm in required_permissions:
+            has_permission = await perm_service.check_permission(
+                token_data.user_id,
+                token_data.role_id,
+                required_perm
             )
+            if not has_permission:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Insufficient permissions. Required: {required_perm}"
+                )
 
         return token_data
 
@@ -112,7 +125,7 @@ def require_permissions(required_permissions: List[str]):
 
 def require_any_permission(required_permissions: List[str]):
     """
-    Dependency factory that creates a dependency requiring at least one of specified permissions
+    Dependency factory that creates a dependency requiring at least one of specified permissions (database lookup)
 
     Args:
         required_permissions: List of permissions (user needs at least one)
@@ -121,17 +134,24 @@ def require_any_permission(required_permissions: List[str]):
         Dependency function that checks permissions
     """
     async def permission_checker(
-        token_data: TokenData = Depends(get_current_token_data)
+        token_data: TokenData = Depends(get_current_token_data),
+        perm_service: TMSServicePermission = Depends(get_permission_service)
     ) -> TokenData:
         # Super admin has all permissions
         if token_data.is_super_user():
             return token_data
 
-        # Check if user has any of the required permissions
-        user_permissions = set(token_data.permissions)
-        required_set = set(required_permissions)
+        # Set permission service for token data
+        token_data.set_permission_service(perm_service)
 
-        if not user_permissions.intersection(required_set):
+        # Check if user has any of the required permissions from database
+        has_any_permission = await perm_service.check_any_permission(
+            token_data.user_id,
+            token_data.role_id,
+            required_permissions
+        )
+
+        if not has_any_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Insufficient permissions. Requires one of: {required_permissions}"

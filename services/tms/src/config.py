@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     request_timeout: int = 30
     database_connect_timeout: int = 10
 
+    # Auth Service URL
+    AUTH_SERVICE_URL: str = "http://auth-service:8001"
+
     class Config:
         env_file = ".env"
         case_sensitive = False

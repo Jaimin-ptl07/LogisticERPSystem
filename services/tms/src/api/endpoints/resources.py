@@ -8,12 +8,7 @@ from src.schemas import Truck, Driver, Order, Branch
 from src.security import (
     TokenData,
     require_any_permission,
-    get_current_tenant_id,
-    RESOURCES_READ,
-    RESOURCES_READ_ALL,
-    DRIVERS_UPDATE,
-    VEHICLES_TRACK,
-    VEHICLES_UPDATE
+    get_current_tenant_id
 )
 
 router = APIRouter()
@@ -101,7 +96,7 @@ BRANCHES = [
 async def get_trucks(
     status: Optional[str] = Query(None, description="Filter by truck status"),
     token_data: TokenData = Depends(
-        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0], VEHICLES_TRACK[0], VEHICLES_UPDATE[0]])
+        require_any_permission(["resources:read", "resources:read_all", "vehicles:read", "vehicles:read_all", "vehicles:track", "vehicles:update"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
@@ -120,7 +115,7 @@ async def get_trucks(
 async def get_drivers(
     status: Optional[str] = Query(None, description="Filter by driver status"),
     token_data: TokenData = Depends(
-        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0], DRIVERS_UPDATE[0]])
+        require_any_permission(["resources:read", "resources:read_all", "drivers:read", "drivers:read_all", "drivers:update"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
@@ -140,7 +135,7 @@ async def get_orders(
     status: Optional[str] = Query(None, description="Filter by order status"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     token_data: TokenData = Depends(
-        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0]])
+        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
@@ -160,7 +155,7 @@ async def get_orders(
 @router.get("/branches", response_model=List[Branch])
 async def get_branches(
     token_data: TokenData = Depends(
-        require_any_permission([RESOURCES_READ[0], RESOURCES_READ_ALL[0]])
+        require_any_permission(["resources:read", "resources:read_all", "branches:read", "branches:read_all"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):

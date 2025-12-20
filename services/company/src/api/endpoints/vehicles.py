@@ -23,13 +23,7 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id,
     require_permissions,
-    require_any_permission,
-    VEHICLE_READ_ALL,
-    VEHICLE_READ,
-    VEHICLE_CREATE,
-    VEHICLE_UPDATE,
-    VEHICLE_DELETE,
-    VEHICLE_ASSIGN
+    require_any_permission
 )
 
 router = APIRouter()
@@ -45,7 +39,7 @@ async def list_vehicles(
     status: Optional[VehicleStatus] = Query(None),
     branch_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
-    token_data: TokenData = Depends(require_any_permission([VEHICLE_READ_ALL[0], VEHICLE_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -143,7 +137,7 @@ async def get_vehicle_status_options():
 @router.get("/{vehicle_id}", response_model=VehicleSchema)
 async def get_vehicle(
     vehicle_id: UUID,
-    token_data: TokenData = Depends(require_any_permission([VEHICLE_READ_ALL[0], VEHICLE_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -175,7 +169,7 @@ async def get_vehicle(
 @router.post("/", response_model=VehicleSchema, status_code=201)
 async def create_vehicle(
     vehicle_data: VehicleCreate,
-    token_data: TokenData = Depends(require_permissions([VEHICLE_CREATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["vehicles:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
@@ -232,7 +226,7 @@ async def create_vehicle(
 async def update_vehicle(
     vehicle_id: UUID,
     vehicle_data: VehicleUpdate,
-    token_data: TokenData = Depends(require_permissions([VEHICLE_UPDATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["vehicles:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -284,7 +278,7 @@ async def update_vehicle(
 @router.delete("/{vehicle_id}", status_code=204)
 async def delete_vehicle(
     vehicle_id: UUID,
-    token_data: TokenData = Depends(require_permissions([VEHICLE_DELETE[0]])),
+    token_data: TokenData = Depends(require_permissions(["vehicles:delete"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -315,7 +309,7 @@ async def delete_vehicle(
 async def update_vehicle_status(
     vehicle_id: UUID,
     status: VehicleStatus,
-    token_data: TokenData = Depends(require_permissions([VEHICLE_UPDATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["vehicles:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -365,7 +359,7 @@ async def get_available_vehicles(
     per_page: int = Query(20, ge=1, le=100),
     vehicle_type: Optional[VehicleType] = Query(None),
     branch_id: Optional[UUID] = Query(None),
-    token_data: TokenData = Depends(require_any_permission([VEHICLE_READ_ALL[0], VEHICLE_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):

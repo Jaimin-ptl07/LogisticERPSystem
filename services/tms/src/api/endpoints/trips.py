@@ -19,13 +19,7 @@ from src.security import (
     require_permissions,
     require_any_permission,
     get_current_tenant_id,
-    get_current_user_id,
-    TRIP_READ,
-    TRIP_READ_ALL,
-    TRIP_CREATE,
-    TRIP_UPDATE,
-    TRIP_DELETE,
-    TRIP_ASSIGN
+    get_current_user_id
 )
 
 router = APIRouter(
@@ -39,7 +33,7 @@ router = APIRouter(
 
 
 @router.get(
-    "/",
+    "",
     response_model=List[TripResponse],
     responses={401: {"description": "Unauthorized"}, 403: {"description": "Forbidden"}},
     summary="Get all trips",
@@ -51,7 +45,7 @@ async def get_trips(
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
-    token_data: TokenData = Depends(require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["trips:read_all", "trips:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -84,6 +78,37 @@ async def get_trips(
         orders_result = await db.execute(orders_query)
         orders = orders_result.scalars().all()
 
+        # Convert orders to TripOrderResponse format
+        order_responses = [
+            TripOrderResponse(
+                id=order.id,
+                trip_id=order.trip_id,
+                user_id=order.user_id,
+                company_id=order.company_id,
+                order_id=order.order_id,
+                customer=order.customer,
+                customer_address=order.customer_address,
+                customer_contact=order.customer_contact,
+                customer_phone=order.customer_phone,
+                product_name=order.product_name,
+                status=order.status,
+                total=order.total,
+                weight=order.weight,
+                volume=order.volume,
+                items=order.items,
+                quantity=order.quantity,
+                priority=order.priority,
+                address=order.address,
+                special_instructions=order.special_instructions,
+                delivery_instructions=order.delivery_instructions,
+                original_order_id=order.original_order_id,
+                original_items=order.original_items,
+                original_weight=order.original_weight,
+                assigned_at=order.assigned_at
+            )
+            for order in orders
+        ]
+
         trip_response = TripResponse(
             id=trip.id,
             user_id=trip.user_id,
@@ -108,6 +133,9 @@ async def get_trips(
             created_at=trip.created_at,
             updated_at=trip.updated_at
         )
+
+        # Add orders to the response
+        trip_response.orders = order_responses
         trip_responses.append(trip_response)
 
     return trip_responses
@@ -116,7 +144,7 @@ async def get_trips(
 @router.get("/{trip_id}", response_model=TripWithOrders)
 async def get_trip(
     trip_id: str,
-    token_data: TokenData = Depends(require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])),
+    token_data: TokenData = Depends(require_any_permission(["trips:read_all", "trips:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -197,10 +225,10 @@ async def get_trip(
     return trip_response
 
 
-@router.post("/", response_model=TripResponse)
+@router.post("", response_model=TripResponse)
 async def create_trip(
     trip_data: TripCreate,
-    token_data: TokenData = Depends(require_permissions([TRIP_CREATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["trips:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
@@ -262,7 +290,7 @@ async def create_trip(
 async def update_trip(
     trip_id: str,
     trip_data: TripUpdate,
-    token_data: TokenData = Depends(require_permissions([TRIP_UPDATE[0]])),
+    token_data: TokenData = Depends(require_permissions(["trips:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -317,7 +345,7 @@ async def update_trip(
 @router.delete("/{trip_id}")
 async def delete_trip(
     trip_id: str,
-    token_data: TokenData = Depends(require_permissions([TRIP_DELETE[0]])),
+    token_data: TokenData = Depends(require_permissions(["trips:delete"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -346,7 +374,7 @@ async def delete_trip(
 async def get_trip_orders(
     trip_id: str,
     token_data: TokenData = Depends(
-        require_any_permission([TRIP_READ_ALL[0], TRIP_READ[0]])
+        require_any_permission(["trips:read_all", "trips:read"])
     ),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
@@ -408,7 +436,7 @@ async def get_trip_orders(
 async def assign_orders_to_trip(
     trip_id: str,
     request: AssignOrdersRequest,
-    token_data: TokenData = Depends(require_permissions([TRIP_ASSIGN[0]])),
+    token_data: TokenData = Depends(require_permissions(["trips:assign"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
@@ -432,8 +460,8 @@ async def assign_orders_to_trip(
     for order_data in request.orders:
         trip_order = TripOrder(
             trip_id=trip_id,
-            user_id=user_id,
-            company_id=tenant_id,
+            user_id=user_id,  # Get from JWT token
+            company_id=tenant_id,  # Get from JWT token
             order_id=order_data.order_id,
             customer=order_data.customer,
             customer_address=order_data.customer_address,
@@ -452,6 +480,11 @@ async def assign_orders_to_trip(
         )
         db.add(trip_order)
         created_orders.append(trip_order)
+
+    # Update trip capacity_used
+    total_weight = sum(order.weight for order in created_orders)
+    trip.capacity_used = (trip.capacity_used or 0) + total_weight
+    db.add(trip)
 
     await db.commit()
 

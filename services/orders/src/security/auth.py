@@ -68,13 +68,15 @@ class TokenData:
         tenant_id: str = None,
         role_id: str = None,
         permissions: list = None,
-        exp: datetime = None
+        exp: datetime = None,
+        is_superuser: bool = False
     ):
         self.user_id = user_id
         self.tenant_id = tenant_id
         self.role_id = role_id
         self.permissions = permissions or []
         self.exp = exp
+        self.is_superuser = is_superuser
 
     def has_permission(self, permission: str) -> bool:
         """Check if user has specific permission"""
@@ -89,8 +91,8 @@ class TokenData:
         return all(perm in self.permissions for perm in permissions)
 
     def is_super_user(self) -> bool:
-        """Check if user is super admin"""
-        return "superuser:access" in self.permissions
+        """Check if user is a superuser"""
+        return self.is_superuser
 
     def __str__(self):
         return f"TokenData(user_id={self.user_id}, tenant_id={self.tenant_id}, role_id={self.role_id})"
@@ -115,21 +117,23 @@ def verify_token(token: str) -> TokenData:
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         role_id: str = payload.get("role_id")
-        permissions: list = payload.get("permissions", [])
+        is_superuser: bool = payload.get("is_superuser", False)
         exp: Optional[datetime] = payload.get("exp")
 
         logger.debug(f"Token payload - user_id: {user_id}, tenant_id: {tenant_id}, role_id: {role_id}")
 
-        if user_id is None or tenant_id is None or role_id is None:
+        if user_id is None or role_id is None:
             logger.warning("Token missing required fields")
             raise TokenInvalidError("Token missing required fields")
 
+        # Permissions are now empty - will be fetched from database
         token_data = TokenData(
             user_id=user_id,
             tenant_id=tenant_id,
             role_id=role_id,
-            permissions=permissions,
-            exp=exp
+            permissions=[],
+            exp=exp,
+            is_superuser=is_superuser
         )
         return token_data
     except JWTError as e:
