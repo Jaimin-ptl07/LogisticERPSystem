@@ -2,7 +2,7 @@
 
 from datetime import datetime, date
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
 
@@ -111,9 +111,10 @@ class TripOrderCreate(BaseModel):
     user_id: Optional[str] = None
     company_id: Optional[str] = None
 
-    class Config:
-        allow_population_by_field_name = True
-        from_attributes = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 class TripOrderResponse(BaseSchema):
@@ -134,6 +135,8 @@ class TripOrderResponse(BaseSchema):
     items: int
     quantity: int
     priority: Priority
+    delivery_status: Optional[str] = "pending"
+    sequence_number: int
     address: Optional[str] = None
     special_instructions: Optional[str] = None
     delivery_instructions: Optional[str] = None
@@ -142,9 +145,10 @@ class TripOrderResponse(BaseSchema):
     original_weight: Optional[int] = None
     assigned_at: datetime
 
-    class Config:
-        allow_population_by_field_name = True
-        from_attributes = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        from_attributes=True
+    )
 
 
 # Trip Schemas
@@ -243,4 +247,78 @@ class MessageResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
-    status_code: Optional[int] = None
+    status_code: Optional[int] = None# Reorder Orders Request Schema
+class ReorderOrdersRequest(BaseModel):
+    order_sequences: List[dict]  # List of {"order_id": int, "sequence_number": int}
+
+
+# Driver-specific Schemas
+class DeliveryStatus(str, Enum):
+    PENDING = "pending"
+    OUT_FOR_DELIVERY = "out-for-delivery"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+    RETURNED = "returned"
+
+
+class DeliveryUpdate(BaseModel):
+    status: DeliveryStatus
+
+
+class DriverTripSummary(BaseModel):
+    id: str
+    driver_id: str
+    status: TripStatus
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    truck_plate: str
+    truck_model: str
+    trip_date: date
+    total_orders: int
+    completed_orders: int
+    capacity_used: Optional[int] = 0
+    capacity_total: int
+
+
+class DriverTripListResponse(BaseModel):
+    trips: List[DriverTripSummary]
+    total: int
+    active: int
+    completed: int
+
+
+class DriverOrderDetail(BaseModel):
+    id: int
+    order_id: str
+    customer: str
+    customer_address: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    status: OrderStatus
+    delivery_status: DeliveryStatus
+    total: float = 0
+    weight: int = 0
+    volume: int = 0
+    items: int = 0
+    priority: Priority
+    sequence_number: int
+    assigned_at: datetime
+
+
+class DriverTripDetailResponse(BaseModel):
+    id: str
+    driver_id: str
+    status: TripStatus
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    distance: Optional[int] = None
+    truck_plate: str
+    truck_model: str
+    capacity_used: int
+    capacity_total: int
+    estimated_duration: Optional[int] = None
+    pre_trip_time: Optional[int] = None
+    post_trip_time: Optional[int] = None
+    orders: List[DriverOrderDetail]
+    created_at: datetime
+    updated_at: datetime

@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     if (user_id) queryParams.append('user_id', user_id);
     if (company_id) queryParams.append('company_id', company_id);
 
-    const url = `${TMS_SERVICE_URL}/api/v1/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       ...body,
     };
 
-    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips`, {
+    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -17,6 +17,7 @@ from src.middleware import (
     AuditLoggingMiddleware,
     RateLimitMiddleware,
 )
+from src.api.endpoints import trips, orders, resources, driver
 
 # Configure logging
 logging.basicConfig(
@@ -166,6 +167,7 @@ app.add_exception_handler(Exception, general_exception_handler)
 app.include_router(trips.router, prefix="/api/v1/trips", tags=["trips"])
 app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(resources.router, prefix="/api/v1/resources", tags=["resources"])
+app.include_router(driver.router, prefix="/api/v1/driver", tags=["driver"])
 
 
 @app.get("/")
@@ -194,44 +196,58 @@ async def metrics():
         except ImportError:
             # prometheus_client not available, return simple metrics
             return {"error": "Prometheus client not available"}
+    try:
+        # Initialize metrics if not already done
+        if not hasattr(app, '_metrics_initialized'):
+            from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, Gauge
 
-        app.metrics_registry = CollectorRegistry()
+            app.metrics_registry = CollectorRegistry()
 
-        # Define basic metrics
-        app.http_requests_total = Counter(
-            'tms_http_requests_total',
-            'Total HTTP requests',
-            ['method', 'endpoint', 'status_code'],
-            registry=app.metrics_registry
-        )
+            # Define basic metrics
+            app.http_requests_total = Counter(
+                'tms_http_requests_total',
+                'Total HTTP requests',
+                ['method', 'endpoint', 'status_code'],
+                registry=app.metrics_registry
+            )
 
-        app.http_request_duration = Histogram(
-            'tms_http_request_duration_seconds',
-            'HTTP request duration in seconds',
-            ['method', 'endpoint'],
-            registry=app.metrics_registry
-        )
+            app.http_request_duration = Histogram(
+                'tms_http_request_duration_seconds',
+                'HTTP request duration in seconds',
+                ['method', 'endpoint'],
+                registry=app.metrics_registry
+            )
 
-        app.trips_created = Counter(
-            'tms_trips_created_total',
-            'Total trips created',
-            registry=app.metrics_registry
-        )
+            app.trips_created = Counter(
+                'tms_trips_created_total',
+                'Total trips created',
+                registry=app.metrics_registry
+            )
 
-        app.active_trips = Gauge(
-            'tms_active_trips',
-            'Number of active trips',
-            registry=app.metrics_registry
-        )
+            app.active_trips = Gauge(
+                'tms_active_trips',
+                'Number of active trips',
+                registry=app.metrics_registry
+            )
 
-        app._metrics_initialized = True
+            app._metrics_initialized = True
 
         # Re-import for the return statement
         from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+        return Response(generate_latest(app.metrics_registry), media_type=CONTENT_TYPE_LATEST)
+    except ImportError:
+        # Return empty metrics if prometheus_client is not installed
+        return Response('# Metrics endpoint available but prometheus_client not installed\n', media_type='text/plain')
 
-    return Response(generate_latest(app.metrics_registry), media_type=CONTENT_TYPE_LATEST)
 
-
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Global HTTP exception handler"""
+    logger.error(f"HTTP {exc.status_code}: {exc.detail}")
+    return {
+        "error": exc.detail,
+        "status_code": exc.status_code
+    }
 
 
 if __name__ == "__main__":

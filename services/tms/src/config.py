@@ -15,7 +15,8 @@ class Settings(BaseSettings):
 
     # CORS
     allowed_origins: list[str] = ["*"]
-    allowed_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    allowed_methods: list[str] = ["GET", "POST",
+                                  "PUT", "DELETE", "PATCH", "OPTIONS"]
     allowed_headers: list[str] = ["*"]
     expose_headers: list[str] = ["X-Total-Count", "X-Page-Count"]
 

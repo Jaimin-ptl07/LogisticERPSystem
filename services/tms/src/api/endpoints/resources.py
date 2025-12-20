@@ -1,8 +1,10 @@
-"""Resources API endpoints with authentication"""
+"""Resources API endpoints - dummy data service"""
 
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Optional
+from typing import List, Optional, Query, HTTPException
+from httpx import AsyncClient
+import logging
 
 from src.schemas import Truck, Driver, Order, Branch
 from src.security import (
@@ -12,24 +14,20 @@ from src.security import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-# Dummy data - in production, this would come from other services
-# Note: These should be filtered by tenant_id in a real implementation
-TRUCKS = [
-    Truck(id="TRK-001", plate="ABC-1234", model="Ford Transit", capacity=2000, status="available"),
-    Truck(id="TRK-002", plate="XYZ-5678", model="Mercedes Sprinter", capacity=3000, status="available"),
-    Truck(id="TRK-003", plate="DEF-9012", model="Iveco Daily", capacity=5000, status="available"),
-    Truck(id="TRK-004", plate="GHI-3456", model="Isuzu NPR", capacity=2500, status="available"),
-    Truck(id="TRK-005", plate="JKL-7890", model="Ford Transit", capacity=2000, status="available"),
-]
+# Company service URL
+COMPANY_SERVICE_URL = "http://company-service:8002"
 
+# Mock drivers data - will be integrated with driver service later
 DRIVERS = [
-    Driver(id="DRV-001", name="Mike Johnson", phone="+201234567890", license="DL-001234", experience="5 years", status="active"),
-    Driver(id="DRV-002", name="Sarah Ahmed", phone="+201112223333", license="DL-002345", experience="3 years", status="active"),
-    Driver(id="DRV-003", name="Ali Hassan", phone="+201445556666", license="DL-003456", experience="7 years", status="active"),
-    Driver(id="DRV-004", name="Mohamed Ali", phone="+201556667778", license="DL-004567", experience="4 years", status="active"),
+    Driver(id="DRV-001", name="Mike Johnson", phone="+201234567890", license="DL-001234", experience="5 years", status="active", currentTruck=None),
+    Driver(id="DRV-002", name="Sarah Ahmed", phone="+201112223333", license="DL-002345", experience="3 years", status="active", currentTruck=None),
+    Driver(id="DRV-003", name="Ali Hassan", phone="+201445556666", license="DL-003456", experience="7 years", status="active", currentTruck=None),
+    Driver(id="DRV-004", name="Mohamed Ali", phone="+201556667778", license="DL-004567", experience="4 years", status="active", currentTruck=None),
 ]
 
+# Mock orders data - will be integrated with order service later
 ORDERS = [
     Order(
         id="ORD-001",
@@ -85,30 +83,48 @@ ORDERS = [
     ),
 ]
 
-BRANCHES = [
-    Branch(id="BRN-001", code="CAI-001", name="Cairo Central", location="123 Main St, Cairo", manager="Ahmed Mohamed", phone="+201234567890", status="active"),
-    Branch(id="BRN-002", code="ALX-001", name="Alexandria", location="456 Port Said Rd, Alexandria", manager="Sara Ali", phone="+201987654321", status="active"),
-    Branch(id="BRN-003", code="GIZ-001", name="Giza Branch", location="789 Pyramid Ave, Giza", manager="Mahmoud Hassan", phone="+201654321098", status="active"),
-]
 
+@router.get("/trucks", response_model=list[Truck])
+async def get_trucks(tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID")):
+    """Get all available trucks from Company service"""
+    async with AsyncClient(timeout=30.0) as client:
+        # Call Company service vehicles endpoint with status filter
+        response = await client.get(
+            f"{COMPANY_SERVICE_URL}/vehicles/",
+            params={
+                "status": "available",
+                "is_active": True,
+                "per_page": 100
+            }
+        )
 
-@router.get("/trucks", response_model=List[Truck])
-async def get_trucks(
-    status: Optional[str] = Query(None, description="Filter by truck status"),
-    token_data: TokenData = Depends(
-        require_any_permission(["resources:read", "resources:read_all", "vehicles:read", "vehicles:read_all", "vehicles:track", "vehicles:update"])
-    ),
-    tenant_id: str = Depends(get_current_tenant_id)
-):
-    """Get all trucks with optional status filter"""
-    # In production, filter by tenant_id
-    trucks = TRUCKS
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch vehicles from Company service: {response.status_code}")
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch trucks from Company service")
 
-    # Filter by status if provided
-    if status:
-        trucks = [truck for truck in trucks if truck.status == status]
+        data = response.json()
+        vehicles = data.get("items", [])
 
-    return trucks
+        # Convert vehicle data to Truck schema
+        trucks = []
+        for vehicle in vehicles:
+            # Extract capacity from vehicle data
+            capacity = vehicle.get("capacity_weight", 0) or 0
+
+            # Create truck model from make and model
+            make = vehicle.get("make", "")
+            model = vehicle.get("model", "")
+            truck_model = f"{make} {model}".strip() if make or model else "Unknown"
+
+            trucks.append(Truck(
+                id=str(vehicle["id"]),
+                plate=vehicle["plate_number"],
+                model=truck_model,
+                capacity=float(capacity),
+                status="available"  # All vehicles from /available endpoint are available
+            ))
+
+        return trucks
 
 
 @router.get("/drivers", response_model=List[Driver])
@@ -152,13 +168,88 @@ async def get_orders(
     return orders
 
 
-@router.get("/branches", response_model=List[Branch])
-async def get_branches(
-    token_data: TokenData = Depends(
-        require_any_permission(["resources:read", "resources:read_all", "branches:read", "branches:read_all"])
-    ),
-    tenant_id: str = Depends(get_current_tenant_id)
+@router.get("/branches", response_model=list[Branch])
+async def get_branches(tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID")):
+    """Get all active branches from Company service"""
+    async with AsyncClient(timeout=30.0) as client:
+        # Call Company service branches endpoint
+        response = await client.get(
+            f"{COMPANY_SERVICE_URL}/branches/",
+            params={"is_active": True, "per_page": 100}
+        )
+
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch branches from Company service: {response.status_code}")
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch branches from Company service")
+
+        data = response.json()
+        branches_data = data.get("items", [])
+
+        # Convert branch data to Branch schema
+        branches = []
+        for branch in branches_data:
+            # Create location from city and state
+            city = branch.get("city", "")
+            state = branch.get("state", "")
+            location = f"{city}, {state}".strip(", ") if city or state else "Unknown"
+
+            branches.append(Branch(
+                id=str(branch["id"]),
+                code=branch["code"],
+                name=branch["name"],
+                location=location,
+                manager=branch.get("manager_id", "Not assigned"),
+                phone=branch.get("phone", ""),
+                status="active" if branch.get("is_active", True) else "inactive"
+            ))
+
+        return branches
+
+
+@router.get("/branches/{branch_id}/trucks", response_model=list[Truck])
+async def get_trucks_by_branch(
+    branch_id: str,
+    tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID")
 ):
-    """Get all branches"""
-    # In production, filter by tenant_id
-    return BRANCHES
+    """Get available trucks for a specific branch"""
+    logger.info(f"Fetching trucks for branch_id: {branch_id}")
+
+    async with AsyncClient(timeout=30.0) as client:
+        # Call Company service vehicles endpoint filtered by branch
+        response = await client.get(
+            f"{COMPANY_SERVICE_URL}/vehicles/",
+            params={
+                "branch_id": branch_id,
+                "status": "available",
+                "is_active": True,
+                "per_page": 100
+            }
+        )
+
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch vehicles for branch {branch_id}: {response.status_code}")
+            logger.error(f"Response text: {response.text}")
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch trucks for branch")
+
+        data = response.json()
+        vehicles = data.get("items", [])
+        logger.info(f"Found {len(vehicles)} vehicles for branch {branch_id}")
+
+        # Convert vehicle data to Truck schema
+        trucks = []
+        for vehicle in vehicles:
+            capacity = vehicle.get("capacity_weight", 0) or 0
+
+            make = vehicle.get("make", "")
+            model = vehicle.get("model", "")
+            truck_model = f"{make} {model}".strip() if make or model else "Unknown"
+
+            trucks.append(Truck(
+                id=str(vehicle["id"]),
+                plate=vehicle["plate_number"],
+                model=truck_model,
+                capacity=float(capacity),
+                status="available"
+            ))
+
+        return trucks

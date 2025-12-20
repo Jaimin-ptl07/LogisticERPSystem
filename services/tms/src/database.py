@@ -92,7 +92,13 @@ class TripOrder(Base):
         CheckConstraint("priority IN ('high', 'medium', 'low')", name="check_priority"),
         nullable=False
     )
+    delivery_status = Column(
+        String(50),
+        CheckConstraint("delivery_status IN ('pending', 'out-for-delivery', 'delivered', 'failed', 'returned')", name="check_delivery_status"),
+        default="pending"
+    )
     address = Column(Text)
+    sequence_number = Column(Integer, nullable=False, default=0)  # Delivery sequence for drag & drop ordering
     assigned_at = Column(DateTime, default=datetime.utcnow)
     original_order_id = Column(String(50))  # For split orders
     original_items = Column(Integer)        # For split orders
