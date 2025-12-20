@@ -1203,15 +1203,14 @@ WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers',
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Create wildcard permissions for full access to major resources
-INSERT INTO permissions (id, resource, action, description, created_at, updated_at)
+INSERT INTO permissions (id, resource, action, description, created_at)
 VALUES
-    ('tenant-admin-orders-all', 'orders', '*', 'Tenant admin has full access to all order operations', NOW(), NOW()),
-    ('tenant-admin-products-all', 'products', '*', 'Tenant admin has full access to all product operations', NOW(), NOW()),
-    ('tenant-admin-vehicles-all', 'vehicles', '*', 'Tenant admin has full access to all vehicle operations', NOW(), NOW()),
-    ('tenant-admin-customers-all', 'customers', '*', 'Tenant admin has full access to all customer operations', NOW(), NOW()),
-    ('tenant-admin-branches-all', 'branches', '*', 'Tenant admin has full access to all branch operations', NOW(), NOW())
-ON CONFLICT (id) DO UPDATE
-    updated_at = NOW();
+    ('tenant-admin-orders-all', 'orders', '*', 'Tenant admin has full access to all order operations', NOW()),
+    ('tenant-admin-products-all', 'products', '*', 'Tenant admin has full access to all product operations', NOW()),
+    ('tenant-admin-vehicles-all', 'vehicles', '*', 'Tenant admin has full access to all vehicle operations', NOW()),
+    ('tenant-admin-customers-all', 'customers', '*', 'Tenant admin has full access to all customer operations', NOW()),
+    ('tenant-admin-branches-all', 'branches', '*', 'Tenant admin has full access to all branch operations', NOW())
+ON CONFLICT (id) DO NOTHING;
 
 -- Grant wildcard permissions to tenant admin
 INSERT INTO role_permissions (role_id, permission_id, created_at)

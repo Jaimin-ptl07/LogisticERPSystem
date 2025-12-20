@@ -3,11 +3,27 @@ import { NextRequest, NextResponse } from 'next/server';
 // TMS service URL
 const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
 
-export async function GET(request: Request) {
+// Helper function to get auth token from request
+function getAuthToken(request: NextRequest): string | null {
+  // Try to get token from Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  // Try to get token from cookies (if using httpOnly cookies)
+  const tokenCookie = request.cookies.get('access_token');
+  return tokenCookie?.value || null;
+}
+
+export async function GET(request: NextRequest) {
   try {
     // Get query parameters
     const { searchParams } = new URL(request.url);
     const tenant_id = searchParams.get('tenant_id') || 'default-tenant';
+
+    // Get auth token
+    const token = getAuthToken(request);
 
     // Call TMS service branches endpoint
     const response = await fetch(
@@ -16,6 +32,7 @@ export async function GET(request: Request) {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
         },
       }
     );

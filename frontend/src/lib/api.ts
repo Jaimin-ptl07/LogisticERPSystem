@@ -600,7 +600,7 @@ export const tmsAPI = {
   },
 
   // Reorder orders within a trip
-  async reorderTripOrders(tripId: string, orderSequences: { order_sequences: { order_id: number; sequence_number: number }[] }) {
+  async reorderTripOrders(tripId: string, orderSequences: { order_sequences: { order_id: string; sequence_number: number }[] }) {
     // Use Next.js API route instead of direct TMS service
     const response = await fetch(`/api/tms/trips/${tripId}/orders/reorder`, {
       method: 'PUT',
@@ -618,16 +618,8 @@ export const tmsAPI = {
 
   // Remove order from trip
   async removeOrderFromTrip(tripId: string, orderId: string) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const params = new URLSearchParams();
-    params.append('user_id', HARDCODED_USER_ID);
-    params.append('company_id', HARDCODED_COMPANY_ID);
-    params.append('order_id', orderId);
-
-    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders/remove?${params.toString()}`, {
+    // Use Next.js API route instead of direct TMS service
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?order_id=${orderId}`, {
       method: 'DELETE',
     });
   },

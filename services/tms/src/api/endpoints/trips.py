@@ -35,7 +35,8 @@ router = APIRouter(
 @router.get(
     "",
     response_model=List[TripResponse],
-    responses={401: {"description": "Unauthorized"}, 403: {"description": "Forbidden"}},
+    responses={401: {"description": "Unauthorized"},
+               403: {"description": "Forbidden"}},
     summary="Get all trips",
     description="Retrieve a list of all trips with optional filtering"
 )
@@ -44,8 +45,10 @@ async def get_trips(
     branch: Optional[str] = Query(None, description="Filter by branch"),
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
-    token_data: TokenData = Depends(require_any_permission(["trips:read_all", "trips:read"])),
+    company_id: Optional[str] = Query(
+        None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission(["trips:read_all", "trips:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -74,11 +77,13 @@ async def get_trips(
     trip_responses = []
     for trip in trips:
         # Get orders for this trip ordered by sequence_number
-        orders_query = select(TripOrder).where(TripOrder.trip_id == trip.id).order_by(TripOrder.sequence_number)
+        orders_query = select(TripOrder).where(
+            TripOrder.trip_id == trip.id).order_by(TripOrder.sequence_number)
         if user_id:
             orders_query = orders_query.where(TripOrder.user_id == user_id)
         if company_id:
-            orders_query = orders_query.where(TripOrder.company_id == company_id)
+            orders_query = orders_query.where(
+                TripOrder.company_id == company_id)
 
         orders_result = await db.execute(orders_query)
         orders = orders_result.scalars().all()
@@ -103,6 +108,8 @@ async def get_trips(
                 items=order.items,
                 quantity=order.quantity,
                 priority=order.priority,
+                delivery_status=order.delivery_status,
+                sequence_number=order.sequence_number or 0,  # Default to 0 if null
                 address=order.address,
                 special_instructions=order.special_instructions,
                 delivery_instructions=order.delivery_instructions,
@@ -149,7 +156,8 @@ async def get_trips(
 @router.get("/{trip_id}", response_model=TripWithOrders)
 async def get_trip(
     trip_id: str,
-    token_data: TokenData = Depends(require_any_permission(["trips:read_all", "trips:read"])),
+    token_data: TokenData = Depends(
+        require_any_permission(["trips:read_all", "trips:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -168,7 +176,8 @@ async def get_trip(
         raise HTTPException(status_code=404, detail="Trip not found")
 
     # Get trip orders ordered by sequence_number
-    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number)
+    orders_query = select(TripOrder).where(
+        TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number)
     orders_result = await db.execute(orders_query)
     orders = orders_result.scalars().all()
 
@@ -213,8 +222,10 @@ async def get_trip(
                 weight=order.weight,
                 volume=order.volume,
                 items=order.items,
-                quantity=order.quantity,
+                quantity=order.quantity or 1,  # Default to 1 if null
                 priority=order.priority,
+                delivery_status=order.delivery_status or "pending",
+                sequence_number=order.sequence_number or 0,  # Default to 0 if null
                 address=order.address,
                 special_instructions=order.special_instructions,
                 delivery_instructions=order.delivery_instructions,
@@ -297,6 +308,7 @@ async def update_trip(
     trip_data: TripUpdate,
     token_data: TokenData = Depends(require_permissions(["trips:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """Update trip"""
@@ -322,11 +334,8 @@ async def update_trip(
     await db.refresh(trip)
 
     # Fetch orders for this trip to avoid lazy loading issues
-    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number)
-    if user_id:
-        orders_query = orders_query.where(TripOrder.user_id == user_id)
-    if company_id:
-        orders_query = orders_query.where(TripOrder.company_id == company_id)
+    orders_query = select(TripOrder).where(
+        TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number)
 
     orders_result = await db.execute(orders_query)
     orders = orders_result.scalars().all()
@@ -364,14 +373,21 @@ async def update_trip(
                 "order_id": order.order_id,
                 "customer": order.customer,
                 "customer_address": order.customer_address,
+                "customer_contact": order.customer_contact,
+                "customer_phone": order.customer_phone,
+                "product_name": order.product_name,
                 "status": order.status,
                 "total": order.total,
                 "weight": order.weight,
                 "volume": order.volume,
                 "items": order.items,
+                "quantity": order.quantity or 1,  # Default to 1 if null
                 "priority": order.priority,
-                "sequence_number": order.sequence_number,
+                "delivery_status": order.delivery_status or "pending",
+                "sequence_number": order.sequence_number or 0,
                 "address": order.address,
+                "special_instructions": order.special_instructions,
+                "delivery_instructions": order.delivery_instructions,
                 "original_order_id": order.original_order_id,
                 "original_items": order.original_items,
                 "original_weight": order.original_weight,
@@ -487,21 +503,26 @@ async def assign_orders_to_trip(
         )
 
     # Get the current highest sequence number for this trip
-    max_seq_query = select(TripOrder.sequence_number).where(TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number.desc()).limit(1)
+    max_seq_query = select(TripOrder.sequence_number).where(
+        TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number.desc()).limit(1)
     max_seq_result = await db.execute(max_seq_query)
     max_seq = max_seq_result.scalar() or -1
 
     # Add orders to trip with sequential sequence numbers
-    trip_orders = []
+    created_orders = []
     for idx, order_data in enumerate(request.orders):
+        # Get order data dict without user_id and company_id to avoid conflicts
+        order_dict = order_data.dict(exclude={'user_id', 'company_id'})
+
         trip_order = TripOrder(
             trip_id=trip_id,
             sequence_number=max_seq + idx + 1,  # Assign sequential sequence numbers
-            **order_data.dict()
+            user_id=user_id,
+            company_id=tenant_id,  # Use tenant_id as company_id for multi-tenancy
+            **order_dict
         )
-        trip_orders.append(trip_order)
-        db.add(trip_order)
         created_orders.append(trip_order)
+        db.add(trip_order)
 
     # Update trip capacity_used
     total_weight = sum(order.weight for order in created_orders)
@@ -518,12 +539,18 @@ async def reorder_trip_orders(
     trip_id: str,
     request: ReorderOrdersRequest,
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
-    db: AsyncSession = Depends(get_async_session)
+    company_id: Optional[str] = Query(
+        None, description="Filter by company ID"),
+    token_data: TokenData = Depends(require_permissions(["trips:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
 ):
     """Reorder the sequence of orders in a trip"""
     # Verify trip exists and is in planning status
     trip_query = select(Trip).where(Trip.id == trip_id)
+
+    # Add tenant filtering
+    trip_query = trip_query.where(Trip.company_id == tenant_id)
 
     # Add user_id and company_id filtering if provided
     if user_id:
@@ -554,9 +581,11 @@ async def reorder_trip_orders(
         )
     )
     if user_id:
-        existing_orders_query = existing_orders_query.where(TripOrder.user_id == user_id)
+        existing_orders_query = existing_orders_query.where(
+            TripOrder.user_id == user_id)
     if company_id:
-        existing_orders_query = existing_orders_query.where(TripOrder.company_id == company_id)
+        existing_orders_query = existing_orders_query.where(
+            TripOrder.company_id == company_id)
 
     existing_orders_result = await db.execute(existing_orders_query)
     existing_orders = existing_orders_result.scalars().all()
@@ -582,7 +611,8 @@ async def reorder_trip_orders(
         if user_id:
             update_query = update_query.where(TripOrder.user_id == user_id)
         if company_id:
-            update_query = update_query.where(TripOrder.company_id == company_id)
+            update_query = update_query.where(
+                TripOrder.company_id == company_id)
 
         await db.execute(update_query)
 
@@ -596,12 +626,18 @@ async def remove_order_from_trip(
     trip_id: str,
     order_id: str = Query(..., description="Order ID to remove"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    company_id: Optional[str] = Query(None, description="Filter by company ID"),
-    db: AsyncSession = Depends(get_async_session)
+    company_id: Optional[str] = Query(
+        None, description="Filter by company ID"),
+    token_data: TokenData = Depends(require_permissions(["trips:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
 ):
     """Remove an order from a trip"""
     # Verify trip exists and is in planning status
     trip_query = select(Trip).where(Trip.id == trip_id)
+
+    # Add tenant filtering
+    trip_query = trip_query.where(Trip.company_id == tenant_id)
 
     # Add user_id and company_id filtering if provided
     if user_id:
@@ -655,5 +691,3 @@ async def remove_order_from_trip(
         await db.commit()
 
     return MessageResponse(message=f"Successfully removed order {order_id} from trip {trip_id}")
-
-

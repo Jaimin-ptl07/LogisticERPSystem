@@ -264,13 +264,29 @@ export default function Trips() {
 
     if (selectedBranchObj) {
       try {
-        // Fetch trucks for the selected branch
-        const tenantId = "default-tenant";
-        const branchTrucks = await tmsResourcesAPI.getTrucksByBranch(selectedBranchObj.id, tenantId);
-        setAvailableTrucks(branchTrucks);
+        // Check if this is a fallback branch (from company service being down)
+        if (selectedBranchObj.id === 'default-branch') {
+          // If it's a fallback branch, just use the general trucks list
+          const tenantId = "default-tenant";
+          const allTrucks = await tmsResourcesAPI.getTrucks(tenantId);
+          setAvailableTrucks(allTrucks);
+        } else {
+          // Fetch trucks for the selected branch
+          const tenantId = "default-tenant";
+          const branchTrucks = await tmsResourcesAPI.getTrucksByBranch(selectedBranchObj.id, tenantId);
+          setAvailableTrucks(branchTrucks);
+        }
       } catch (err) {
         console.error('Failed to fetch trucks for branch:', err);
-        // Keep existing trucks if fetch fails
+        // Fallback to general trucks list if branch-specific fetch fails
+        try {
+          const tenantId = "default-tenant";
+          const allTrucks = await tmsResourcesAPI.getTrucks(tenantId);
+          setAvailableTrucks(allTrucks);
+        } catch (fallbackErr) {
+          console.error('Failed to fetch fallback trucks:', fallbackErr);
+          // Keep existing trucks if all fetches fail
+        }
       }
     }
   };

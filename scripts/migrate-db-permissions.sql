@@ -311,7 +311,7 @@ VALUES
     ('tenant-admin-customers-all', 'customers', '*', 'Tenant admin has full access to all customer operations', NOW(), NOW()),
     ('tenant-admin-branches-all', 'branches', '*', 'Tenant admin has full access to all branch operations', NOW(), NOW())
 ON CONFLICT (id) DO UPDATE
-    updated_at = NOW();
+SET updated_at = NOW();
 
 -- Grant necessary permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON permissions TO authenticated_user;
