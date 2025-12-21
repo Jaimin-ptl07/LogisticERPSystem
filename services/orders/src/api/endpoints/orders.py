@@ -251,13 +251,20 @@ async def get_order(
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     order_data: OrderCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["orders:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
     """Create a new order"""
-    order_service = OrderService(db)
+    # Get authorization header from the request and forward it
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers, tenant_id)
 
     # Order service will use the tenant_id from the token
     order = await order_service.create_order(order_data, user_id, tenant_id)
