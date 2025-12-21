@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
+import { AppLayout } from '@/components/layout/AppLayout';
 import {
   Search,
   Plus,
@@ -76,7 +77,7 @@ export default function VehiclesPage() {
     const matchesBranch = branchFilter === 'all' || vehicle.branch_id === branchFilter;
 
     return matchesSearch && matchesStatus && matchesType && matchesBranch;
-  });
+  });frontend/src/app/masters/vehicles/page.tsx
 
   const handleEdit = (id: string) => {
     router.push(`/masters/vehicles/${id}/edit`);
@@ -136,18 +137,20 @@ export default function VehiclesPage() {
 
   if (error) {
     return (
-              <div className="p-6">
+      <AppLayout>
+        <div className="p-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <h3 className="text-red-800 font-medium">Error loading vehicles</h3>
             <p className="text-red-600 text-sm mt-1">Please try refreshing the page</p>
           </div>
         </div>
-      
+      </AppLayout>
     );
   }
 
   return (
-          <div className="space-y-6">
+    <AppLayout>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -469,6 +472,6 @@ export default function VehiclesPage() {
           </DialogContent>
         </Dialog>
       </div>
-    
+    </AppLayout>
   );
 }

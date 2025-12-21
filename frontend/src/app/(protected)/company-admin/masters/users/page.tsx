@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
+import { AppLayout } from '@/components/layout/AppLayout';
 import {
   Search,
   Plus,
@@ -157,7 +158,8 @@ export default function UsersPage() {
   };
 
   return (
-          <div className="space-y-6">
+    <AppLayout>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -471,6 +473,6 @@ export default function UsersPage() {
           </DialogContent>
         </Dialog>
       </div>
-    
+    </AppLayout>
   );
 }

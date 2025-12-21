@@ -18,6 +18,7 @@ const protectedRoutePrefixes = [
   "/finance-manager",
   "/logistics-manager",
   "/driver",
+  "/drivermodule", // Temporary renamed protected driver route
   "/dashboard", // Legacy route
   "/deliveries",
   "/orders",
@@ -70,7 +71,7 @@ export function middleware(request: NextRequest) {
     // We can't determine the user's role from the token in middleware,
     // so we'll let the login page handle the redirect based on role
     // But we can redirect to a default route and let the protected layout handle role-based routing
-    const defaultRoute = "/company-admin/dashboard"; // Fallback default
+    const defaultRoute = "/company-admin/masters"; // Fallback default
     return NextResponse.redirect(new URL(defaultRoute, request.url));
   }
 

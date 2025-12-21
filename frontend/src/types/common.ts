@@ -51,19 +51,3 @@ export interface TripOrder {
   items: number;
   weight: number;
 }
-
-export interface TripCreateData {
-  // user_id: string;
-  // company_id: string;
-  branch: string;
-  truck_plate: string;
-  truck_model: string;
-  truck_capacity: number;
-  driver_id: string;
-  driver_name: string;
-  driver_phone: string;
-  capacity_total: number;
-  trip_date: string;
-  origin?: string;
-  destination?: string | null;
-}

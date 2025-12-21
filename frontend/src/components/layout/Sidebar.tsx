@@ -52,13 +52,10 @@ const navigationStructure: NavItem[] = [
     icon: User,
     role: ROLES.SUPER_ADMIN,
     subItems: [
-      { label: "Dashboard", href: "/super-admin", icon: LayoutDashboard },
-      { label: "Companies", href: "/super-admin/companies", icon: Building2 },
-      { label: "Users", href: "/super-admin/users", icon: Users },
       {
-        label: "System Settings",
-        href: "/super-admin/settings",
-        icon: Settings,
+        label: "Dashboard",
+        href: "/super-admin/dashboard",
+        icon: LayoutDashboard,
       },
     ],
   },
@@ -69,12 +66,14 @@ const navigationStructure: NavItem[] = [
     subItems: [
       {
         label: "Dashboard",
-        href: "/company-admin/dashboard",
+        href: "/company-admin/masters",
         icon: LayoutDashboard,
       },
-      { label: "Orders", href: "/company-admin/orders", icon: ShoppingCart },
-      { label: "Trips", href: "/company-admin/trips", icon: Truck },
-      { label: "Masters", href: "/company-admin/masters", icon: Settings },
+      // {
+      //   label: "Dashboard",
+      //   href: "/company-admin/masters",
+      //   icon: LayoutDashboard,
+      // },
     ],
   },
   {
@@ -87,7 +86,11 @@ const navigationStructure: NavItem[] = [
         href: "/branch-manager/dashboard",
         icon: LayoutDashboard,
       },
-      { label: "Orders", href: "/branch-manager/orders", icon: ShoppingCart },
+      // {
+      //   label: "Dashboard New",
+      //   href: "/branch-manager/orders",
+      //   icon: LayoutDashboard,
+      // },
     ],
   },
   {
@@ -100,8 +103,8 @@ const navigationStructure: NavItem[] = [
         href: "/finance-manager/dashboard",
         icon: LayoutDashboard,
       },
-      { label: "Invoices", href: "/finance-manager/invoices", icon: FileText },
-      { label: "Reports", href: "/finance-manager/reports", icon: FileText },
+      // { label: "Invoices", href: "/finance-manager/invoices", icon: FileText },
+      // { label: "Reports", href: "/finance-manager/reports", icon: FileText },
     ],
   },
   {
@@ -109,17 +112,22 @@ const navigationStructure: NavItem[] = [
     icon: Package2,
     role: ROLES.LOGISTICS_MANAGER,
     subItems: [
+      // {
+      //   label: "Dashboard",
+      //   href: "/logistics-manager/dashboard",
+      //   icon: LayoutDashboard,
+      // },
       {
         label: "Dashboard",
-        href: "/logistics-manager/dashboard",
+        href: "/logistics-manager/trips-management",
         icon: LayoutDashboard,
       },
-      {
-        label: "Fleet Management",
-        href: "/logistics-manager/fleet",
-        icon: Truck,
-      },
-      { label: "Routes", href: "/logistics-manager/routes", icon: MapPin },
+      // {
+      //   label: "Fleet Management",
+      //   href: "/logistics-manager/fleet",
+      //   icon: Truck,
+      // },
+      // { label: "Routes", href: "/logistics-manager/routes", icon: MapPin },
     ],
   },
   {
@@ -127,8 +135,8 @@ const navigationStructure: NavItem[] = [
     icon: Truck,
     role: ROLES.DRIVER,
     subItems: [
-      { label: "My Trips", href: "/driver/trips", icon: Truck },
-      { label: "Deliveries", href: "/driver/deliveries", icon: Package },
+      { label: "My Trips", href: "/drivermodule/trips", icon: Truck },
+      // { label: "Deliveries", href: "/drivermodule/deliveries", icon: Package },
     ],
   },
 ];

@@ -13,8 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { Driver, TripCreateData } from "@/types/common";
-import { tmsAPI } from "@/lib/api";
+import { Driver } from "@/types/common";
+import { tmsAPI, TripCreateData } from "@/lib/api";
 import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
 
 interface CreateTripModalProps {

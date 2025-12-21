@@ -9,7 +9,6 @@ import { ModalLayout } from "./ModalLayout";
 import { Button } from "@/components/ui/Button";
 import { mockCustomers, mockBranches } from "@/data/mockData";
 import {
-  Calendar,
   Package,
   Plus,
   X,
@@ -69,6 +68,8 @@ export function CreateOrderModal({
       const uniqueNumber = uuidv4().slice(0, 8).toUpperCase();
       const orderNumber = `ORD-${today}-${uniqueNumber}`;
       setValue("orderNumber", orderNumber);
+      // Reset branch note when modal opens
+      setShowBranchNote(false);
     }
   }, [isOpen]);
 
@@ -121,8 +122,9 @@ export function CreateOrderModal({
   };
 
   const handleBranchSelect = (branchId: string) => {
-    setShowBranchNote(true);
-    setTimeout(() => setShowBranchNote(false), 5000); // Hide note after 5 seconds
+    if (branchId) {
+      setShowBranchNote(true);
+    }
   };
 
   const addOrderItem = () => {
@@ -132,14 +134,21 @@ export function CreateOrderModal({
       weight: 0,
       quantity: 1,
     };
-    setValue("orderItems", [...orderItems, newItem]);
+    setValue("orderItems", [...orderItems, newItem], {
+      shouldValidate: true,
+      shouldDirty: true
+    });
   };
 
   const removeOrderItem = (id: string) => {
     if (orderItems.length > 1) {
       setValue(
         "orderItems",
-        orderItems.filter((item) => item.id !== id)
+        orderItems.filter((item) => item.id !== id),
+        {
+          shouldValidate: true,
+          shouldDirty: true
+        }
       );
     }
   };
@@ -148,7 +157,10 @@ export function CreateOrderModal({
     const updatedItems = orderItems.map((item) =>
       item.id === id ? { ...item, [field]: value } : item
     );
-    setValue("orderItems", updatedItems);
+    setValue("orderItems", updatedItems, {
+      shouldValidate: true,
+      shouldDirty: true
+    });
   };
 
   const onSubmit = (data: OrderFormData) => {
@@ -162,6 +174,13 @@ export function CreateOrderModal({
     onClose();
   };
 
+  // Reset branch note when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setShowBranchNote(false);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -170,7 +189,7 @@ export function CreateOrderModal({
       onClose={handleCancel}
       title="Create New Order"
       size="xl"
-      className="max-h-[90vh] overflow-y-auto m-4 w-[800px] max-w-[90vw]"
+      className="max-h-[90vh] overflow-y-auto m-4"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Order Information */}
@@ -273,20 +292,20 @@ export function CreateOrderModal({
                 control={control}
                 render={({ field }) => (
                   <div className="relative">
-                    <select
-                      {...field}
-                      className="w-full px-3 text-black py-2 pr-10 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 cursor-pointer appearance-none"
-                      disabled={!selectedBranch}
-                    >
-                      <option value="">Select Customer</option>
-                      {mockCustomers.map((customer) => (
-                        <option key={customer.id} value={customer.name}>
-                          {customer.name}
-                        </option>
-                      ))}
-                    </select>
-                    <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  </div>
+                  <select
+                    {...field}
+                    className="w-full px-3 text-black py-2 pr-10 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 cursor-pointer disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+                    disabled={!selectedBranch}
+                  >
+                    <option value="">Select Customer</option>
+                    {mockCustomers.map((customer) => (
+                      <option key={customer.id} value={customer.name}>
+                        {customer.name}
+                      </option>
+                    ))}
+                  </select>
+                  <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
                 )}
               />
               {errors.customer && (
@@ -318,9 +337,15 @@ export function CreateOrderModal({
         </div>
 
         {/* Branch Note */}
-        {showBranchNote && (
+        <div
+          className={`transition-all duration-300 ease-in-out ${
+            showBranchNote
+              ? "opacity-100 max-h-24 mb-6"
+              : "opacity-0 max-h-0 overflow-hidden"
+          }`}
+        >
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
             <p className="text-sm text-blue-800">
               <strong>Note:</strong> Order status is automatically managed. New
               orders start as Pending and will automatically update to Loading
@@ -328,7 +353,7 @@ export function CreateOrderModal({
               when complete.
             </p>
           </div>
-        )}
+        </div>
 
         {/* Order Items */}
         <div className="space-y-4">
@@ -431,7 +456,7 @@ export function CreateOrderModal({
                 {/* Weight */}
                 <div>
                   <label
-                    className={`block text-sm font-medium mb-1 flex items-center gap-1 ${
+                    className={`text-sm font-medium mb-1 flex items-center gap-1 ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
                     }`}
                   >

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
+import { AppLayout } from '@/components/layout/AppLayout';
 import {
   ArrowLeft,
   Edit,
@@ -37,18 +38,21 @@ export default function BranchDetailsPage() {
 
   if (error) {
     return (
-      <div className="p-6">
+      <AppLayout>
+        <div className="p-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <h3 className="text-red-800 font-medium">Error loading branch details</h3>
             <p className="text-red-600 text-sm mt-1">The branch may not exist or you don't have permission to view it</p>
           </div>
         </div>
+      </AppLayout>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <AppLayout>
+        <div className="p-6">
           <div className="animate-pulse space-y-4">
             <div className="h-8 bg-gray-200 rounded w-1/3" />
             <div className="h-4 bg-gray-200 rounded w-1/2" />
@@ -59,6 +63,7 @@ export default function BranchDetailsPage() {
             </div>
           </div>
         </div>
+      </AppLayout>
     );
   }
 
@@ -71,7 +76,8 @@ export default function BranchDetailsPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <AppLayout>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -491,5 +497,6 @@ export default function BranchDetailsPage() {
           </TabsContent>
         </Tabs>
       </div>
+    </AppLayout>
   );
 }

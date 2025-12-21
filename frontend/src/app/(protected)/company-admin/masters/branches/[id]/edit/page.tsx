@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Textarea } from '@/components/ui/Textarea';
 import { Switch } from '@/components/ui/Switch';
+import { AppLayout } from '@/components/layout/AppLayout';
 import {
   ArrowLeft,
   Save,
@@ -123,18 +124,21 @@ export default function EditBranchPage() {
 
   if (error) {
     return (
-      <div className="p-6">
+      <AppLayout>
+        <div className="p-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <h3 className="text-red-800 font-medium">Error loading branch</h3>
             <p className="text-red-600 text-sm mt-1">The branch may not exist or you don't have permission to edit it</p>
           </div>
         </div>
+      </AppLayout>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <AppLayout>
+        <div className="p-6">
           <div className="animate-pulse space-y-4">
             <div className="h-8 bg-gray-200 rounded w-1/3" />
             <div className="h-4 bg-gray-200 rounded w-1/2" />
@@ -145,13 +149,15 @@ export default function EditBranchPage() {
             </div>
           </div>
         </div>
+      </AppLayout>
     );
   }
 
   if (!branch) return null;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <AppLayout>
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -356,5 +362,6 @@ export default function EditBranchPage() {
           </div>
         </form>
       </div>
+    </AppLayout>
   );
 }

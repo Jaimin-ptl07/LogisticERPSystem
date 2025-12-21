@@ -9,11 +9,9 @@ import {
   OrdersList,
   type OrderStats,
 } from "@/components/orders";
-import { mockOrders } from "@/data/mockData";
 import type { Order } from "@/types";
 
 // Lazy load modals (only when needed)
-
 const OrderDetailsModal = dynamic(
   () =>
     import("@/components/Modal").then((mod) => ({
@@ -36,36 +34,36 @@ const CreateOrderModal = dynamic(
   }
 );
 
-export default function BranchManagerOrders() {
+interface DashboardClientProps {
+  initialOrders: Order[];
+  initialOrderStats: OrderStats;
+}
+
+export default function DashboardClient({
+  initialOrders,
+  initialOrderStats,
+}: DashboardClientProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Calculate order statistics
-  const orderStats: OrderStats = useMemo(
-    () => ({
-      total: mockOrders.length,
-      pending: mockOrders.filter((o) => o.status === "pending").length,
-      loading: mockOrders.filter((o) => o.status === "loading").length,
-      onRoute: mockOrders.filter((o) => o.status === "on-route").length,
-      completed: mockOrders.filter((o) => o.status === "completed").length,
-    }),
-    []
-  );
+  // Use server-provided data as initial state
+  const [orders] = useState<Order[]>(initialOrders);
+  const [orderStats] = useState<OrderStats>(initialOrderStats);
 
   // Filter orders based on search query
   const filteredOrders = useMemo(() => {
-    if (!searchQuery) return mockOrders;
+    if (!searchQuery) return orders;
 
     const query = searchQuery.toLowerCase();
-    return mockOrders.filter(
+    return orders.filter(
       (order) =>
         order.id.toLowerCase().includes(query) ||
         order.customer.toLowerCase().includes(query) ||
         order.status.toLowerCase().includes(query)
     );
-  }, [searchQuery]);
+  }, [searchQuery, orders]);
 
   // Modal handlers
   const handleViewDetails = (order: Order) => {
@@ -89,6 +87,8 @@ export default function BranchManagerOrders() {
   const handleCreateOrderSubmit = (data: any) => {
     console.log("Creating order:", data);
     // TODO: Add order creation logic
+    // After creating, you might want to revalidate the cache
+    fetch('/api/revalidate?tag=orders', { method: 'POST' });
     setIsCreateModalOpen(false);
   };
 

@@ -1,7 +1,5 @@
 // Client-side API helper functions
 
-import { OrderAssignData, TripCreateData } from "@/types/common";
-
 export interface LoginRequest {
   email: string;
   password: string;
@@ -755,4 +753,3 @@ export const driverAPI = {
     });
   },
 };
-export type { OrderAssignData };

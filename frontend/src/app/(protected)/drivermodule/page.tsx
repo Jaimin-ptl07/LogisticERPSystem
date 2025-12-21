@@ -3,11 +3,11 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function SuperAdminIndex() {
+export default function DriverModuleIndex() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push("/super-admin/dashboard");
+    router.push("/drivermodule/trips");
   }, [router]);
 
   return null;

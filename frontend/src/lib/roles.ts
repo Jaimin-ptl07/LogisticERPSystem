@@ -43,6 +43,7 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
     "/finance-manager",
     "/logistics-manager",
     "/driver",
+    "/drivermodule", // Temporary renamed protected driver route
   ],
   [ROLES.COMPANY_ADMIN]: [
     "/company-admin",
@@ -53,17 +54,17 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
   [ROLES.FINANCE_MANAGER]: ["/finance-manager"],
   [ROLES.LOGISTICS_MANAGER]: ["/logistics-manager"],
   [ROLES.BRANCH_MANAGER]: ["/branch-manager"],
-  [ROLES.DRIVER]: ["/driver"],
+  [ROLES.DRIVER]: ["/drivermodule"], // Temporary renamed protected driver route
 };
 
 // Default redirect per role
 export const ROLE_DEFAULT_ROUTE: Record<Role, string> = {
   [ROLES.SUPER_ADMIN]: "/super-admin",
-  [ROLES.COMPANY_ADMIN]: "/company-admin/dashboard",
+  [ROLES.COMPANY_ADMIN]: "/company-admin/masters",
   [ROLES.BRANCH_MANAGER]: "/branch-manager/dashboard",
   [ROLES.FINANCE_MANAGER]: "/finance-manager/dashboard",
   [ROLES.LOGISTICS_MANAGER]: "/logistics-manager/dashboard",
-  [ROLES.DRIVER]: "/driver/trips",
+  [ROLES.DRIVER]: "/drivermodule/trips", // Temporary renamed protected driver route
 };
 
 /**
@@ -174,6 +175,6 @@ export function canAccessRoute(
 export function getDefaultRoute(userRole: string | undefined): string {
   if (!userRole) return "/login";
   const normalizedRole = normalizeRoleName(userRole);
-  if (!normalizedRole) return "/company-admin/dashboard";
-  return ROLE_DEFAULT_ROUTE[normalizedRole] || "/company-admin/dashboard";
+  if (!normalizedRole) return "/company-admin/masters";
+  return ROLE_DEFAULT_ROUTE[normalizedRole] || "/company-admin/masters";
 }
