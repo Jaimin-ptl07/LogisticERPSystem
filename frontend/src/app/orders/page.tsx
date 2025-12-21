@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { OrderDetailsModal, CreateOrderModal } from "@/components/Modal";
-import { useGetOrdersQuery, useGetOrderByIdQuery } from "@/services/api/ordersApi";
+import { useGetOrdersQuery, useGetOrderByIdQuery, Order } from "@/services/api/ordersApi";
 import { Plus, Search, Package } from "lucide-react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
@@ -249,7 +249,6 @@ export default function Orders() {
               <EmptyState
                 title="Error loading orders"
                 description="Failed to load orders. Please try again."
-                icon={<Package className="w-12 h-12 text-red-400 mx-auto mb-4" />}
               />
             ) : (
               <EmptyState
