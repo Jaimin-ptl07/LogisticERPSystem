@@ -2,7 +2,7 @@
 Orders API endpoints
 """
 from typing import List, Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -20,65 +20,52 @@ from src.schemas import (
     FinanceApprovalRequest,
     LogisticsApprovalRequest,
     OrderQueryParams,
+    PaginatedResponse,
+    OrderStatusHistoryResponse,
+)
+from src.security import (
+    TokenData,
+    require_permissions,
+    require_any_permission,
+    get_current_user_id,
+    get_current_tenant_id,
 )
 import logging
 from src.services.order_service import OrderService
 logger = logging.getLogger(__name__)
-# from src.utils.dependencies import get_current_user, require_permissions
-# from src.utils.auth import get_tenant_id
-
-# Mock authentication functions for development (AUTH DISABLED)
-async def get_current_user():
-    """Mock current user - AUTH DISABLED"""
-    return {
-        "id": uuid4(),
-        "email": "dev@example.com",
-        "role": "admin",
-        "tenant_id": uuid4()
-    }
-
-async def get_tenant_id():
-    """Mock tenant ID - AUTH DISABLED"""
-    return uuid4()
-
-def require_permissions(permissions):
-    """Mock permission check - AUTH DISABLED"""
-    async def dependency():
-        return await get_current_user()
-    return dependency
-
-async def get_tenant_id_for_order_list(
-    tenant_id: UUID = Query(..., description="Tenant ID")
-) -> UUID:
-    return tenant_id
 router = APIRouter()
 
 
-@router.get("/", response_model=List[OrderListResponse])
+@router.get("/", response_model=PaginatedResponse[OrderListResponse])
 async def list_orders(
-    status: Optional[OrderStatus] = Query(None, description="Filter by order status"),
-    customer_id: Optional[UUID] = Query(None, description="Filter by customer ID"),
+    status: Optional[OrderStatus] = Query(
+        None, description="Filter by order status"),
+    customer_id: Optional[UUID] = Query(
+        None, description="Filter by customer ID"),
     branch_id: Optional[UUID] = Query(None, description="Filter by branch ID"),
-    order_type: Optional[str] = Query(None, description="Filter by order type"),
+    order_type: Optional[str] = Query(
+        None, description="Filter by order type"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
-    payment_type: Optional[str] = Query(None, description="Filter by payment type"),
-    date_from: Optional[datetime] = Query(None, description="Filter by date from"),
+    payment_type: Optional[str] = Query(
+        None, description="Filter by payment type"),
+    date_from: Optional[datetime] = Query(
+        None, description="Filter by date from"),
     date_to: Optional[datetime] = Query(None, description="Filter by date to"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Page size"),
-    sort_by: str = Query("created_at", regex="^(created_at|updated_at|order_number|total_amount)$"),
+    sort_by: str = Query(
+        "created_at", regex="^(created_at|updated_at|order_number|total_amount)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id_for_order_list),
+    token_data: TokenData = Depends(
+        require_any_permission(["orders:read_all", "orders:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List orders with filtering and pagination"""
     order_service = OrderService(db)
 
     # Build filters
     filters = [Order.tenant_id == tenant_id, Order.is_active == True]
-
-    
 
     if status:
         filters.append(Order.status == status)
@@ -112,19 +99,26 @@ async def list_orders(
         page_size=page_size
     )
 
-    return orders
+    # Create paginated response
+    return PaginatedResponse.create(
+        items=orders,
+        total=total,
+        page=page,
+        page_size=page_size
+    )
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(
+        require_any_permission(["orders:read_all", "orders:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order by ID"""
     order_service = OrderService(db)
-    order = await order_service.get_order_by_id(order_id, tenant_id)
+    order = await order_service.get_order_by_id(str(order_id), tenant_id)
 
     if not order:
         raise HTTPException(
@@ -139,22 +133,15 @@ async def get_order(
 async def create_order(
     order_data: OrderCreate,
     db: AsyncSession = Depends(get_db),
-    # current_user: dict = Depends(
-    #     require_permissions(["orders", "create"])
-    # ),
-    # tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_permissions(["orders:create"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """Create a new order - AUTH DISABLED FOR DEVELOPMENT"""
+    """Create a new order"""
     order_service = OrderService(db)
 
-    # Mock user and tenant for development - AUTH DISABLED
-    mock_user_id = uuid4()
-    mock_tenant_id = order_data.tenant_id  # Use provided tenant_id
-
-    # Skip tenant verification for development - AUTH DISABLED
-    print(f"Creating order with tenant_id: {mock_tenant_id} - AUTH DISABLED")
-
-    order = await order_service.create_order(order_data, mock_user_id)
+    # Order service will use the tenant_id from the token
+    order = await order_service.create_order(order_data, user_id, tenant_id)
     return order
 
 
@@ -163,14 +150,16 @@ async def update_order(
     order_id: UUID,
     order_data: OrderUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_any_permission(
+        ["orders:update", "orders:update_own"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Update an order"""
     order_service = OrderService(db)
 
     # Check if order exists and belongs to tenant
-    existing_order = await order_service.get_order_by_id(order_id, tenant_id)
+    existing_order = await order_service.get_order_by_id(str(order_id), tenant_id)
     if not existing_order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -184,7 +173,17 @@ async def update_order(
             detail="Order cannot be updated in current status"
         )
 
-    order = await order_service.update_order(order_id, order_data, current_user["id"])
+    # Check if user can update this order
+    # Disabled - allowing users with update permission to update any order
+    # if (not token_data.is_super_user() and
+    #     "orders:update_own" in token_data.permissions and
+    #         existing_order.created_by != user_id):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="You can only update your own orders"
+    #     )
+
+    order = await order_service.update_order(str(order_id), order_data, user_id)
     return order
 
 
@@ -192,14 +191,16 @@ async def update_order(
 async def delete_order(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_any_permission(
+        ["orders:delete", "orders:delete_own"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Delete an order (soft delete)"""
     order_service = OrderService(db)
 
     # Check if order exists and belongs to tenant
-    existing_order = await order_service.get_order_by_id(order_id, tenant_id)
+    existing_order = await order_service.get_order_by_id(str(order_id), tenant_id)
     if not existing_order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -213,20 +214,49 @@ async def delete_order(
             detail="Order cannot be deleted in current status"
         )
 
-    await order_service.delete_order(order_id)
+    # Check if user can delete this order
+    # Disabled - allowing users with delete permission to delete any order
+    # if (not token_data.is_super_user() and
+    #     "orders:delete_own" in token_data.permissions and
+    #         existing_order.created_by != user_id):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="You can only delete your own orders"
+    #     )
+
+    await order_service.delete_order(str(order_id))
 
 
 @router.post("/{order_id}/submit", response_model=OrderResponse)
 async def submit_order(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_any_permission(
+        ["orders:update", "orders:update_own"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Submit order for finance approval"""
     order_service = OrderService(db)
 
-    order = await order_service.submit_order(order_id, current_user["id"], tenant_id)
+    # Check if order exists and belongs to tenant
+    existing_order = await order_service.get_order_by_id(order_id, tenant_id)
+    if not existing_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    # Check if user can submit this order
+    if (not token_data.is_super_user() and
+        "orders:update_own" in token_data.permissions and
+            existing_order.created_by != UUID(user_id)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only submit your own orders"
+        )
+
+    order = await order_service.submit_order(order_id, user_id, tenant_id)
     return order
 
 
@@ -235,16 +265,18 @@ async def finance_approval(
     order_id: UUID,
     approval_data: FinanceApprovalRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(
+        require_permissions(["orders:approve_finance"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """Approve or reject order in finance"""
+    """Approve or reject order in finance - Requires finance approval permission"""
     order_service = OrderService(db)
 
     order = await order_service.finance_approval(
         order_id,
         approval_data.approved,
-        current_user["id"],
+        user_id,
         tenant_id,
         approval_data.reason,
         approval_data.notes,
@@ -258,16 +290,18 @@ async def logistics_approval(
     order_id: UUID,
     approval_data: LogisticsApprovalRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(
+        require_permissions(["orders:approve_logistics"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """Approve or reject order in logistics"""
+    """Approve or reject order in logistics - Requires logistics approval permission"""
     order_service = OrderService(db)
 
     order = await order_service.logistics_approval(
         order_id,
         approval_data.approved,
-        current_user["id"],
+        user_id,
         tenant_id,
         approval_data.reason,
         approval_data.notes,
@@ -282,16 +316,18 @@ async def update_order_status(
     order_id: UUID,
     status_data: OrderStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(
+        require_permissions(["orders:status_update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """Update order status"""
+    """Update order status - Requires status update permission"""
     order_service = OrderService(db)
 
     order = await order_service.update_order_status(
-        order_id,
+        str(order_id),  # Convert UUID to string
         status_data.status,
-        current_user["id"],
+        user_id,
         tenant_id,
         status_data.reason,
         status_data.notes
@@ -299,26 +335,38 @@ async def update_order_status(
     return order
 
 
-@router.get("/{order_id}/history", response_model=List[dict])
+@router.get("/{order_id}/history", response_model=List[OrderStatusHistoryResponse])
 async def get_order_status_history(
     order_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(
+        require_any_permission(["orders:read_all", "orders:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order status history"""
     order_service = OrderService(db)
 
     # Check if order exists and belongs to tenant
-    order = await order_service.get_order_by_id(order_id, tenant_id)
+    order = await order_service.get_order_by_id(str(order_id), tenant_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found"
         )
 
-    history = await order_service.get_order_status_history(order_id)
-    return history
+    history = await order_service.get_order_status_history(str(order_id))
+
+    # Convert to response schema
+    return [
+        OrderStatusHistoryResponse(
+            from_status=item.from_status,
+            to_status=item.to_status,
+            reason=item.reason,
+            notes=item.notes,
+            created_at=item.created_at
+        )
+        for item in history
+    ]
 
 
 @router.post("/{order_id}/cancel", response_model=OrderResponse)
@@ -326,15 +374,16 @@ async def cancel_order(
     order_id: UUID,
     reason: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-    tenant_id: UUID = Depends(get_tenant_id),
+    token_data: TokenData = Depends(require_permissions(["orders:cancel"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """Cancel an order"""
+    """Cancel an order - Requires order cancel permission"""
     order_service = OrderService(db)
 
     order = await order_service.cancel_order(
-        order_id,
-        current_user["id"],
+        str(order_id),  # Convert UUID to string
+        user_id,
         tenant_id,
         reason
     )

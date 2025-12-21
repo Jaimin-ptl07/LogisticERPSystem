@@ -25,14 +25,14 @@ class OrderItem(Base):
     )
 
     # Foreign keys
-    order_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    order_id: Mapped[str] = mapped_column(
+        String(255),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-    product_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
         comment="Product ID from product service"
     )
