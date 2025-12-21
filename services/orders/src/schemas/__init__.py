@@ -12,7 +12,9 @@ from src.schemas.order import (
     FinanceApprovalRequest,
     LogisticsApprovalRequest,
     OrderQueryParams,
+    OrderStatusHistoryResponse,
 )
+from src.schemas.common import PaginatedResponse
 from src.schemas.order_item import (
     OrderItemBase,
     OrderItemCreate,
@@ -35,6 +37,9 @@ from src.schemas.external import (
 )
 
 __all__ = [
+    # Common schemas
+    "PaginatedResponse",
+
     # Order schemas
     "OrderBase",
     "OrderCreate",
@@ -46,6 +51,7 @@ __all__ = [
     "FinanceApprovalRequest",
     "LogisticsApprovalRequest",
     "OrderQueryParams",
+    "OrderStatusHistoryResponse",
 
     # Order item schemas
     "OrderItemBase",

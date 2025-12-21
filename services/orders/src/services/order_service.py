@@ -3,7 +3,7 @@ Order service - Business logic for order management
 """
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, asc, func
 from sqlalchemy.orm import selectinload
@@ -56,7 +56,6 @@ class OrderService:
         if order_by is not None:
             query = query.order_by(order_by)
 
-
         query = query.offset((page - 1) * page_size).limit(page_size)
 
         result = await self.db.execute(query)
@@ -72,7 +71,7 @@ class OrderService:
         """Get order by ID and tenant"""
         query = select(Order).where(
             and_(
-                Order.id == order_id,
+                Order.id == str(order_id),  # Convert to string to match VARCHAR column
                 Order.tenant_id == tenant_id,
                 Order.is_active == True
             )
@@ -183,14 +182,15 @@ class OrderService:
     async def create_order(
         self,
         order_data: OrderCreate,
-        user_id: str
+        user_id: str,
+        tenant_id: str
     ) -> Order:
         """Create a new order with items in a transaction-safe manner"""
         try:
             # Validate order_number uniqueness within tenant
             existing_order_query = select(Order.id).where(
                 and_(
-                    Order.tenant_id == order_data.tenant_id,
+                    Order.tenant_id == tenant_id,
                     Order.order_number == order_data.order_number
                 )
             )
@@ -218,7 +218,8 @@ class OrderService:
                     print(f"DEBUG: Got product: {product['name']}")
 
                     # Calculate item totals
-                    item_total_price = product["unit_price"] * item_data.quantity
+                    item_total_price = product["unit_price"] * \
+                        item_data.quantity
                     item_total_weight = product["weight"] * item_data.quantity
                     item_total_volume = product["volume"] * item_data.quantity
 
@@ -246,7 +247,7 @@ class OrderService:
             # Create order with calculated totals
             order = Order(
                 order_number=order_data.order_number,  # Use frontend order number
-                tenant_id=order_data.tenant_id,
+                tenant_id=tenant_id,
                 customer_id=order_data.customer_id,
                 branch_id=order_data.branch_id,
                 order_type=order_data.order_type,
@@ -329,7 +330,7 @@ class OrderService:
         user_id: str
     ) -> Order:
         """Update an existing order"""
-        query = select(Order).where(Order.id == order_id)
+        query = select(Order).where(Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
         order = result.scalar_one_or_none()
 
@@ -351,7 +352,7 @@ class OrderService:
 
     async def delete_order(self, order_id: str) -> None:
         """Soft delete an order"""
-        query = select(Order).where(Order.id == order_id)
+        query = select(Order).where(Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
         order = result.scalar_one_or_none()
 
@@ -501,7 +502,8 @@ class OrderService:
 
         # Validate status transition
         if not self._is_valid_status_transition(order.status, new_status):
-            raise ValueError(f"Invalid status transition from {order.status} to {new_status}")
+            raise ValueError(
+                f"Invalid status transition from {order.status} to {new_status}")
 
         await self._update_order_status(
             order,
@@ -523,7 +525,7 @@ class OrderService:
     ) -> List[OrderStatusHistory]:
         """Get order status history"""
         query = select(OrderStatusHistory).where(
-            OrderStatusHistory.order_id == order_id
+            OrderStatusHistory.order_id == str(order_id)  # Convert to string
         ).order_by(desc(OrderStatusHistory.created_at))
 
         result = await self.db.execute(query)

@@ -2,7 +2,6 @@
 Order Item Pydantic schemas for API requests and responses
 """
 from typing import Optional
-# UUID removed, using str instead
 from pydantic import BaseModel, Field, ConfigDict
 
 
