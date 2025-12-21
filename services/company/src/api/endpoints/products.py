@@ -16,18 +16,15 @@ from src.schemas import (
     ProductUpdate,
     PaginatedResponse
 )
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission
+)
 
 router = APIRouter()
-
-
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -41,12 +38,17 @@ async def list_products(
     max_price: Optional[float] = Query(None, ge=0),
     is_active: Optional[bool] = Query(None),
     low_stock: bool = Query(False),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List all products for the current tenant
+
+    Requires:
+    - products:read_all (to view all products) OR
+    - products:read (to view basic product info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(Product).where(Product.tenant_id == tenant_id)
@@ -128,12 +130,17 @@ async def list_products(
 @router.get("/{product_id}", response_model=ProductSchema)
 async def get_product(
     product_id: UUID,
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get a specific product by ID
+
+    Requires:
+    - products:read_all (to view any product) OR
+    - products:read (to view basic product info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get product with relationships
     query = select(Product).where(
@@ -155,12 +162,17 @@ async def get_product(
 @router.post("/", response_model=ProductSchema, status_code=201)
 async def create_product(
     product_data: ProductCreate,
+    token_data: TokenData = Depends(require_permissions(["products:create"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new product
+
+    Requires:
+    - products:create
     """
-    tenant_id = await get_current_tenant_id()
 
     # Check if product code already exists
     existing_query = select(Product).where(
@@ -264,12 +276,16 @@ async def create_product(
 async def update_product(
     product_id: UUID,
     product_data: ProductUpdate,
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a product
+
+    Requires:
+    - products:update
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing product
     query = select(Product).where(
@@ -344,12 +360,16 @@ async def update_product(
 @router.delete("/{product_id}", status_code=204)
 async def delete_product(
     product_id: UUID,
+    token_data: TokenData = Depends(require_permissions(["products:delete"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Delete (deactivate) a product
+
+    Requires:
+    - products:delete
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing product
     query = select(Product).where(
@@ -371,12 +391,17 @@ async def delete_product(
 async def get_low_stock_products(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get products with low stock levels
+
+    Requires:
+    - products:read_all (to view all low stock products) OR
+    - products:read (to view basic low stock product info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query for low stock products
     query = select(Product).where(
@@ -419,12 +444,16 @@ async def get_low_stock_products(
 @router.post("/bulk-update", response_model=List[ProductSchema])
 async def bulk_update_products(
     updates: List[Dict[str, Any]],
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Bulk update products
+
+    Requires:
+    - products:update
     """
-    tenant_id = await get_current_tenant_id()
     updated_products = []
 
     for update in updates:
@@ -478,13 +507,18 @@ async def bulk_update_products(
 @router.get("/{product_id}/stock-history")
 async def get_stock_history(
     product_id: UUID,
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get stock movement history for a product
     TODO: Implement stock movement tracking
+
+    Requires:
+    - products:read_all (to view any product stock history) OR
+    - products:read (to view basic product stock history)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get product
     query = select(Product).where(
