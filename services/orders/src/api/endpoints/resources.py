@@ -1,12 +1,17 @@
 """Resources API endpoints - integration with Company service for branches, products, and customers"""
 
 from typing import List, Optional
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Request, Depends
 from httpx import AsyncClient
 import logging
 
 # Import schemas from company service
 from src.schemas import Branch, Product, Customer
+from src.security import (
+    TokenData,
+    require_any_permission,
+    get_current_tenant_id
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -16,8 +21,20 @@ COMPANY_SERVICE_URL = "http://company-service:8002"
 
 
 @router.get("/branches", response_model=List[dict])
-async def get_branches(tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID")):
+async def get_branches(
+    request: Request,
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
     """Get all active branches from Company service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         try:
             # Call Company service branches endpoint
@@ -27,7 +44,8 @@ async def get_branches(tenant_id: Optional[str] = Query("default-tenant", descri
                     "is_active": True,
                     "per_page": 100,
                     "tenant_id": tenant_id
-                }
+                },
+                headers=headers
             )
 
             if response.status_code != 200:
@@ -46,12 +64,22 @@ async def get_branches(tenant_id: Optional[str] = Query("default-tenant", descri
 
 @router.get("/products", response_model=List[dict])
 async def get_products(
-    tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID"),
+    request: Request,
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     branch_id: Optional[str] = Query(None, description="Filter by branch ID"),
     is_active: Optional[bool] = Query(True, description="Filter active products only"),
     include_branches: Optional[bool] = Query(False, description="Include branch relationships")
 ):
     """Get all products from Company service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         try:
             params = {
@@ -66,7 +94,8 @@ async def get_products(
             # Call Company service products endpoint
             response = await client.get(
                 f"{COMPANY_SERVICE_URL}/products/",
-                params=params
+                params=params,
+                headers=headers
             )
 
             if response.status_code != 200:
@@ -106,12 +135,22 @@ async def get_products(
 
 @router.get("/customers", response_model=List[dict])
 async def get_customers(
-    tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID"),
+    request: Request,
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     branch_id: Optional[str] = Query(None, description="Filter by home branch ID"),
     is_active: Optional[bool] = Query(True, description="Filter active customers only"),
     search: Optional[str] = Query(None, description="Search customers by name or email")
 ):
     """Get all customers from Company service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         try:
             params = {
@@ -129,7 +168,8 @@ async def get_customers(
             # Call Company service customers endpoint
             response = await client.get(
                 f"{COMPANY_SERVICE_URL}/customers/",
-                params=params
+                params=params,
+                headers=headers
             )
 
             if response.status_code != 200:
@@ -148,11 +188,21 @@ async def get_customers(
 
 @router.get("/products/by-category")
 async def get_products_by_category(
-    tenant_id: str = "default-tenant",
+    request: Request,
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     category_id: Optional[str] = Query(None),
     branch_id: Optional[str] = Query(None)
 ):
     """Get products grouped by category for dropdown with sections"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         try:
             params = {
@@ -169,7 +219,8 @@ async def get_products_by_category(
 
             response = await client.get(
                 f"{COMPANY_SERVICE_URL}/products/",
-                params=params
+                params=params,
+                headers=headers
             )
 
             if response.status_code != 200:

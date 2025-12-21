@@ -25,8 +25,10 @@ settings = OrdersSettings()
 class OrderService:
     """Service for managing orders"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, auth_headers: dict = None, tenant_id: str = None):
         self.db = db
+        self.auth_headers = auth_headers or {}
+        self.tenant_id = tenant_id
 
     async def get_orders_paginated(
         self,
@@ -102,10 +104,11 @@ class OrderService:
                 response = await client.get(
                     f"{COMPANY_SERVICE_URL}/products/",
                     params={
-                        "tenant_id": "default-tenant",
+                        "tenant_id": self.tenant_id or "default-tenant",
                         "is_active": True,
                         "per_page": 100  # Max allowed by the API
-                    }
+                    },
+                    headers=self.auth_headers
                 )
 
                 if response.status_code == 200:

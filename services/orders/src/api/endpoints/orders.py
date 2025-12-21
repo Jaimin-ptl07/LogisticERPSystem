@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 from httpx import AsyncClient
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, asc, func
 
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 COMPANY_SERVICE_URL = "http://company-service:8002"
 
 
-async def fetch_customers_by_ids(customer_ids: List[str], tenant_id: str) -> Dict[str, dict]:
+async def fetch_customers_by_ids(customer_ids: List[str], tenant_id: str, headers: dict = None) -> Dict[str, dict]:
     """Fetch customers by IDs from company service"""
     if not customer_ids:
         return {}
@@ -54,7 +54,8 @@ async def fetch_customers_by_ids(customer_ids: List[str], tenant_id: str) -> Dic
             try:
                 response = await client.get(
                     f"{COMPANY_SERVICE_URL}/customers/{customer_id}",
-                    params={"tenant_id": tenant_id}
+                    params={"tenant_id": tenant_id},
+                    headers=headers or {}
                 )
 
                 if response.status_code == 200:
@@ -73,6 +74,7 @@ router = APIRouter()
 
 @router.get("/", response_model=OrderListPaginatedResponse)
 async def list_orders(
+    request: Request,
     status: Optional[OrderStatus] = Query(None, description="Filter by order status"),
     customer_id: Optional[str] = Query(None, description="Filter by customer ID"),
     branch_id: Optional[str] = Query(None, description="Filter by branch ID"),
@@ -91,7 +93,13 @@ async def list_orders(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List orders with filtering and pagination"""
-    order_service = OrderService(db)
+    # Get authorization header from the request and forward it
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers, tenant_id)
 
     # Build filters
     filters = [Order.tenant_id == tenant_id, Order.is_active == True]
@@ -151,7 +159,7 @@ async def list_orders(
     customers_data = {}
     if customer_ids:
         try:
-            customers_data = await fetch_customers_by_ids(customer_ids, tenant_id)
+            customers_data = await fetch_customers_by_ids(customer_ids, tenant_id, auth_headers)
         except Exception as e:
             logger.error(f"Failed to fetch customers: {e}")
 
@@ -159,7 +167,7 @@ async def list_orders(
     products_data = {}
     if product_ids:
         try:
-            order_service = OrderService(db)
+            order_service = OrderService(db, auth_headers, tenant_id)
             for product_id in product_ids:
                 product = await order_service._fetch_product_details(product_id)
                 products_data[product_id] = product
