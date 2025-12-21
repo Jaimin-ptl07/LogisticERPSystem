@@ -77,7 +77,7 @@ export default function VehiclesPage() {
     const matchesBranch = branchFilter === 'all' || vehicle.branch_id === branchFilter;
 
     return matchesSearch && matchesStatus && matchesType && matchesBranch;
-  });frontend/src/app/masters/vehicles/page.tsx
+  });
 
   const handleEdit = (id: string) => {
     router.push(`/masters/vehicles/${id}/edit`);

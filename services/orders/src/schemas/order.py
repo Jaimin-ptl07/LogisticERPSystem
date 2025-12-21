@@ -185,7 +185,7 @@ class OrderResponse(OrderBase):
 
 
 class OrderListResponse(BaseModel):
-    """Schema for order list response (without relationships)"""
+    """Schema for order list response (with basic relationships)"""
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -201,6 +201,20 @@ class OrderListResponse(BaseModel):
     delivery_date: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+
+    # Additional fields for UI
+    customer: Optional[dict] = None  # Customer details from company service
+    items: List[dict] = []  # Order items with product details
+    items_count: int = 0  # Number of items in the order (backward compatibility)
+
+
+class OrderListPaginatedResponse(BaseModel):
+    """Schema for paginated order list response"""
+    items: List[OrderListResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
 
 
 # Status update schemas
