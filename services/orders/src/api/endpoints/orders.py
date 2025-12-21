@@ -1,11 +1,12 @@
 """
 Orders API endpoints
 """
-from typing import List, Optional
-from uuid import UUID
+from typing import List, Optional, Dict
+from uuid import UUID, uuid4
 from datetime import datetime
+from httpx import AsyncClient
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, asc, func
 
@@ -16,6 +17,7 @@ from src.schemas import (
     OrderUpdate,
     OrderResponse,
     OrderListResponse,
+    OrderListPaginatedResponse,
     OrderStatusUpdate,
     FinanceApprovalRequest,
     LogisticsApprovalRequest,
@@ -32,37 +34,72 @@ from src.security import (
 )
 import logging
 from src.services.order_service import OrderService
+
 logger = logging.getLogger(__name__)
+
+# Company service URL
+COMPANY_SERVICE_URL = "http://company-service:8002"
+
+
+async def fetch_customers_by_ids(customer_ids: List[str], tenant_id: str, headers: dict = None) -> Dict[str, dict]:
+    """Fetch customers by IDs from company service"""
+    if not customer_ids:
+        return {}
+
+    customers_map = {}
+
+    # Company service doesn't have batch get by IDs, so we fetch individually
+    async with AsyncClient(timeout=30.0) as client:
+        for customer_id in customer_ids:
+            try:
+                response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/customers/{customer_id}",
+                    params={"tenant_id": tenant_id},
+                    headers=headers or {}
+                )
+
+                if response.status_code == 200:
+                    customer_data = response.json()
+                    customers_map[customer_id] = customer_data
+                else:
+                    logger.error(f"Failed to fetch customer {customer_id}: {response.status_code}")
+            except Exception as e:
+                logger.error(f"Error fetching customer {customer_id}: {str(e)}")
+
+    return customers_map
+
+
 router = APIRouter()
 
 
-@router.get("/", response_model=PaginatedResponse[OrderListResponse])
+@router.get("/", response_model=OrderListPaginatedResponse)
 async def list_orders(
-    status: Optional[OrderStatus] = Query(
-        None, description="Filter by order status"),
-    customer_id: Optional[UUID] = Query(
-        None, description="Filter by customer ID"),
-    branch_id: Optional[UUID] = Query(None, description="Filter by branch ID"),
-    order_type: Optional[str] = Query(
-        None, description="Filter by order type"),
+    request: Request,
+    status: Optional[OrderStatus] = Query(None, description="Filter by order status"),
+    customer_id: Optional[str] = Query(None, description="Filter by customer ID"),
+    branch_id: Optional[str] = Query(None, description="Filter by branch ID"),
+    order_type: Optional[str] = Query(None, description="Filter by order type"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
-    payment_type: Optional[str] = Query(
-        None, description="Filter by payment type"),
-    date_from: Optional[datetime] = Query(
-        None, description="Filter by date from"),
+    payment_type: Optional[str] = Query(None, description="Filter by payment type"),
+    date_from: Optional[datetime] = Query(None, description="Filter by date from"),
     date_to: Optional[datetime] = Query(None, description="Filter by date to"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(20, ge=1, le=100, description="Page size"),
-    sort_by: str = Query(
-        "created_at", regex="^(created_at|updated_at|order_number|total_amount)$"),
+    per_page: int = Query(20, ge=1, le=100, description="Page size"),
+    page_size: int = Query(None, description="Page size (deprecated, use per_page)"),
+    sort_by: str = Query("created_at", regex="^(created_at|updated_at|order_number|total_amount)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(
-        require_any_permission(["orders:read_all", "orders:read"])),
+    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List orders with filtering and pagination"""
-    order_service = OrderService(db)
+    # Get authorization header from the request and forward it
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers, tenant_id)
 
     # Build filters
     filters = [Order.tenant_id == tenant_id, Order.is_active == True]
@@ -91,29 +128,111 @@ async def list_orders(
     else:
         order_by = asc(sort_column)
 
+    # Use per_page parameter, fallback to page_size for backward compatibility
+    limit = per_page or page_size or 20
+
     # Get orders
     orders, total = await order_service.get_orders_paginated(
         filters=filters,
         order_by=order_by,
         page=page,
-        page_size=page_size
+        page_size=limit
     )
 
-    # Create paginated response
-    return PaginatedResponse.create(
-        items=orders,
+    # Calculate total pages
+    pages = (total + limit - 1) // limit
+
+    # Prepare enriched orders with customer data and items count
+    enriched_orders = []
+
+    # Get unique customer IDs from orders
+    customer_ids = list(set([order.customer_id for order in orders]))
+
+    # Get unique product IDs from order items
+    product_ids = set()
+    for order in orders:
+        if hasattr(order, 'items') and order.items:
+            for item in order.items:
+                product_ids.add(item.product_id)
+
+    # Fetch customer data in batch
+    customers_data = {}
+    if customer_ids:
+        try:
+            customers_data = await fetch_customers_by_ids(customer_ids, tenant_id, auth_headers)
+        except Exception as e:
+            logger.error(f"Failed to fetch customers: {e}")
+
+    # Fetch product data in batch
+    products_data = {}
+    if product_ids:
+        try:
+            order_service = OrderService(db, auth_headers, tenant_id)
+            for product_id in product_ids:
+                product = await order_service._fetch_product_details(product_id)
+                products_data[product_id] = product
+        except Exception as e:
+            logger.error(f"Failed to fetch products: {e}")
+
+    # Enrich each order with customer data and items details
+    for order in orders:
+        # Prepare items data
+        items_data = []
+        if hasattr(order, 'items') and order.items:
+            for item in order.items:
+                # Get real product data if available, otherwise fall back to stored data
+                product_data = products_data.get(item.product_id, {})
+
+                item_dict = {
+                    'id': item.id,
+                    'product_id': item.product_id,
+                    'product_name': product_data.get('name', item.product_name),
+                    'product_code': product_data.get('code', item.product_code),
+                    'description': product_data.get('description', item.description),
+                    'quantity': item.quantity,
+                    'unit': product_data.get('unit', item.unit),
+                    'unit_price': float(product_data.get('unit_price', item.unit_price)) if product_data.get('unit_price') or item.unit_price else None,
+                    'total_price': float(item.total_price) if item.total_price else None,
+                    'weight': float(product_data.get('weight', item.weight)) if product_data.get('weight') or item.weight else None,
+                    'total_weight': float(product_data.get('weight', item.weight) * item.quantity) if (product_data.get('weight') or item.weight) and item.quantity else None,
+                    'volume': float(product_data.get('volume', item.volume)) if product_data.get('volume') or item.volume else None,
+                }
+                items_data.append(item_dict)
+
+        order_dict = {
+            'id': order.id,
+            'order_number': order.order_number,
+            'customer_id': order.customer_id,
+            'branch_id': order.branch_id,
+            'status': order.status,
+            'order_type': order.order_type,
+            'priority': order.priority,
+            'total_amount': float(order.total_amount) if order.total_amount else 0,
+            'payment_type': order.payment_type,
+            'pickup_date': order.pickup_date,
+            'delivery_date': order.delivery_date,
+            'created_at': order.created_at,
+            'updated_at': order.updated_at,
+            'customer': customers_data.get(order.customer_id),
+            'items': items_data,
+            'items_count': len(items_data)
+        }
+        enriched_orders.append(OrderListResponse(**order_dict))
+
+    return OrderListPaginatedResponse(
+        items=enriched_orders,
         total=total,
         page=page,
-        page_size=page_size
+        per_page=limit,
+        pages=pages
     )
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
-    order_id: UUID,
+    order_id: str,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(
-        require_any_permission(["orders:read_all", "orders:read"])),
+    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order by ID"""
@@ -147,11 +266,10 @@ async def create_order(
 
 @router.put("/{order_id}", response_model=OrderResponse)
 async def update_order(
-    order_id: UUID,
+    order_id: str,
     order_data: OrderUpdate,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_any_permission(
-        ["orders:update", "orders:update_own"])),
+    token_data: TokenData = Depends(require_any_permission(["orders:update", "orders:update_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -189,10 +307,9 @@ async def update_order(
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_order(
-    order_id: UUID,
+    order_id: str,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_any_permission(
-        ["orders:delete", "orders:delete_own"])),
+    token_data: TokenData = Depends(require_any_permission(["orders:delete", "orders:delete_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -229,10 +346,9 @@ async def delete_order(
 
 @router.post("/{order_id}/submit", response_model=OrderResponse)
 async def submit_order(
-    order_id: UUID,
+    order_id: str,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_any_permission(
-        ["orders:update", "orders:update_own"])),
+    token_data: TokenData = Depends(require_any_permission(["orders:update", "orders:update_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -262,11 +378,10 @@ async def submit_order(
 
 @router.post("/{order_id}/finance-approval", response_model=OrderResponse)
 async def finance_approval(
-    order_id: UUID,
+    order_id: str,
     approval_data: FinanceApprovalRequest,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(
-        require_permissions(["orders:approve_finance"])),
+    token_data: TokenData = Depends(require_permissions(["orders:approve_finance"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -287,11 +402,10 @@ async def finance_approval(
 
 @router.post("/{order_id}/logistics-approval", response_model=OrderResponse)
 async def logistics_approval(
-    order_id: UUID,
+    order_id: str,
     approval_data: LogisticsApprovalRequest,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(
-        require_permissions(["orders:approve_logistics"])),
+    token_data: TokenData = Depends(require_permissions(["orders:approve_logistics"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -313,11 +427,10 @@ async def logistics_approval(
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)
 async def update_order_status(
-    order_id: UUID,
+    order_id: str,
     status_data: OrderStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(
-        require_permissions(["orders:status_update"])),
+    token_data: TokenData = Depends(require_permissions(["orders:status_update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -325,7 +438,7 @@ async def update_order_status(
     order_service = OrderService(db)
 
     order = await order_service.update_order_status(
-        str(order_id),  # Convert UUID to string
+        str(order_id),
         status_data.status,
         user_id,
         tenant_id,
@@ -337,10 +450,9 @@ async def update_order_status(
 
 @router.get("/{order_id}/history", response_model=List[OrderStatusHistoryResponse])
 async def get_order_status_history(
-    order_id: UUID,
+    order_id: str,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(
-        require_any_permission(["orders:read_all", "orders:read"])),
+    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order status history"""
@@ -371,7 +483,7 @@ async def get_order_status_history(
 
 @router.post("/{order_id}/cancel", response_model=OrderResponse)
 async def cancel_order(
-    order_id: UUID,
+    order_id: str,
     reason: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["orders:cancel"])),
@@ -382,7 +494,7 @@ async def cancel_order(
     order_service = OrderService(db)
 
     order = await order_service.cancel_order(
-        str(order_id),  # Convert UUID to string
+        str(order_id),
         user_id,
         tenant_id,
         reason
