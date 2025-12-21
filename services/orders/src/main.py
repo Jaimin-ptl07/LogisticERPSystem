@@ -12,7 +12,7 @@ from fastapi.responses import Response, JSONResponse
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
 from starlette.requests import Request
 
-from src.api.endpoints import orders, order_documents
+from src.api.endpoints import orders, order_documents, resources
 from src.config_local import OrdersSettings
 from src.database import engine, Base
 
@@ -171,6 +171,12 @@ app.include_router(
     tags=["Order Documents"]
 )
 
+app.include_router(
+    resources.router,
+    prefix="/api/v1/resources",
+    tags=["Resources"]
+)
+
 
 # Exception handlers
 @app.exception_handler(Exception)
@@ -193,7 +199,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8002,
+        port=8003,
         reload=True if settings.ENV == "development" else False,
         log_level=settings.LOG_LEVEL.lower(),
     )

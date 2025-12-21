@@ -36,7 +36,11 @@ class OrderService:
         page_size: int = 20
     ) -> Tuple[List[Order], int]:
         """Get paginated orders with filters"""
-        query = select(Order)
+        query = select(Order).options(
+            selectinload(Order.items),
+            selectinload(Order.documents),
+            selectinload(Order.status_history)
+        )
 
         if filters:
             query = query.where(and_(*filters))
@@ -62,8 +66,8 @@ class OrderService:
 
     async def get_order_by_id(
         self,
-        order_id: UUID,
-        tenant_id: UUID
+        order_id: str,
+        tenant_id: str
     ) -> Optional[Order]:
         """Get order by ID and tenant"""
         query = select(Order).where(
@@ -81,28 +85,105 @@ class OrderService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def _fetch_product_details(self, product_id: UUID) -> Dict[str, Any]:
+    async def _fetch_product_details(self, product_id: str) -> Dict[str, Any]:
         """
-        Fetch product details from product service.
-        This is a mock implementation - replace with actual API call to product service.
+        Fetch product details from company service.
+        Uses the existing products endpoint and searches for the specific product.
         """
-        # TODO: Replace with actual product service API call
-        # For now, return mock data
-        return {
-            "id": str(product_id),
-            "name": "Mock Product",
-            "code": "MP-001",
-            "description": "Mock product description",
-            "unit_price": 100.0,
-            "weight": 1.5,
-            "volume": 0.002,
-            "unit": "pcs"
-        }
+        from httpx import AsyncClient
+        import logging
+        logger = logging.getLogger(__name__)
+
+        print(f"DEBUG: _fetch_product_details called for product_id: {product_id}")
+        COMPANY_SERVICE_URL = "http://company-service:8002"
+
+        async with AsyncClient(timeout=30.0) as client:
+            try:
+                # Get all products (company service doesn't have get by ID endpoint)
+                response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/products/",
+                    params={
+                        "tenant_id": "default-tenant",
+                        "is_active": True,
+                        "per_page": 100  # Max allowed by the API
+                    }
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    products = data.get("items", [])
+                    print(f"DEBUG: Fetched {len(products)} products from company service")
+
+                    if products:
+                        print(f"DEBUG: Sample product structure: {products[0]}")  # Log first product for debugging
+
+                    # Find the product by ID
+                    product = None
+                    print(f"DEBUG: Searching for product_id: {product_id} (type: {type(product_id)})")
+                    print(f"DEBUG: Available product IDs: {[str(p.get('id')) for p in products[:5]]}...")  # Log first 5 for debugging
+
+                    for p in products:
+                        if str(p.get("id")) == str(product_id):
+                            product = p
+                            print(f"DEBUG: Found product: {product.get('name', 'Unknown')}")
+                            break
+
+                    if not product:
+                        print(f"DEBUG: Product {product_id} not found in {len(products)} products")
+
+                    if product:
+                        return {
+                            "id": str(product["id"]),
+                            "name": product["name"],
+                            "code": product["code"],
+                            "description": product.get("description", ""),
+                            "unit_price": float(product["unit_price"]),
+                            "weight": float(product.get("weight", 0)),
+                            "volume": float(product.get("volume", 0)),
+                            "unit": "pcs"  # Default unit, can be customized later
+                        }
+                    else:
+                        logger.error(f"Product {product_id} not found in company service")
+                        return {
+                            "id": str(product_id),
+                            "name": "Unknown Product",
+                            "code": "NOT_FOUND",
+                            "description": "Product not found",
+                            "unit_price": 0.0,
+                            "weight": 0.0,
+                            "volume": 0.0,
+                            "unit": "pcs"
+                        }
+                else:
+                    error_text = response.text
+                    logger.error(f"Failed to fetch products from company service: {response.status_code} - {error_text}")
+                    return {
+                        "id": str(product_id),
+                        "name": "Service Error",
+                        "code": "ERROR",
+                        "description": f"Service error: {response.status_code}",
+                        "unit_price": 0.0,
+                        "weight": 0.0,
+                        "volume": 0.0,
+                        "unit": "pcs"
+                    }
+            except Exception as e:
+                logger.error(f"Error fetching product {product_id}: {str(e)}")
+                return {
+                    "id": str(product_id),
+                    "name": "Network Error",
+                    "code": "ERROR",
+                    "description": f"Network error: {str(e)}",
+                    "unit_price": 0.0,
+                    "weight": 0.0,
+                    "volume": 0.0,
+                    "unit": "pcs"
+                }
 
     async def create_order(
         self,
         order_data: OrderCreate,
-        user_id: UUID
+        user_id: str
     ) -> Order:
         """Create a new order with items in a transaction-safe manner"""
         try:
@@ -129,9 +210,12 @@ class OrderService:
             # Process items and calculate totals
             order_items = []
             if order_data.items:
-                for item_data in order_data.items:
+                print(f"DEBUG: Processing {len(order_data.items)} items for order creation")
+                for i, item_data in enumerate(order_data.items):
+                    print(f"DEBUG: Processing item {i+1} - product_id: {item_data.product_id}")
                     # Fetch product details from product service
                     product = await self._fetch_product_details(item_data.product_id)
+                    print(f"DEBUG: Got product: {product['name']}")
 
                     # Calculate item totals
                     item_total_price = product["unit_price"] * item_data.quantity
@@ -240,9 +324,9 @@ class OrderService:
 
     async def update_order(
         self,
-        order_id: UUID,
+        order_id: str,
         order_data: OrderUpdate,
-        user_id: UUID
+        user_id: str
     ) -> Order:
         """Update an existing order"""
         query = select(Order).where(Order.id == order_id)
@@ -265,7 +349,7 @@ class OrderService:
 
         return order
 
-    async def delete_order(self, order_id: UUID) -> None:
+    async def delete_order(self, order_id: str) -> None:
         """Soft delete an order"""
         query = select(Order).where(Order.id == order_id)
         result = await self.db.execute(query)
@@ -281,9 +365,9 @@ class OrderService:
 
     async def submit_order(
         self,
-        order_id: UUID,
-        user_id: UUID,
-        tenant_id: UUID
+        order_id: str,
+        user_id: str,
+        tenant_id: str
     ) -> Order:
         """Submit order for finance approval"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -310,10 +394,10 @@ class OrderService:
 
     async def finance_approval(
         self,
-        order_id: UUID,
+        order_id: str,
         approved: bool,
-        user_id: UUID,
-        tenant_id: UUID,
+        user_id: str,
+        tenant_id: str,
         reason: Optional[str] = None,
         notes: Optional[str] = None,
         payment_type: Optional[PaymentType] = None
@@ -355,14 +439,14 @@ class OrderService:
 
     async def logistics_approval(
         self,
-        order_id: UUID,
+        order_id: str,
         approved: bool,
-        user_id: UUID,
-        tenant_id: UUID,
+        user_id: str,
+        tenant_id: str,
         reason: Optional[str] = None,
         notes: Optional[str] = None,
-        driver_id: Optional[UUID] = None,
-        trip_id: Optional[UUID] = None
+        driver_id: Optional[str] = None,
+        trip_id: Optional[str] = None
     ) -> Order:
         """Approve or reject order in logistics"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -403,10 +487,10 @@ class OrderService:
 
     async def update_order_status(
         self,
-        order_id: UUID,
+        order_id: str,
         new_status: OrderStatus,
-        user_id: UUID,
-        tenant_id: UUID,
+        user_id: str,
+        tenant_id: str,
         reason: Optional[str] = None,
         notes: Optional[str] = None
     ) -> Order:
@@ -435,7 +519,7 @@ class OrderService:
 
     async def get_order_status_history(
         self,
-        order_id: UUID
+        order_id: str
     ) -> List[OrderStatusHistory]:
         """Get order status history"""
         query = select(OrderStatusHistory).where(
@@ -447,9 +531,9 @@ class OrderService:
 
     async def cancel_order(
         self,
-        order_id: UUID,
-        user_id: UUID,
-        tenant_id: UUID,
+        order_id: str,
+        user_id: str,
+        tenant_id: str,
         reason: Optional[str] = None
     ) -> Order:
         """Cancel an order"""
@@ -478,7 +562,7 @@ class OrderService:
         self,
         order: Order,
         new_status: OrderStatus,
-        user_id: UUID,
+        user_id: str,
         notes: str,
         reason: Optional[str] = None,
         extra_notes: Optional[str] = None

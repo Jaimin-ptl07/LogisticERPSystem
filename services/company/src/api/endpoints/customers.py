@@ -45,6 +45,7 @@ async def list_customers(
     """
     tenant_id = await get_current_tenant_id()
 
+    
     # Build query
     query = select(Customer).where(Customer.tenant_id == tenant_id)
 

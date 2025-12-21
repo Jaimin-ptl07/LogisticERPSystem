@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { ModalLayout } from "./ModalLayout";
 import { Badge } from "@/components/ui/Badge";
 import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
-import { Order } from "@/types";
+import { Order } from "@/services/api/ordersApi";
 import {
   Package,
   Calendar,
@@ -196,13 +196,13 @@ export function OrderDetailsModal({
               className="flex items-center gap-2"
             >
               {getStatusIcon(order.status)}
-              {order.status.charAt(0).toUpperCase() +
-                order.status.slice(1).replace("-", " ")}
+              {(order.status || '').charAt(0).toUpperCase() +
+                (order.status || '').slice(1).replace("-", " ")}
             </Badge>
-            <span className="text-sm text-gray-500">{order.date}</span>
+            <span className="text-sm text-gray-500">{new Date(order.created_at || '').toLocaleDateString()}</span>
           </div>
           <div className="text-2xl font-bold text-gray-900">
-            ${order.total.toFixed(2)}
+            ${(order.total_amount || 0).toFixed(2)}
           </div>
         </div>
 
@@ -263,21 +263,21 @@ export function OrderDetailsModal({
                     Customer
                   </span>
                   <span className="text-sm text-gray-900">
-                    {order.customer}
+                    {order.customer?.name || 'Unknown Customer'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-700">
                     Date
                   </span>
-                  <span className="text-sm text-gray-900">{order.date}</span>
+                  <span className="text-sm text-gray-900">{new Date(order.created_at || '').toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-700">
                     Total Items
                   </span>
                   <span className="text-sm text-gray-900">
-                    {order.items} items
+                    {order.items?.length || 0} items
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -285,7 +285,7 @@ export function OrderDetailsModal({
                     Total Amount
                   </span>
                   <span className="text-sm font-bold text-gray-900">
-                    ${order.total.toFixed(2)}
+                    ${(order.total_amount || 0).toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -304,7 +304,7 @@ export function OrderDetailsModal({
                     Name
                   </span>
                   <span className="text-sm text-gray-900">
-                    {order.customer}
+                    {order.customer?.name || 'Unknown Customer'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -349,7 +349,7 @@ export function OrderDetailsModal({
           {activeTab === "items" && orderDetails && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">
-                Order Items ({order.items} items)
+                Order Items ({order.items?.length || 0} items)
               </h3>
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full">
@@ -396,7 +396,7 @@ export function OrderDetailsModal({
                         Total Amount
                       </td>
                       <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">
-                        ${order.total.toFixed(2)}
+                        ${(order.total_amount || 0).toFixed(2)}
                       </td>
                     </tr>
                   </tfoot>
@@ -483,7 +483,7 @@ export function OrderDetailsModal({
                         finance approval.
                       </p>
                       <div className="text-xs text-gray-500">
-                        <span className="font-medium">Time:</span> {order.date}{" "}
+                        <span className="font-medium">Time:</span> {new Date(order.created_at || '').toLocaleDateString()}{" "}
                         at 10:30 AM
                       </div>
                     </div>
@@ -493,10 +493,10 @@ export function OrderDetailsModal({
                   <div className="flex items-start gap-4">
                     <div
                       className={`relative z-10 w-12 h-12 ${
-                        order.status === "completed" ||
-                        order.status === "on-route"
+                        order.status === "delivered" ||
+                        order.status === "in_transit"
                           ? "bg-green-500"
-                          : order.status === "loading"
+                          : order.status === "assigned"
                           ? "bg-yellow-500"
                           : "bg-gray-300"
                       } rounded-full flex items-center justify-center`}
@@ -506,12 +506,12 @@ export function OrderDetailsModal({
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold text-gray-900">Finance</h4>
-                        {order.status === "completed" ||
-                        order.status === "on-route" ? (
+                        {order.status === "delivered" ||
+                        order.status === "in_transit" ? (
                           <Badge variant="success" className="text-xs">
                             Approved
                           </Badge>
-                        ) : order.status === "loading" ? (
+                        ) : order.status === "assigned" ? (
                           <Badge variant="warning" className="text-xs">
                             In Review
                           </Badge>
@@ -522,23 +522,23 @@ export function OrderDetailsModal({
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
-                        {order.status === "completed" ||
-                        order.status === "on-route"
+                        {order.status === "delivered" ||
+                        order.status === "in_transit"
                           ? "Payment has been verified and approved."
-                          : order.status === "loading"
+                          : order.status === "assigned"
                           ? "Payment is currently being reviewed and verified."
                           : "Awaiting payment verification and approval."}
                       </p>
                       <div className="text-xs text-gray-500">
-                        {order.status === "completed" ||
-                        order.status === "on-route" ? (
+                        {order.status === "delivered" ||
+                        order.status === "in_transit" ? (
                           <span>
                             <span className="font-medium">Approved by:</span>{" "}
                             Sarah Chen •{" "}
                             <span className="font-medium">Time:</span>{" "}
-                            {order.date} at 2:15 PM
+                            {new Date(order.created_at || '').toLocaleDateString()} at 2:15 PM
                           </span>
-                        ) : order.status === "loading" ? (
+                        ) : order.status === "assigned" ? (
                           <span>
                             <span className="font-medium">
                               Est. completion:
@@ -559,9 +559,9 @@ export function OrderDetailsModal({
                   <div className="flex items-start gap-4">
                     <div
                       className={`relative z-10 w-12 h-12 ${
-                        order.status === "completed"
+                        order.status === "delivered"
                           ? "bg-green-500"
-                          : order.status === "on-route"
+                          : order.status === "in_transit"
                           ? "bg-blue-500"
                           : "bg-gray-300"
                       } rounded-full flex items-center justify-center`}
@@ -573,11 +573,11 @@ export function OrderDetailsModal({
                         <h4 className="font-semibold text-gray-900">
                           Logistics
                         </h4>
-                        {order.status === "completed" ? (
+                        {order.status === "delivered" ? (
                           <Badge variant="success" className="text-xs">
                             Dispatched
                           </Badge>
-                        ) : order.status === "on-route" ? (
+                        ) : order.status === "in_transit" ? (
                           <Badge variant="info" className="text-xs">
                             In Progress
                           </Badge>
@@ -588,21 +588,21 @@ export function OrderDetailsModal({
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
-                        {order.status === "completed"
+                        {order.status === "delivered"
                           ? "Order has been dispatched and assigned to driver."
-                          : order.status === "on-route"
+                          : order.status === "in_transit"
                           ? "Order is in transit to delivery location."
                           : "Awaiting logistics planning and driver assignment."}
                       </p>
                       <div className="text-xs text-gray-500">
-                        {order.status === "completed" ? (
+                        {order.status === "delivered" ? (
                           <span>
                             <span className="font-medium">Driver:</span>{" "}
                             {orderDetails?.delivery.driver || "Assigned"} •{" "}
                             <span className="font-medium">Truck:</span>{" "}
                             {orderDetails?.delivery.truck || "Assigned"}
                           </span>
-                        ) : order.status === "on-route" ? (
+                        ) : order.status === "in_transit" ? (
                           <span>
                             <span className="font-medium">
                               Current location:
@@ -624,9 +624,9 @@ export function OrderDetailsModal({
                   <div className="flex items-start gap-4">
                     <div
                       className={`relative z-10 w-12 h-12 ${
-                        order.status === "completed"
+                        order.status === "delivered"
                           ? "bg-green-500"
-                          : order.status === "on-route"
+                          : order.status === "in_transit"
                           ? "bg-blue-500 animate-pulse"
                           : "bg-gray-300"
                       } rounded-full flex items-center justify-center`}
@@ -636,11 +636,11 @@ export function OrderDetailsModal({
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold text-gray-900">Driver</h4>
-                        {order.status === "completed" ? (
+                        {order.status === "delivered" ? (
                           <Badge variant="success" className="text-xs">
                             Delivered
                           </Badge>
-                        ) : order.status === "on-route" ? (
+                        ) : order.status === "in_transit" ? (
                           <Badge variant="info" className="text-xs">
                             On Route
                           </Badge>
@@ -651,20 +651,20 @@ export function OrderDetailsModal({
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
-                        {order.status === "completed"
+                        {order.status === "delivered"
                           ? "Order has been successfully delivered to customer."
-                          : order.status === "on-route"
+                          : order.status === "in_transit"
                           ? "Driver is currently delivering the order to the customer."
                           : "Waiting for driver assignment and route planning."}
                       </p>
                       <div className="text-xs text-gray-500">
-                        {order.status === "completed" ? (
+                        {order.status === "delivered" ? (
                           <span>
                             <span className="font-medium">Delivery time:</span>{" "}
                             {orderDetails?.delivery.actualDelivery ||
                               "Completed"}
                           </span>
-                        ) : order.status === "on-route" ? (
+                        ) : order.status === "in_transit" ? (
                           <span>
                             <span className="font-medium">
                               Estimated delivery:
@@ -698,22 +698,22 @@ export function OrderDetailsModal({
                       <div className="flex-1 bg-gray-200 rounded-full h-2">
                         <div
                           className={`h-2 rounded-full ${
-                            order.status === "completed"
+                            order.status === "delivered"
                               ? "bg-green-500 w-full"
-                              : order.status === "on-route"
+                              : order.status === "in_transit"
                               ? "bg-blue-500 w-3/4"
-                              : order.status === "loading"
+                              : order.status === "assigned"
                               ? "bg-yellow-500 w-1/2"
                               : "bg-gray-400 w-1/4"
                           }`}
                         ></div>
                       </div>
                       <span className="text-xs font-medium text-gray-700">
-                        {order.status === "completed"
+                        {order.status === "delivered"
                           ? "100%"
-                          : order.status === "on-route"
+                          : order.status === "in_transit"
                           ? "75%"
-                          : order.status === "loading"
+                          : order.status === "assigned"
                           ? "50%"
                           : "25%"}
                       </span>
@@ -724,11 +724,11 @@ export function OrderDetailsModal({
                       Estimated Completion
                     </span>
                     <span className="text-sm font-medium text-gray-900">
-                      {order.status === "completed"
+                      {order.status === "delivered"
                         ? "Delivered"
-                        : order.status === "on-route"
+                        : order.status === "in_transit"
                         ? "Today"
-                        : order.status === "loading"
+                        : order.status === "assigned"
                         ? "Tomorrow"
                         : "2-3 Business Days"}
                     </span>
@@ -747,12 +747,12 @@ export function OrderDetailsModal({
           >
             Close
           </button> */}
-          {order.status === "pending" && (
+          {order.status === "submitted" && (
             <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer">
               Process Order
             </button>
           )}
-          {order.status === "completed" && (
+          {order.status === "delivered" && (
             <button className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors cursor-pointer">
               Download Invoice
             </button>

@@ -7,6 +7,7 @@ from src.schemas.order import (
     OrderUpdate,
     OrderResponse,
     OrderListResponse,
+    OrderListPaginatedResponse,
     OrderStatusUpdate,
     FinanceApprovalRequest,
     LogisticsApprovalRequest,
@@ -27,6 +28,11 @@ from src.schemas.order_document import (
     DocumentUploadResponse,
     DocumentListResponse,
 )
+from src.schemas.external import (
+    Branch,
+    Product,
+    Customer
+)
 
 __all__ = [
     # Order schemas
@@ -35,6 +41,7 @@ __all__ = [
     "OrderUpdate",
     "OrderResponse",
     "OrderListResponse",
+    "OrderListPaginatedResponse",
     "OrderStatusUpdate",
     "FinanceApprovalRequest",
     "LogisticsApprovalRequest",
@@ -54,4 +61,9 @@ __all__ = [
     "DocumentVerificationRequest",
     "DocumentUploadResponse",
     "DocumentListResponse",
+
+    # External service schemas
+    "Branch",
+    "Product",
+    "Customer",
 ]
