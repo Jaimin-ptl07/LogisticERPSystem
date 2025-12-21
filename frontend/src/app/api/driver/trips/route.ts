@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Driver Service URL from environment
-const NEXT_PUBLIC_DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || 'http://localhost:8005';
+// Driver Service URL
+const DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || 'http://localhost:8005';
 
 // Helper function to get auth token from request
 function getAuthToken(request: NextRequest): string | null {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     // Get auth token
     const token = getAuthToken(request);
 
-    const url = `${NEXT_PUBLIC_DRIVER_SERVICE_URL}/api/v1/driver/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `${DRIVER_SERVICE_URL}/api/v1/driver/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',

@@ -650,6 +650,22 @@ VALUES
     'update',
     'Update driver information'
 ),
+-- Driver Service permissions
+(
+    'driver',
+    'read',
+    'Read driver information and trips'
+),
+(
+    'driver',
+    'read_all',
+    'Read all driver information and trips'
+),
+(
+    'driver',
+    'update',
+    'Update driver information and trip statuses'
+),
 -- Vehicle permissions
 (
     'vehicles',
@@ -1163,7 +1179,7 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
-WHERE p.resource IN ('resources', 'drivers')
+WHERE p.resource IN ('resources', 'drivers', 'driver')
   AND p.action IN ('read', 'read_all', 'assign', 'update')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -2058,6 +2074,37 @@ VALUES
                 AND action = 'assign'
         )
     ),
+    -- Driver Service permissions
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'driver'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'driver'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'driver'
+                AND action = 'update'
+        )
+    ),
     (
         5,
         (
@@ -2317,6 +2364,27 @@ VALUES
             FROM permissions
             WHERE
                 resource = 'shipping'
+                AND action = 'update'
+        )
+    ),
+    -- Driver Service permissions
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'driver'
+                AND action = 'read'
+        )
+    ),
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'driver'
                 AND action = 'update'
         )
     ),
