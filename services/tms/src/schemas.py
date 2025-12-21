@@ -27,6 +27,7 @@ class Priority(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+    NORMAL = "normal"
 
 
 class RouteStatus(str, Enum):

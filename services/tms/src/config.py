@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # Auth Service URL
     AUTH_SERVICE_URL: str = "http://auth-service:8001"
 
+    # Orders Service URL
+    ORDERS_SERVICE_URL: str = "http://orders-service:8003"
+
     class Config:
         env_file = ".env"
         case_sensitive = False

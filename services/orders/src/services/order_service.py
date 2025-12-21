@@ -606,8 +606,6 @@ class OrderService:
             OrderStatus.SUBMITTED: [OrderStatus.FINANCE_APPROVED, OrderStatus.FINANCE_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_APPROVED: [OrderStatus.LOGISTICS_APPROVED, OrderStatus.LOGISTICS_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
-            OrderStatus.LOGISTICS_APPROVED: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
-            OrderStatus.LOGISTICS_REJECTED: [OrderStatus.FINANCE_APPROVED, OrderStatus.CANCELLED],
             OrderStatus.ASSIGNED: [OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
             OrderStatus.PICKED_UP: [OrderStatus.IN_TRANSIT],
             OrderStatus.IN_TRANSIT: [OrderStatus.DELIVERED],
