@@ -350,6 +350,439 @@ class ServiceZone(ServiceZoneInDB):
     pass
 
 
+# User Role Management Schemas
+
+# User Invitation schemas
+class UserInvitationBase(BaseSchema):
+    """Base user invitation schema"""
+    email: str = Field(..., max_length=255)
+    role_id: str = Field(..., min_length=36, max_length=36)
+    branch_id: Optional[UUID] = None
+    invited_by: str = Field(..., min_length=36, max_length=255)
+    expires_at: datetime
+    status: str = Field(default="pending", max_length=20)
+    is_active: bool = True
+
+
+class UserInvitationCreate(UserInvitationBase):
+    """Schema for creating a user invitation"""
+    invitation_token: str = Field(..., max_length=255)
+    invited_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+    accepted_by: Optional[str] = None
+
+
+class UserInvitationUpdate(BaseSchema):
+    """Schema for updating a user invitation"""
+    role_id: Optional[str] = Field(None, min_length=36, max_length=36)
+    branch_id: Optional[UUID] = None
+    expires_at: Optional[datetime] = None
+    status: Optional[str] = Field(None, max_length=20)
+    accepted_at: Optional[datetime] = None
+    accepted_by: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class UserInvitationInDB(UserInvitationBase):
+    """Schema for user invitation in database"""
+    id: str
+    tenant_id: str
+    invitation_token: str
+    invited_at: datetime
+    accepted_at: Optional[datetime] = None
+    accepted_by: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class UserInvitation(UserInvitationInDB):
+    """Schema for user invitation response"""
+    role: Optional["CompanyRole"] = None
+    branch: Optional[Branch] = None
+
+
+# Company Role schemas
+class CompanyRoleBase(BaseSchema):
+    """Base company role schema"""
+    role_name: str = Field(..., min_length=2, max_length=50)
+    display_name: str = Field(..., min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    permissions: Optional[Dict[str, Any]] = None
+    is_active: bool = True
+    is_system_role: bool = False
+
+
+class CompanyRoleCreate(CompanyRoleBase):
+    """Schema for creating a company role"""
+    pass
+
+
+class CompanyRoleUpdate(BaseSchema):
+    """Schema for updating a company role"""
+    role_name: Optional[str] = Field(None, min_length=2, max_length=50)
+    display_name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    permissions: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+    is_system_role: Optional[bool] = None
+
+
+class CompanyRoleInDB(CompanyRoleBase):
+    """Schema for company role in database"""
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class CompanyRole(CompanyRoleInDB):
+    """Schema for company role response"""
+    name: str = Field(..., description="Display name of the role for frontend compatibility")
+    employees: Optional[List["EmployeeProfile"]] = None
+    invitations: Optional[List[UserInvitation]] = None
+
+
+# Employee Profile schemas
+class EmployeeProfileBase(BaseSchema):
+    """Base employee profile schema"""
+    user_id: str = Field(..., min_length=36, max_length=255)
+    employee_code: Optional[str] = Field(None, max_length=20)
+    role_id: str = Field(..., min_length=36, max_length=36)
+    branch_id: Optional[UUID] = None
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=20)
+    email: Optional[str] = Field(None, max_length=255)
+    date_of_birth: Optional[datetime] = None
+    gender: Optional[str] = Field(None, max_length=10)
+    blood_group: Optional[str] = Field(None, max_length=5)
+    emergency_contact_name: Optional[str] = Field(None, max_length=100)
+    emergency_contact_phone: Optional[str] = Field(None, max_length=20)
+    address: Optional[str] = Field(None, max_length=1000)
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, max_length=100)
+    postal_code: Optional[str] = Field(None, max_length=20)
+    country: str = Field(default="India", max_length=50)
+    hire_date: Optional[datetime] = None
+    employment_type: str = Field(default="permanent", max_length=20)
+    department: Optional[str] = Field(None, max_length=50)
+    designation: Optional[str] = Field(None, max_length=100)
+    reports_to: Optional[str] = Field(None, min_length=36, max_length=36)
+    salary: Optional[float] = Field(None, ge=0)
+    bank_account_number: Optional[str] = Field(None, max_length=50)
+    bank_name: Optional[str] = Field(None, max_length=100)
+    bank_ifsc: Optional[str] = Field(None, max_length=20)
+    pan_number: Optional[str] = Field(None, max_length=20)
+    aadhar_number: Optional[str] = Field(None, max_length=20)
+    is_active: bool = True
+
+
+class EmployeeProfileCreate(EmployeeProfileBase):
+    """Schema for creating an employee profile"""
+    pass
+
+
+class EmployeeProfileUpdate(BaseSchema):
+    """Schema for updating an employee profile"""
+    employee_code: Optional[str] = Field(None, max_length=20)
+    role_id: Optional[str] = Field(None, min_length=36, max_length=36)
+    branch_id: Optional[UUID] = None
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=20)
+    email: Optional[str] = Field(None, max_length=255)
+    date_of_birth: Optional[datetime] = None
+    gender: Optional[str] = Field(None, max_length=10)
+    blood_group: Optional[str] = Field(None, max_length=5)
+    emergency_contact_name: Optional[str] = Field(None, max_length=100)
+    emergency_contact_phone: Optional[str] = Field(None, max_length=20)
+    address: Optional[str] = Field(None, max_length=1000)
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, max_length=100)
+    postal_code: Optional[str] = Field(None, max_length=20)
+    country: Optional[str] = Field(None, max_length=50)
+    hire_date: Optional[datetime] = None
+    employment_type: Optional[str] = Field(None, max_length=20)
+    department: Optional[str] = Field(None, max_length=50)
+    designation: Optional[str] = Field(None, max_length=100)
+    reports_to: Optional[str] = Field(None, min_length=36, max_length=36)
+    salary: Optional[float] = Field(None, ge=0)
+    bank_account_number: Optional[str] = Field(None, max_length=50)
+    bank_name: Optional[str] = Field(None, max_length=100)
+    bank_ifsc: Optional[str] = Field(None, max_length=20)
+    pan_number: Optional[str] = Field(None, max_length=20)
+    aadhar_number: Optional[str] = Field(None, max_length=20)
+    is_active: Optional[bool] = None
+
+
+class EmployeeProfileInDB(EmployeeProfileBase):
+    """Schema for employee profile in database"""
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class EmployeeProfile(EmployeeProfileInDB):
+    """Schema for employee profile response"""
+    role: Optional[CompanyRole] = None
+    branch: Optional[Branch] = None
+    documents: Optional[List["EmployeeDocument"]] = None
+
+
+# Driver Profile schemas
+class DriverProfileBase(BaseSchema):
+    """Base driver profile schema"""
+    employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    license_number: str = Field(..., min_length=2, max_length=50)
+    license_type: str = Field(..., max_length=20)
+    license_expiry: datetime
+    license_issuing_authority: Optional[str] = Field(None, max_length=100)
+    badge_number: Optional[str] = Field(None, max_length=50)
+    badge_expiry: Optional[datetime] = None
+    experience_years: int = Field(default=0, ge=0)
+    preferred_vehicle_types: Optional[List[str]] = None
+    current_status: str = Field(default="available", max_length=20)
+    last_trip_date: Optional[datetime] = None
+    total_trips: int = Field(default=0, ge=0)
+    total_distance: float = Field(default=0, ge=0)
+    average_rating: float = Field(default=0, ge=0, le=5)
+    accident_count: int = Field(default=0, ge=0)
+    traffic_violations: int = Field(default=0, ge=0)
+    medical_fitness_certificate_date: Optional[datetime] = None
+    police_verification_date: Optional[datetime] = None
+    is_active: bool = True
+
+
+class DriverProfileCreate(DriverProfileBase):
+    """Schema for creating a driver profile"""
+    pass
+
+
+class DriverProfileUpdate(BaseSchema):
+    """Schema for updating a driver profile"""
+    license_number: Optional[str] = Field(None, min_length=2, max_length=50)
+    license_type: Optional[str] = Field(None, max_length=20)
+    license_expiry: Optional[datetime] = None
+    license_issuing_authority: Optional[str] = Field(None, max_length=100)
+    badge_number: Optional[str] = Field(None, max_length=50)
+    badge_expiry: Optional[datetime] = None
+    experience_years: Optional[int] = Field(None, ge=0)
+    preferred_vehicle_types: Optional[List[str]] = None
+    current_status: Optional[str] = Field(None, max_length=20)
+    last_trip_date: Optional[datetime] = None
+    total_trips: Optional[int] = Field(None, ge=0)
+    total_distance: Optional[float] = Field(None, ge=0)
+    average_rating: Optional[float] = Field(None, ge=0, le=5)
+    accident_count: Optional[int] = Field(None, ge=0)
+    traffic_violations: Optional[int] = Field(None, ge=0)
+    medical_fitness_certificate_date: Optional[datetime] = None
+    police_verification_date: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
+
+class DriverProfileInDB(DriverProfileBase):
+    """Schema for driver profile in database"""
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class DriverProfile(DriverProfileInDB):
+    """Schema for driver profile response"""
+    employee: Optional[EmployeeProfile] = None
+
+
+# Finance Manager Profile schemas
+class FinanceManagerProfileBase(BaseSchema):
+    """Base finance manager profile schema"""
+    employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    can_approve_payments: bool = False
+    max_approval_limit: float = Field(default=0, ge=0)
+    managed_branches: Optional[List[str]] = None
+    access_levels: Optional[Dict[str, Any]] = None
+    is_active: bool = True
+
+
+class FinanceManagerProfileCreate(FinanceManagerProfileBase):
+    """Schema for creating a finance manager profile"""
+    pass
+
+
+class FinanceManagerProfileUpdate(BaseSchema):
+    """Schema for updating a finance manager profile"""
+    can_approve_payments: Optional[bool] = None
+    max_approval_limit: Optional[float] = Field(None, ge=0)
+    managed_branches: Optional[List[str]] = None
+    access_levels: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+
+class FinanceManagerProfileInDB(FinanceManagerProfileBase):
+    """Schema for finance manager profile in database"""
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class FinanceManagerProfile(FinanceManagerProfileInDB):
+    """Schema for finance manager profile response"""
+    employee: Optional[EmployeeProfile] = None
+
+
+# Branch Manager Profile schemas
+class BranchManagerProfileBase(BaseSchema):
+    """Base branch manager profile schema"""
+    employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    managed_branch_id: UUID
+    can_create_quotes: bool = True
+    can_approve_discounts: bool = False
+    max_discount_percentage: float = Field(default=0, ge=0, le=100)
+    can_manage_inventory: bool = True
+    can_manage_vehicles: bool = False
+    staff_management_permissions: Optional[Dict[str, Any]] = None
+    is_active: bool = True
+
+
+class BranchManagerProfileCreate(BranchManagerProfileBase):
+    """Schema for creating a branch manager profile"""
+    pass
+
+
+class BranchManagerProfileUpdate(BaseSchema):
+    """Schema for updating a branch manager profile"""
+    managed_branch_id: Optional[UUID] = None
+    can_create_quotes: Optional[bool] = None
+    can_approve_discounts: Optional[bool] = None
+    max_discount_percentage: Optional[float] = Field(None, ge=0, le=100)
+    can_manage_inventory: Optional[bool] = None
+    can_manage_vehicles: Optional[bool] = None
+    staff_management_permissions: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+
+class BranchManagerProfileInDB(BranchManagerProfileBase):
+    """Schema for branch manager profile in database"""
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class BranchManagerProfile(BranchManagerProfileInDB):
+    """Schema for branch manager profile response"""
+    employee: Optional[EmployeeProfile] = None
+    managed_branch: Optional[Branch] = None
+
+
+# Logistics Manager Profile schemas
+class LogisticsManagerProfileBase(BaseSchema):
+    """Base logistics manager profile schema"""
+    employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    managed_zones: Optional[List[str]] = None
+    can_assign_drivers: bool = True
+    can_approve_overtime: bool = False
+    can_plan_routes: bool = True
+    vehicle_management_permissions: Optional[Dict[str, Any]] = None
+    is_active: bool = True
+
+
+class LogisticsManagerProfileCreate(LogisticsManagerProfileBase):
+    """Schema for creating a logistics manager profile"""
+    pass
+
+
+class LogisticsManagerProfileUpdate(BaseSchema):
+    """Schema for updating a logistics manager profile"""
+    managed_zones: Optional[List[str]] = None
+    can_assign_drivers: Optional[bool] = None
+    can_approve_overtime: Optional[bool] = None
+    can_plan_routes: Optional[bool] = None
+    vehicle_management_permissions: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+
+class LogisticsManagerProfileInDB(LogisticsManagerProfileBase):
+    """Schema for logistics manager profile in database"""
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class LogisticsManagerProfile(LogisticsManagerProfileInDB):
+    """Schema for logistics manager profile response"""
+    employee: Optional[EmployeeProfile] = None
+
+
+# Employee Document schemas
+class EmployeeDocumentBase(BaseSchema):
+    """Base employee document schema"""
+    employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    document_type: str = Field(..., max_length=50)
+    document_name: str = Field(..., max_length=255)
+    document_number: Optional[str] = Field(None, max_length=100)
+    file_path: Optional[str] = Field(None, max_length=500)
+    file_url: Optional[str] = Field(None, max_length=500)
+    file_size: Optional[int] = Field(None, ge=0)
+    file_type: Optional[str] = Field(None, max_length=50)
+    issue_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    issuing_authority: Optional[str] = Field(None, max_length=100)
+    is_verified: bool = False
+    verified_by: Optional[str] = Field(None, min_length=36, max_length=36)
+    verified_at: Optional[datetime] = None
+    notes: Optional[str] = Field(None, max_length=1000)
+    is_active: bool = True
+
+
+class EmployeeDocumentCreate(EmployeeDocumentBase):
+    """Schema for creating an employee document"""
+    pass
+
+
+class EmployeeDocumentUpdate(BaseSchema):
+    """Schema for updating an employee document"""
+    document_name: Optional[str] = Field(None, max_length=255)
+    document_number: Optional[str] = Field(None, max_length=100)
+    file_path: Optional[str] = Field(None, max_length=500)
+    file_url: Optional[str] = Field(None, max_length=500)
+    file_size: Optional[int] = Field(None, ge=0)
+    file_type: Optional[str] = Field(None, max_length=50)
+    issue_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    issuing_authority: Optional[str] = Field(None, max_length=100)
+    is_verified: Optional[bool] = None
+    verified_by: Optional[str] = Field(None, min_length=36, max_length=36)
+    verified_at: Optional[datetime] = None
+    notes: Optional[str] = Field(None, max_length=1000)
+    is_active: Optional[bool] = None
+
+
+class EmployeeDocumentInDB(EmployeeDocumentBase):
+    """Schema for employee document in database"""
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class EmployeeDocument(EmployeeDocumentInDB):
+    """Schema for employee document response"""
+    employee: Optional[EmployeeProfile] = None
+
+
+# User Management Response schemas
+class UserManagementResponse(BaseSchema):
+    """Schema for user management operations"""
+    user_id: str
+    employee_id: str
+    status: str
+    message: str
+
+
 # Generic response schemas
 class PaginatedResponse(BaseSchema):
     """Schema for paginated responses"""
@@ -360,5 +793,136 @@ class PaginatedResponse(BaseSchema):
     pages: int
 
 
+# Enhanced Profile Management Schemas
+
+class ProfileCompletionResponse(BaseSchema):
+    """Schema for profile completion percentage response"""
+    profile_id: str
+    profile_type: str  # employee, driver, finance_manager, branch_manager, logistics_manager
+    completion_percentage: float = Field(..., ge=0, le=100)
+    completed_sections: List[str]
+    missing_sections: List[str]
+    total_sections: int
+    last_updated: datetime
+
+
+class ProfileSearchParams(BaseSchema):
+    """Schema for profile search parameters"""
+    query: Optional[str] = Field(None, max_length=100)
+    profile_types: Optional[List[str]] = None
+    branches: Optional[List[str]] = None
+    departments: Optional[List[str]] = None
+    status: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    created_after: Optional[datetime] = None
+    created_before: Optional[datetime] = None
+    include_documents: bool = False
+    include_ratings: bool = False
+    sort_by: str = Field(default="created_at", max_length=50)
+    sort_order: str = Field(default="desc", pattern="^(asc|desc)$")
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=20, ge=1, le=100)
+
+
+class ProfileSearchResponse(BaseSchema):
+    """Schema for profile search response"""
+    profiles: List[Dict[str, Any]]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+    filters_applied: Dict[str, Any]
+
+
+class ProfileExportParams(BaseSchema):
+    """Schema for profile export parameters"""
+    profile_types: Optional[List[str]] = None
+    branches: Optional[List[str]] = None
+    departments: Optional[List[str]] = None
+    include_inactive: bool = False
+    include_documents: bool = False
+    export_format: str = Field(default="csv", pattern="^(csv|xlsx|json)$")
+    fields: Optional[List[str]] = None  # Specific fields to export
+
+
+class BulkProfileOperation(BaseSchema):
+    """Schema for bulk profile operations"""
+    profile_ids: List[str] = Field(..., min_items=1, max_items=100)
+    operation: str = Field(..., pattern="^(activate|deactivate|delete|export)$")
+    operation_params: Optional[Dict[str, Any]] = None
+
+
+class BulkProfileOperationResponse(BaseSchema):
+    """Schema for bulk profile operation response"""
+    operation_id: str
+    total_profiles: int
+    successful: int
+    failed: int
+    failed_ids: List[str]
+    errors: List[Dict[str, Any]]
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+
+
+class DocumentReorder(BaseSchema):
+    """Schema for document reordering"""
+    document_orders: List[Dict[str, Any]] = Field(..., min_items=1)
+    # Each item should have: {"document_id": str, "order": int}
+
+
+class DocumentExpiryNotification(BaseSchema):
+    """Schema for document expiry notifications"""
+    document_id: str
+    document_name: str
+    document_type: str
+    employee_name: str
+    employee_id: str
+    expiry_date: datetime
+    days_until_expiry: int
+    notification_type: str = Field(..., pattern="^(warning|critical|expired)$")
+    notified_at: datetime
+
+
+class ProfileStats(BaseSchema):
+    """Schema for profile statistics dashboard"""
+    total_profiles: int
+    active_profiles: int
+    inactive_profiles: int
+    profiles_by_type: Dict[str, int]
+    profiles_by_branch: Dict[str, int]
+    profiles_by_department: Dict[str, int]
+    recent_additions: int  # Added in last 30 days
+    documents_total: int
+    documents_verified: int
+    documents_pending: int
+    documents_expiring_soon: int  # Within 30 days
+    documents_expired: int
+    avg_completion_percentage: float
+
+
+class ProfileAuditLog(BaseSchema):
+    """Schema for profile audit trail"""
+    id: str
+    profile_id: str
+    profile_type: str
+    action: str
+    field_name: Optional[str] = None
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    changed_by: str
+    changed_at: datetime
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+
+class ProfileChangeHistory(BaseSchema):
+    """Schema for profile change history"""
+    profile_id: str
+    profile_type: str
+    changes: List[ProfileAuditLog]
+
+
 # Update forward references
 ProductCategory.model_rebuild()
+CompanyRole.model_rebuild()
+EmployeeProfile.model_rebuild()

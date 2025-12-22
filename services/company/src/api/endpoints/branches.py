@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database import get_db, Branch, Customer, Vehicle, VehicleStatus
+from src.helpers import validate_branch_exists
 from src.schemas import (
     Branch as BranchSchema,
     BranchCreate,

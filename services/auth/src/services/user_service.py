@@ -73,7 +73,7 @@ class UserService:
     ) -> Tuple[Optional[User], Optional[str]]:
         """Authenticate user with email and password"""
 
-        # Get user by email (email is unique across all tenants)
+        # Get user by email (email is unique per tenant)
         user = await UserService.get_by_email(db, login_data.email)
 
         if not user:
@@ -128,8 +128,8 @@ class UserService:
     @staticmethod
     async def create_user(db: AsyncSession, user_data: UserCreate) -> User:
         """Create a new user"""
-        # Check if user already exists
-        existing_user = await UserService.get_by_email(db, user_data.email, user_data.tenant_id)
+        # Check if user already exists globally (across all tenants)
+        existing_user = await UserService.get_by_email(db, user_data.email)
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,6 +139,49 @@ class UserService:
         # Hash password
         password_hash = get_password_hash(user_data.password)
 
+        # If no role_id provided, get the default "User" role for the tenant
+        role_id = user_data.role_id
+        if role_id is None and user_data.tenant_id and user_data.tenant_id != "":
+            from sqlalchemy import select
+            # Query for the "User" role (lowest privilege role) for the tenant
+            role_query = select(Role).where(
+                Role.name == "User",
+                Role.tenant_id == user_data.tenant_id
+            )
+            role_result = await db.execute(role_query)
+            role = role_result.scalar_one_or_none()
+
+            if not role:
+                # If no "User" role exists for this tenant, create default roles
+                print(f"Creating default roles for tenant: {user_data.tenant_id}")
+
+                default_roles = [
+                    {"name": "Admin", "description": "Organization administrator", "is_system": True},
+                    {"name": "Manager", "description": "Operations manager", "is_system": False},
+                    {"name": "User", "description": "Regular user", "is_system": False}
+                ]
+
+                user_role = None
+                for role_data in default_roles:
+                    new_role = Role(
+                        name=role_data["name"],
+                        description=role_data["description"],
+                        is_system=role_data["is_system"],
+                        tenant_id=user_data.tenant_id
+                    )
+                    db.add(new_role)
+
+                    # We need to flush to get the ID
+                    await db.flush()
+
+                    if role_data["name"] == "User":
+                        user_role = new_role
+
+                role_id = user_role.id if user_role else None
+                print(f"Created User role with ID: {role_id}")
+            else:
+                role_id = role.id
+
         # Create user
         db_user = User(
             id=str(uuid.uuid4()),
@@ -147,7 +190,7 @@ class UserService:
             first_name=user_data.first_name,
             last_name=user_data.last_name,
             tenant_id=user_data.tenant_id,
-            role_id=user_data.role_id,
+            role_id=role_id,
             is_active=user_data.is_active,
             is_superuser=False,
             created_at=datetime.utcnow(),
@@ -188,6 +231,17 @@ class UserService:
         await db.refresh(user)
 
         return user
+
+    @staticmethod
+    async def get_users_by_tenant(db: AsyncSession, tenant_id: str) -> List[User]:
+        """Get all users for a specific tenant"""
+        query = select(User).options(
+            selectinload(User.role).selectinload(Role.permissions),
+            selectinload(User.tenant)
+        ).where(User.tenant_id == tenant_id)
+
+        result = await db.execute(query)
+        return result.scalars().all()
 
     @staticmethod
     async def change_password(

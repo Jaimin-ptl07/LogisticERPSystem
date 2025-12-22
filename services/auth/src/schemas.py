@@ -59,7 +59,7 @@ class UserCreate(UserBase):
     """Schema for creating a user"""
     password: str = Field(..., min_length=8)
     tenant_id: Optional[str] = None  # Optional for super admins
-    role_id: int
+    role_id: Optional[int] = None  # Will be set to default role if not provided
 
 
 class UserUpdate(BaseSchema):
