@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from jose import JWTError
 
-from src.api.endpoints import orders, order_documents
+from src.api.endpoints import orders, order_documents, resources
 from src.config_local import OrdersSettings
 from src.database import engine, Base
 from src.middleware import (
@@ -225,6 +225,12 @@ app.include_router(
     order_documents.router,
     prefix="/api/v1/orders",
     tags=["Order Documents"]
+)
+
+app.include_router(
+    resources.router,
+    prefix="/api/v1/resources",
+    tags=["Resources"]
 )
 
 

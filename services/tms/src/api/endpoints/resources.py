@@ -1,7 +1,7 @@
 """Resources API endpoints - dummy data service"""
 
-from datetime import date
-from fastapi import APIRouter, Depends, Query
+from datetime import date, datetime, timedelta
+from fastapi import APIRouter, Depends, Query, Request
 from typing import List, Optional
 from httpx import AsyncClient
 import logging
@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 # Company service URL
 COMPANY_SERVICE_URL = "http://company-service:8002"
+
+
 
 # Mock drivers data - will be integrated with driver service later
 DRIVERS = [
@@ -86,12 +88,19 @@ ORDERS = [
 
 @router.get("/trucks", response_model=list[Truck])
 async def get_trucks(
+    request: Request,
     token_data: TokenData = Depends(
-        require_any_permission(["resources:read", "resources:read_all", "trips:read", "trips:read_all"])
+        require_any_permission(["resources: read", "resources:read_all", "trips:read", "trips:read_all"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
     """Get all available trucks from Company service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         # Call Company service vehicles endpoint with status filter
         response = await client.get(
@@ -101,7 +110,8 @@ async def get_trucks(
                 "is_active": True,
                 "per_page": 100,
                 "tenant_id": tenant_id
-            }
+            },
+            headers=headers
         )
 
         if response.status_code != 200:
@@ -183,12 +193,19 @@ async def get_orders(
 
 @router.get("/branches", response_model=list[Branch])
 async def get_branches(
+    request: Request,
     token_data: TokenData = Depends(
         require_any_permission(["resources:read", "resources:read_all", "trips:read", "trips:read_all"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
     """Get all active branches from Company service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         # Call Company service branches endpoint
         response = await client.get(
@@ -197,7 +214,8 @@ async def get_branches(
                 "is_active": True,
                 "per_page": 100,
                 "tenant_id": tenant_id
-            }
+            },
+            headers=headers
         )
 
         if response.status_code != 200:
@@ -240,6 +258,7 @@ async def get_branches(
 @router.get("/branches/{branch_id}/trucks", response_model=list[Truck])
 async def get_trucks_by_branch(
     branch_id: str,
+    request: Request,
     token_data: TokenData = Depends(
         require_any_permission(["resources:read", "resources:read_all", "trips:read", "trips:read_all"])
     ),
@@ -247,6 +266,12 @@ async def get_trucks_by_branch(
 ):
     """Get available trucks for a specific branch"""
     logger.info(f"Fetching trucks for branch_id: {branch_id}")
+
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
 
     async with AsyncClient(timeout=30.0) as client:
         # Call Company service vehicles endpoint filtered by branch
@@ -258,7 +283,8 @@ async def get_trucks_by_branch(
                 "is_active": True,
                 "per_page": 100,
                 "tenant_id": tenant_id
-            }
+            },
+            headers=headers
         )
 
         if response.status_code != 200:

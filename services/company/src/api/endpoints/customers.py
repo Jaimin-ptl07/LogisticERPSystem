@@ -47,6 +47,7 @@ async def list_customers(
     - customers:read (to view basic customer info)
     """
 
+    
     # Build query
     query = select(Customer).where(Customer.tenant_id == tenant_id)
 

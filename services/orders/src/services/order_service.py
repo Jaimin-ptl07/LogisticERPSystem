@@ -25,8 +25,10 @@ settings = OrdersSettings()
 class OrderService:
     """Service for managing orders"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, auth_headers: dict = None, tenant_id: str = None):
         self.db = db
+        self.auth_headers = auth_headers or {}
+        self.tenant_id = tenant_id
 
     async def get_orders_paginated(
         self,
@@ -36,7 +38,11 @@ class OrderService:
         page_size: int = 20
     ) -> Tuple[List[Order], int]:
         """Get paginated orders with filters"""
-        query = select(Order)
+        query = select(Order).options(
+            selectinload(Order.items),
+            selectinload(Order.documents),
+            selectinload(Order.status_history)
+        )
 
         if filters:
             query = query.where(and_(*filters))
@@ -82,21 +88,99 @@ class OrderService:
 
     async def _fetch_product_details(self, product_id: str) -> Dict[str, Any]:
         """
-        Fetch product details from product service.
-        This is a mock implementation - replace with actual API call to product service.
+        Fetch product details from company service.
+        Uses the existing products endpoint and searches for the specific product.
         """
-        # TODO: Replace with actual product service API call
-        # For now, return mock data
-        return {
-            "id": str(product_id),
-            "name": "Mock Product",
-            "code": "MP-001",
-            "description": "Mock product description",
-            "unit_price": 100.0,
-            "weight": 1.5,
-            "volume": 0.002,
-            "unit": "pcs"
-        }
+        from httpx import AsyncClient
+        import logging
+        logger = logging.getLogger(__name__)
+
+        print(f"DEBUG: _fetch_product_details called for product_id: {product_id}")
+        COMPANY_SERVICE_URL = "http://company-service:8002"
+
+        async with AsyncClient(timeout=30.0) as client:
+            try:
+                # Get all products (company service doesn't have get by ID endpoint)
+                response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/products/",
+                    params={
+                        "tenant_id": self.tenant_id or "default-tenant",
+                        "is_active": True,
+                        "per_page": 100  # Max allowed by the API
+                    },
+                    headers=self.auth_headers
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    products = data.get("items", [])
+                    print(f"DEBUG: Fetched {len(products)} products from company service")
+
+                    if products:
+                        print(f"DEBUG: Sample product structure: {products[0]}")  # Log first product for debugging
+
+                    # Find the product by ID
+                    product = None
+                    print(f"DEBUG: Searching for product_id: {product_id} (type: {type(product_id)})")
+                    print(f"DEBUG: Available product IDs: {[str(p.get('id')) for p in products[:5]]}...")  # Log first 5 for debugging
+
+                    for p in products:
+                        if str(p.get("id")) == str(product_id):
+                            product = p
+                            print(f"DEBUG: Found product: {product.get('name', 'Unknown')}")
+                            break
+
+                    if not product:
+                        print(f"DEBUG: Product {product_id} not found in {len(products)} products")
+
+                    if product:
+                        return {
+                            "id": str(product["id"]),
+                            "name": product["name"],
+                            "code": product["code"],
+                            "description": product.get("description", ""),
+                            "unit_price": float(product["unit_price"]),
+                            "weight": float(product.get("weight", 0)),
+                            "volume": float(product.get("volume", 0)),
+                            "unit": "pcs"  # Default unit, can be customized later
+                        }
+                    else:
+                        logger.error(f"Product {product_id} not found in company service")
+                        return {
+                            "id": str(product_id),
+                            "name": "Unknown Product",
+                            "code": "NOT_FOUND",
+                            "description": "Product not found",
+                            "unit_price": 0.0,
+                            "weight": 0.0,
+                            "volume": 0.0,
+                            "unit": "pcs"
+                        }
+                else:
+                    error_text = response.text
+                    logger.error(f"Failed to fetch products from company service: {response.status_code} - {error_text}")
+                    return {
+                        "id": str(product_id),
+                        "name": "Service Error",
+                        "code": "ERROR",
+                        "description": f"Service error: {response.status_code}",
+                        "unit_price": 0.0,
+                        "weight": 0.0,
+                        "volume": 0.0,
+                        "unit": "pcs"
+                    }
+            except Exception as e:
+                logger.error(f"Error fetching product {product_id}: {str(e)}")
+                return {
+                    "id": str(product_id),
+                    "name": "Network Error",
+                    "code": "ERROR",
+                    "description": f"Network error: {str(e)}",
+                    "unit_price": 0.0,
+                    "weight": 0.0,
+                    "volume": 0.0,
+                    "unit": "pcs"
+                }
 
     async def create_order(
         self,
@@ -129,9 +213,12 @@ class OrderService:
             # Process items and calculate totals
             order_items = []
             if order_data.items:
-                for item_data in order_data.items:
+                print(f"DEBUG: Processing {len(order_data.items)} items for order creation")
+                for i, item_data in enumerate(order_data.items):
+                    print(f"DEBUG: Processing item {i+1} - product_id: {item_data.product_id}")
                     # Fetch product details from product service
                     product = await self._fetch_product_details(item_data.product_id)
+                    print(f"DEBUG: Got product: {product['name']}")
 
                     # Calculate item totals
                     item_total_price = product["unit_price"] * \
