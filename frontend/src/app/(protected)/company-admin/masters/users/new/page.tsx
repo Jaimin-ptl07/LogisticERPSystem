@@ -1,33 +1,24 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { AppLayout } from '@/components/layout/AppLayout';
-import {
-  ArrowLeft,
-  Save,
-  X,
-  User,
-  Mail,
-  Shield,
-  Building
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { ArrowLeft, Save, X, User, Mail, Shield, Building } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 export default function NewUserPage() {
   const router = useRouter();
 
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    role: 'user',
-    branch: '',
-    password: '',
-    confirmPassword: ''
+    name: "",
+    email: "",
+    role: "user",
+    branch: "",
+    password: "",
+    confirmPassword: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -36,23 +27,23 @@ export default function NewUserPage() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.name?.trim()) {
-      newErrors.name = 'Name is required';
+      newErrors.name = "Name is required";
     }
 
     if (!formData.email?.trim()) {
-      newErrors.email = 'Email is required';
+      newErrors.email = "Email is required";
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email is invalid';
+      newErrors.email = "Email is invalid";
     }
 
     if (!formData.password) {
-      newErrors.password = 'Password is required';
+      newErrors.password = "Password is required";
     } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+      newErrors.password = "Password must be at least 6 characters";
     }
 
     if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
+      newErrors.confirmPassword = "Passwords do not match";
     }
 
     setErrors(newErrors);
@@ -63,49 +54,51 @@ export default function NewUserPage() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error('Please fix the errors in the form');
+      toast.error("Please fix the errors in the form");
       return;
     }
 
     try {
       // TODO: Replace with actual API call when user endpoints are implemented
-      console.log('Creating user:', {
+      console.log("Creating user:", {
         name: formData.name,
         email: formData.email,
         role: formData.role,
         branch: formData.branch,
-        password: formData.password
+        password: formData.password,
       });
 
       // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      toast.success('User created successfully');
-      router.push('/masters/users');
+      toast.success("User created successfully");
+      router.push("/company-admin/masters/users");
     } catch (error: any) {
-      console.error('User creation error:', error);
-      toast.error(error?.data?.detail || error?.message || 'Failed to create user');
+      console.error("User creation error:", error);
+      toast.error(
+        error?.data?.detail || error?.message || "Failed to create user"
+      );
     }
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
 
     // Clear error for this field when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [field]: ''
+        [field]: "",
       }));
     }
   };
 
   return (
-    <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div>
+      <div className="max-w-4xl mx-auto inline space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -141,9 +134,9 @@ export default function NewUserPage() {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
                   placeholder="e.g., John Doe"
-                  className={errors.name ? 'border-red-500' : ''}
+                  className={errors.name ? "border-red-500" : ""}
                 />
                 {errors.name && (
                   <p className="text-sm text-red-600 mt-1">{errors.name}</p>
@@ -156,9 +149,9 @@ export default function NewUserPage() {
                   id="email"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
                   placeholder="e.g., john.doe@company.com"
-                  className={errors.email ? 'border-red-500' : ''}
+                  className={errors.email ? "border-red-500" : ""}
                 />
                 {errors.email && (
                   <p className="text-sm text-red-600 mt-1">{errors.email}</p>
@@ -171,13 +164,21 @@ export default function NewUserPage() {
                   <select
                     id="role"
                     value={formData.role}
-                    onChange={(e) => handleInputChange('role', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => handleInputChange("role", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="admin">Admin</option>
-                    <option value="manager">Manager</option>
-                    <option value="operator">Operator</option>
-                    <option value="user">User</option>
+                    <option className="text-black" value="admin">
+                      Admin
+                    </option>
+                    <option className="text-black" value="manager">
+                      Manager
+                    </option>
+                    <option className="text-black" value="operator">
+                      Operator
+                    </option>
+                    <option className="text-black" value="user">
+                      User
+                    </option>
                   </select>
                 </div>
 
@@ -186,14 +187,26 @@ export default function NewUserPage() {
                   <select
                     id="branch"
                     value={formData.branch}
-                    onChange={(e) => handleInputChange('branch', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) =>
+                      handleInputChange("branch", e.target.value)
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Select Branch</option>
-                    <option value="mumbai">Mumbai Main</option>
-                    <option value="pune">Pune Branch</option>
-                    <option value="delhi">Delhi Branch</option>
-                    <option value="bangalore">Bangalore Branch</option>
+                    <option className="text-black" value="">
+                      Select Branch
+                    </option>
+                    <option className="text-black" value="mumbai">
+                      Mumbai Main
+                    </option>
+                    <option className="text-black" value="pune">
+                      Pune Branch
+                    </option>
+                    <option className="text-black" value="delhi">
+                      Delhi Branch
+                    </option>
+                    <option className="text-black" value="bangalore">
+                      Bangalore Branch
+                    </option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     Optional: Assign this user to a branch
@@ -219,12 +232,16 @@ export default function NewUserPage() {
                     id="password"
                     type="password"
                     value={formData.password}
-                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("password", e.target.value)
+                    }
                     placeholder="Enter password"
-                    className={errors.password ? 'border-red-500' : ''}
+                    className={errors.password ? "border-red-500" : ""}
                   />
                   {errors.password && (
-                    <p className="text-sm text-red-600 mt-1">{errors.password}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.password}
+                    </p>
                   )}
                 </div>
 
@@ -234,12 +251,16 @@ export default function NewUserPage() {
                     id="confirmPassword"
                     type="password"
                     value={formData.confirmPassword}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("confirmPassword", e.target.value)
+                    }
                     placeholder="Confirm password"
-                    className={errors.confirmPassword ? 'border-red-500' : ''}
+                    className={errors.confirmPassword ? "border-red-500" : ""}
                   />
                   {errors.confirmPassword && (
-                    <p className="text-sm text-red-600 mt-1">{errors.confirmPassword}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.confirmPassword}
+                    </p>
                   )}
                 </div>
               </div>
@@ -256,16 +277,13 @@ export default function NewUserPage() {
               <X className="w-4 h-4 mr-2" />
               Cancel
             </Button>
-            <Button
-              type="submit"
-              className="min-w-[120px]"
-            >
+            <Button type="submit" className="min-w-[120px]">
               <Save className="w-4 h-4 mr-2" />
               Add User
             </Button>
           </div>
         </form>
       </div>
-    </AppLayout>
+    </div>
   );
 }

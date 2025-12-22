@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
-import { AppLayout } from '@/components/layout/AppLayout';
 import {
   ArrowLeft,
   Edit,
@@ -32,20 +31,20 @@ export default function VehicleDetailsPage() {
 
   if (error) {
     return (
-      <AppLayout>
+      <div>
         <div className="p-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <h3 className="text-red-800 font-medium">Error loading vehicle details</h3>
             <p className="text-red-600 text-sm mt-1">The vehicle may not exist or you don't have permission to view it</p>
           </div>
         </div>
-      </AppLayout>
+      </div>
     );
   }
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <div>
         <div className="p-6">
           <div className="animate-pulse space-y-4">
             <div className="h-8 bg-gray-200 rounded w-1/3" />
@@ -57,7 +56,7 @@ export default function VehicleDetailsPage() {
             </div>
           </div>
         </div>
-      </AppLayout>
+      </div>
     );
   }
 
@@ -108,7 +107,7 @@ export default function VehicleDetailsPage() {
   const maintenanceStatus = getMaintenanceStatus();
 
   return (
-    <AppLayout>
+    <div>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -129,7 +128,7 @@ export default function VehicleDetailsPage() {
           </div>
           <div className="flex items-center space-x-3">
             {statusBadge}
-            <Button onClick={() => router.push(`/masters/vehicles/${vehicleId}/edit`)}>
+            <Button onClick={() => router.push(`/company-admin/masters/vehicles/${vehicleId}/edit`)}>
               <Edit className="w-4 h-4 mr-2" />
               Edit Vehicle
             </Button>
@@ -557,6 +556,6 @@ export default function VehicleDetailsPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </AppLayout>
+    </div>
   );
 }

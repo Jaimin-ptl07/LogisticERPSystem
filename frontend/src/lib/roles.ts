@@ -10,6 +10,7 @@ export const ROLES = {
   FINANCE_MANAGER: "finance_manager",
   LOGISTICS_MANAGER: "logistics_manager",
   DRIVER: "driver",
+  USER: "user",
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -22,6 +23,18 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
   [ROLES.LOGISTICS_MANAGER]: 60,
   [ROLES.BRANCH_MANAGER]: 50,
   [ROLES.DRIVER]: 10,
+  [ROLES.USER]: 5,
+};
+
+// Role ID to Role constant mapping (from backend role_id to frontend Role)
+export const ROLE_ID_MAP: Record<number, Role> = {
+  1: ROLES.SUPER_ADMIN,      // "Super Admin"
+  2: ROLES.COMPANY_ADMIN,    // "Admin" -> maps to Company Admin
+  3: ROLES.BRANCH_MANAGER,   // "Branch Manager"
+  4: ROLES.FINANCE_MANAGER,  // "Finance Manager"
+  5: ROLES.LOGISTICS_MANAGER,// "Logistics Manager"
+  6: ROLES.DRIVER,           // "Driver"
+  7: ROLES.USER,             // "User"
 };
 
 // Role display names
@@ -32,6 +45,7 @@ export const ROLE_NAMES: Record<Role, string> = {
   [ROLES.FINANCE_MANAGER]: "Finance Manager",
   [ROLES.LOGISTICS_MANAGER]: "Logistics Manager",
   [ROLES.DRIVER]: "Driver",
+  [ROLES.USER]: "User",
 };
 
 // Role-based route access
@@ -50,11 +64,13 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
     "/branch-manager",
     "/finance-manager",
     "/logistics-manager",
+     "/drivermodule"
   ],
   [ROLES.FINANCE_MANAGER]: ["/finance-manager"],
   [ROLES.LOGISTICS_MANAGER]: ["/logistics-manager"],
   [ROLES.BRANCH_MANAGER]: ["/branch-manager"],
   [ROLES.DRIVER]: ["/drivermodule"], // Temporary renamed protected driver route
+  [ROLES.USER]: [], // User role - no access yet (awaiting instructions)
 };
 
 // Default redirect per role
@@ -65,6 +81,7 @@ export const ROLE_DEFAULT_ROUTE: Record<Role, string> = {
   [ROLES.FINANCE_MANAGER]: "/finance-manager/dashboard",
   [ROLES.LOGISTICS_MANAGER]: "/logistics-manager/dashboard",
   [ROLES.DRIVER]: "/drivermodule/trips", // Temporary renamed protected driver route
+  [ROLES.USER]: "/user/profile", // Placeholder - will be updated with actual route
 };
 
 /**
@@ -177,4 +194,35 @@ export function getDefaultRoute(userRole: string | undefined): string {
   const normalizedRole = normalizeRoleName(userRole);
   if (!normalizedRole) return "/company-admin/masters";
   return ROLE_DEFAULT_ROUTE[normalizedRole] || "/company-admin/masters";
+}
+
+/**
+ * Get role constant from role_id (from backend)
+ */
+export function getRoleFromId(roleId: number | undefined): Role | undefined {
+  if (!roleId) return undefined;
+  return ROLE_ID_MAP[roleId];
+}
+
+/**
+ * Get user role from API response (prioritizes role_id over role name)
+ */
+export function getUserRole(user: {
+  role_id?: number;
+  role?: { name?: string } | string;
+}): Role | undefined {
+  // First try to get role from role_id
+  if (user.role_id) {
+    const roleFromId = getRoleFromId(user.role_id);
+    if (roleFromId) return roleFromId;
+  }
+
+  // Fallback to role name
+  if (typeof user.role === "string") {
+    return normalizeRoleName(user.role);
+  } else if (user.role?.name) {
+    return normalizeRoleName(user.role.name);
+  }
+
+  return undefined;
 }

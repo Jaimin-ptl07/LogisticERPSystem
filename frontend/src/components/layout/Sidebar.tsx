@@ -28,7 +28,7 @@ import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { logoutAsync } from "@/store/slices/auth.slice";
 import { useState, useEffect } from "react";
 import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
-import { ROLES } from "@/lib/roles";
+import { ROLES, getUserRole, getAccessibleRoutes } from "@/lib/roles";
 import { showSuccessToast } from "@/utils/toast";
 
 interface SubMenuItem {
@@ -139,6 +139,15 @@ const navigationStructure: NavItem[] = [
       // { label: "Deliveries", href: "/drivermodule/deliveries", icon: Package },
     ],
   },
+  {
+    label: "User",
+    icon: UserCircle,
+    role: ROLES.USER,
+    subItems: [
+      // Will be populated based on your instructions
+      // { label: "Profile", href: "/user/profile", icon: UserCircle },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -158,8 +167,8 @@ export function Sidebar({
   const { user } = useAppSelector((state) => state.auth);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
-  // Get user role - normalize it
-  const userRole = user?.role?.name?.toLowerCase().replace(/[\s_-]+/g, "_");
+  // Get user role using the new getUserRole function
+  const userRole = getUserRole(user || {});
 
   // Handle logout
   const handleLogout = async () => {
@@ -176,17 +185,30 @@ export function Sidebar({
     setExpandedMenu((prev) => (prev === role ? null : role));
   };
 
-  // Filter navigation based on user role
+  // Filter navigation based on user role using ROLE_ROUTES
   const getFilteredNavigation = () => {
-    if (!user) return [];
+    if (!user || !userRole) return [];
 
     // Super admin sees everything
     if (user.is_superuser || userRole === ROLES.SUPER_ADMIN) {
       return navigationStructure;
     }
 
-    // Other users only see their own role menu
-    return navigationStructure.filter((nav) => nav.role === userRole);
+    // Get accessible routes for the user's role
+    const accessibleRoutes = getAccessibleRoutes(userRole);
+
+    // Filter navigation items based on accessible routes
+    return navigationStructure.filter((nav) => {
+      // If no subItems, check if the main href is accessible
+      if (!nav.subItems || nav.subItems.length === 0) {
+        return nav.href && accessibleRoutes.some(route => nav.href!.startsWith(route));
+      }
+
+      // Check if any subItem is accessible
+      return nav.subItems.some(subItem =>
+        accessibleRoutes.some(route => subItem.href.startsWith(route))
+      );
+    });
   };
 
   const filteredNavigation = getFilteredNavigation();

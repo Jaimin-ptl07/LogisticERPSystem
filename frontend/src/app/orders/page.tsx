@@ -6,19 +6,28 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { OrderDetailsModal, CreateOrderModal } from "@/components/Modal";
-import { useGetOrdersQuery, useGetOrderByIdQuery } from "@/services/api/ordersApi";
+import {
+  useGetOrdersQuery,
+  useGetOrderByIdQuery,
+  Order,
+} from "@/services/api/ordersApi";
 import { Plus, Search, Package } from "lucide-react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
 
 export default function Orders() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Fetch real orders data
-  const { data: ordersData, isLoading, error, refetch: refetchOrders } = useGetOrdersQuery({
+  const {
+    data: ordersData,
+    isLoading,
+    error,
+    refetch: refetchOrders,
+  } = useGetOrdersQuery({
     page: 1,
     per_page: 20,
     search: searchQuery || undefined,
@@ -42,6 +51,7 @@ export default function Orders() {
   };
 
   const handleViewDetails = (order: Order) => {
+    console.log(order, "order");
     setSelectedOrder(order);
     setIsDetailsModalOpen(true);
   };
@@ -68,12 +78,13 @@ export default function Orders() {
     setIsDetailsModalOpen(true);
   };
 
-  
   const orderStats = {
     total: orders.length,
     pending: orders.filter((o) => o.status === "submitted").length,
     loading: orders.filter((o) => o.status === "assigned").length,
-    onRoute: orders.filter((o) => o.status === "picked_up" || o.status === "in_transit").length,
+    onRoute: orders.filter(
+      (o) => o.status === "picked_up" || o.status === "in_transit"
+    ).length,
     completed: orders.filter((o) => o.status === "delivered").length,
   };
 
@@ -88,7 +99,10 @@ export default function Orders() {
               Manage and track all customer orders
             </p>
           </div>
-          <Button className="flex items-center gap-2" onClick={handleCreateOrder}>
+          <Button
+            className="flex items-center gap-2"
+            onClick={handleCreateOrder}
+          >
             <Plus className="w-5 h-5" />
             New Order
           </Button>
@@ -183,15 +197,18 @@ export default function Orders() {
                             {order.order_number}
                           </h3>
                           <Badge variant={getStatusVariant(order.status)}>
-                            {order.status.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                            {order.status
+                              .replace(/_/g, " ")
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-600 mb-1 items-center">
-                          Customer: {order.customer?.name || 'N/A'}
+                          Customer: {order.customer?.name || "N/A"}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {order.items_count || 0} items • {new Date(order.created_at).toLocaleDateString()} • Total: $
-                          {order.total_amount.toFixed(2)}
+                          {order.items_count || 0} items •{" "}
+                          {new Date(order.created_at).toLocaleDateString()} •
+                          Total: ${order.total_amount.toFixed(2)}
                         </p>
 
                         {/* Items Summary */}
@@ -199,31 +216,47 @@ export default function Orders() {
                           <div className="mt-3 border-t pt-2">
                             <div className="flex items-center gap-1 mb-2">
                               <Package className="w-3 h-3 text-gray-500" />
-                              <p className="text-xs font-medium text-gray-700">Items ({order.items_count}):</p>
+                              <p className="text-xs font-medium text-gray-700">
+                                Items ({order.items_count}):
+                              </p>
                             </div>
                             <div className="space-y-1">
                               {order.items.slice(0, 2).map((item, index) => (
-                                <div key={item.id} className="flex items-center justify-between text-xs bg-blue-50 rounded p-2 border border-blue-100">
+                                <div
+                                  key={item.id}
+                                  className="flex items-center justify-between text-xs bg-blue-50 rounded p-2 border border-blue-100"
+                                >
                                   <div className="flex-1">
-                                    <span className="font-medium text-blue-900">{item.product_name}</span>
+                                    <span className="font-medium text-blue-900">
+                                      {item.product_name}
+                                    </span>
                                     {item.product_code && (
-                                      <span className="ml-2 text-blue-600">({item.product_code})</span>
+                                      <span className="ml-2 text-blue-600">
+                                        ({item.product_code})
+                                      </span>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-3 text-blue-700">
-                                    <span>× {item.quantity} {item.unit}</span>
+                                    <span>
+                                      × {item.quantity} {item.unit}
+                                    </span>
                                     {item.total_weight && (
-                                      <span>{item.total_weight.toFixed(1)}kg</span>
+                                      <span>
+                                        {item.total_weight.toFixed(1)}kg
+                                      </span>
                                     )}
                                     {item.total_price && (
-                                      <span className="font-medium">${item.total_price.toFixed(2)}</span>
+                                      <span className="font-medium">
+                                        ${item.total_price.toFixed(2)}
+                                      </span>
                                     )}
                                   </div>
                                 </div>
                               ))}
                               {order.items.length > 2 && (
                                 <p className="text-xs text-blue-600 italic text-center py-1">
-                                  +{order.items.length - 2} more item{order.items.length - 2 > 1 ? 's' : ''}
+                                  +{order.items.length - 2} more item
+                                  {order.items.length - 2 > 1 ? "s" : ""}
                                 </p>
                               )}
                             </div>
@@ -249,7 +282,9 @@ export default function Orders() {
               <EmptyState
                 title="Error loading orders"
                 description="Failed to load orders. Please try again."
-                icon={<Package className="w-12 h-12 text-red-400 mx-auto mb-4" />}
+                icon={
+                  <Package className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                }
               />
             ) : (
               <EmptyState

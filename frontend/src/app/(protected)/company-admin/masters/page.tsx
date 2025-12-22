@@ -25,42 +25,42 @@ export default function MastersPage() {
       title: "Branch Management",
       description: "Manage branches and their locations",
       icon: Building,
-      href: "/masters/branches",
+      href: "/company-admin/masters/branches",
       color: "bg-blue-500",
     },
     {
       title: "Customer Management",
       description: "Manage customers and their information",
       icon: Users,
-      href: "/masters/customers",
+      href: "/company-admin/masters/customers",
       color: "bg-green-500",
     },
     {
       title: "Vehicle Management",
       description: "Manage fleet of vehicles",
       icon: Truck,
-      href: "/masters/vehicles",
+      href: "/company-admin/masters/vehicles",
       color: "bg-purple-500",
     },
     {
       title: "Product Management",
       description: "Manage product catalog and inventory",
       icon: Package,
-      href: "/masters/products",
+      href: "/company-admin/masters/products",
       color: "bg-orange-500",
     },
     {
       title: "User Management",
       description: "Manage users and their permissions",
       icon: UserCheck,
-      href: "/masters/users",
+      href: "/company-admin/masters/users",
       color: "bg-indigo-500",
     },
     {
       title: "Pricing Configuration",
       description: "Configure pricing rules and rates",
       icon: DollarSign,
-      href: "/masters/pricing",
+      href: "/company-admin/masters/pricing",
       color: "bg-pink-500",
     },
   ];
@@ -88,7 +88,7 @@ export default function MastersPage() {
                   Total Branches
                 </p>
                 <Link
-                  href="/masters/branches"
+                  href="/company-admin/masters/branches"
                   className="text-2xl font-bold text-gray-900 hover:text-blue-600"
                 >
                   View
@@ -109,7 +109,7 @@ export default function MastersPage() {
                   Total Customers
                 </p>
                 <Link
-                  href="/masters/customers"
+                  href="/company-admin/masters/customers"
                   className="text-2xl font-bold text-gray-900 hover:text-green-600"
                 >
                   View
@@ -130,7 +130,7 @@ export default function MastersPage() {
                   Total Vehicles
                 </p>
                 <Link
-                  href="/masters/vehicles"
+                  href="/company-admin/masters/vehicles"
                   className="text-2xl font-bold text-gray-900 hover:text-purple-600"
                 >
                   View
@@ -151,7 +151,7 @@ export default function MastersPage() {
                   Total Products
                 </p>
                 <Link
-                  href="/masters/products"
+                  href="/company-admin/masters/products"
                   className="text-2xl font-bold text-gray-900 hover:text-orange-600"
                 >
                   View
@@ -172,7 +172,7 @@ export default function MastersPage() {
             <Button
               variant="outline"
               className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
-              onClick={() => router.push("/masters/branches/new")}
+              onClick={() => router.push("/company-admin/masters/branches/new")}
             >
               <Building className="w-8 h-8" />
               <span>New Branch</span>
@@ -180,7 +180,7 @@ export default function MastersPage() {
             <Button
               variant="outline"
               className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
-              onClick={() => router.push("/masters/customers/new")}
+              onClick={() => router.push("/company-admin/masters/customers/new")}
             >
               <Users className="w-8 h-8" />
               <span>New Customer</span>
@@ -188,7 +188,7 @@ export default function MastersPage() {
             <Button
               variant="outline"
               className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
-              onClick={() => router.push("/masters/vehicles/new")}
+              onClick={() => router.push("/company-admin/masters/vehicles/new")}
             >
               <Truck className="w-8 h-8" />
               <span>Add Vehicle</span>
@@ -196,7 +196,7 @@ export default function MastersPage() {
             <Button
               variant="outline"
               className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
-              onClick={() => router.push("/masters/products/new")}
+              onClick={() => router.push("/company-admin/masters/products/new")}
             >
               <Package className="w-8 h-8" />
               <span>New Product</span>
@@ -204,7 +204,7 @@ export default function MastersPage() {
             <Button
               variant="outline"
               className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
-              onClick={() => router.push("/masters/users/new")}
+              onClick={() => router.push("/company-admin/masters/users/new")}
             >
               <UserCheck className="w-8 h-8" />
               <span>Add User</span>
@@ -212,7 +212,7 @@ export default function MastersPage() {
             <Button
               variant="outline"
               className="h-24 flex flex-col items-center justify-center space-y-2 hover:bg-gray-50"
-              onClick={() => router.push("/masters/pricing")}
+              onClick={() => router.push("/company-admin/masters/pricing")}
             >
               <Settings className="w-8 h-8" />
               <span>Configure</span>
@@ -260,7 +260,7 @@ export default function MastersPage() {
             <Button
               variant="outline"
               className="flex items-center justify-center space-x-2 h-12"
-              onClick={() => router.push("/masters/dashboard")}
+              onClick={() => router.push("/company-admin/masters/dashboard")}
             >
               <BarChart3 className="w-4 h-4" />
               <span>Dashboard</span>

@@ -15,6 +15,7 @@ import {
   useGetProductsQuery,
 } from "@/services/api/ordersApi";
 import { Package, Plus, X, Info, User, Weight, Clock } from "lucide-react";
+import { skipToken } from "@reduxjs/toolkit/query";
 
 // Form validation schema
 const orderFormSchema = z.object({
@@ -87,7 +88,7 @@ export function CreateOrderModal({
 
   const { data: productsData, isLoading: productsLoading } =
     useGetProductsQuery(
-      selectedBranch ? { branch_id: selectedBranch } : undefined
+      selectedBranch ? { branch_id: selectedBranch } : skipToken
     );
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
 

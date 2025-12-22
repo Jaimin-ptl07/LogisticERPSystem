@@ -1,3 +1,5 @@
+import { ProductCategory } from "@/services/api/companyApi";
+
 export interface OrderAssignData {
   //   user_id: string;
   //   company_id: string;
@@ -50,4 +52,12 @@ export interface TripOrder {
   priority: string;
   items: number;
   weight: number;
+}
+
+export interface getProductCategoryResponse{
+  items:ProductCategory[],
+  page:number,
+  pages:number,
+  per_Page:number,
+  total:number,
 }
