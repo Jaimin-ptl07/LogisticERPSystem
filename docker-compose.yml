@@ -17,6 +17,7 @@ services:
       - ./scripts/init-orders-schema.sql:/docker-entrypoint-initdb.d/03-orders-schema.sql
       - ./scripts/init-tms-schema.sql:/docker-entrypoint-initdb.d/03-tms-schema.sql
       - ./scripts/init-company-schema.sql:/docker-entrypoint-initdb.d/04-company-schema.sql
+      - ./scripts/init-finance-schema.sql:/docker-entrypoint-initdb.d/05-finance-schema.sql
     networks:
       - logistics-network
     healthcheck:
@@ -486,6 +487,49 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
+
+  # Finance Service
+  finance-service:
+    build:
+      context: ./services/finance
+      dockerfile: Dockerfile
+    container_name: finance-service
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./services/finance/src:/app/src
+      - ./services/finance/pyproject.toml:/app/pyproject.toml
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/finance_db
+      - REDIS_URL=redis://redis:6379
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - SERVICE_HOST=0.0.0.0
+      - SERVICE_PORT=8006
+      - ORDERS_SERVICE_URL=http://orders-service:8003
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
+      - AUDIT_LOG_ENABLED=true
+      - RATE_LIMIT_ENABLED=true
+      - JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - NEXT_PUBLIC_FINANCE_API_URL=http://finance-service:8006
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      orders-service:
+        condition: service_started
+    networks:
+      - logistics-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8006/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Driver Service
   driver-service:
