@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     items INTEGER NOT NULL,
     quantity INTEGER DEFAULT 1,
     priority VARCHAR(20) NOT NULL CHECK (
-        priority IN ('high', 'medium', 'low')
+        priority IN ('high', 'medium', 'low', 'normal')
     ),
     sequence_number INTEGER NOT NULL DEFAULT 0, -- Delivery sequence for drag & drop ordering
     address TEXT,

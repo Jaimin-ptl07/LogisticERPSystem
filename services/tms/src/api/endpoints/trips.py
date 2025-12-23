@@ -512,7 +512,8 @@ async def assign_orders_to_trip(
     created_orders = []
     for idx, order_data in enumerate(request.orders):
         # Get order data dict without user_id and company_id to avoid conflicts
-        order_dict = order_data.dict(exclude={'user_id', 'company_id'})
+        # Use model_dump(mode='json') to properly serialize enum values to strings
+        order_dict = order_data.model_dump(mode='json', exclude={'user_id', 'company_id'})
 
         trip_order = TripOrder(
             trip_id=trip_id,

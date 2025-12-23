@@ -189,14 +189,37 @@ export default function FinanceManager() {
 
   const getStatusVariant = (status: string) => {
     switch (status) {
+      case "finance_approved":
       case "approved":
         return "success";
+      case "finance_rejected":
       case "rejected":
         return "destructive";
+      case "submitted":
+        return "warning";
       case "pending":
         return "warning";
       default:
         return "default";
+    }
+  };
+
+  const getStatusDisplay = (status: string) => {
+    switch (status) {
+      case "finance_approved":
+        return "APPROVED";
+      case "finance_rejected":
+        return "REJECTED";
+      case "submitted":
+        return "PENDING";
+      case "approved":
+        return "APPROVED";
+      case "rejected":
+        return "REJECTED";
+      case "pending":
+        return "PENDING";
+      default:
+        return status.toUpperCase();
     }
   };
 
@@ -343,7 +366,11 @@ export default function FinanceManager() {
       order.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customer?.name.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus = selectedStatus === "all" || order.approval_status === selectedStatus;
+    const matchesStatus = selectedStatus === "all" ||
+      (selectedStatus === "pending" && order.status === "submitted") ||
+      (selectedStatus === "approved" && (order.status === "finance_approved" || order.status === "approved")) ||
+      (selectedStatus === "rejected" && (order.status === "finance_rejected" || order.status === "rejected")) ||
+      order.status === selectedStatus;
 
     return matchesSearch && matchesStatus;
   });
@@ -643,10 +670,10 @@ export default function FinanceManager() {
 
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Status</span>
-                        <Badge variant={getStatusVariant(order.approval_status || 'pending')}>
+                        <Badge variant={getStatusVariant(order.status)}>
                           <span className="flex items-center gap-1">
-                            {getStatusIcon(order.approval_status || 'pending')}
-                            {order.approval_status?.toUpperCase() || 'PENDING'}
+                            {getStatusIcon(order.status)}
+                            {getStatusDisplay(order.status)}
                           </span>
                         </Badge>
                       </div>
@@ -659,7 +686,7 @@ export default function FinanceManager() {
                       </div>
                     </div>
 
-                    {order.approval_status === 'pending' && (
+                    {order.status === 'submitted' && (
                       <div className="mt-6 flex gap-2">
                         <Button
                           size="sm"
@@ -786,10 +813,10 @@ export default function FinanceManager() {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <Badge variant={getStatusVariant(order.approval_status || 'pending')}>
+                          <Badge variant={getStatusVariant(order.status)}>
                             <span className="flex items-center gap-1">
-                              {getStatusIcon(order.approval_status || 'pending')}
-                              {order.approval_status?.toUpperCase() || 'PENDING'}
+                              {getStatusIcon(order.status)}
+                              {getStatusDisplay(order.status)}
                             </span>
                           </Badge>
                         </td>
@@ -799,7 +826,7 @@ export default function FinanceManager() {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          {order.approval_status === 'pending' ? (
+                          {order.status === 'submitted' ? (
                             <div className="flex gap-2">
                               <Button
                                 size="sm"

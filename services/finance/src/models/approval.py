@@ -9,6 +9,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 import enum
+import uuid
 
 from src.database import Base
 
@@ -35,34 +36,35 @@ class ApprovalAction(Base):
 
     # Primary key
     id: Mapped[str] = mapped_column(
-        String(255),
+        String(50),
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
 
     # Approval details
     tenant_id: Mapped[str] = mapped_column(
-        String(255),
+        String(50),
         nullable=False,
         index=True,
         comment="Tenant ID for multi-tenancy"
     )
     order_id: Mapped[str] = mapped_column(
-        String(255),
+        String(50),
         nullable=False,
         index=True,
         comment="Order ID from orders service"
     )
     approval_type: Mapped[ApprovalType] = mapped_column(
-        Enum(ApprovalType),
+        String(20),
         nullable=False,
+        default="finance",
         index=True,
         comment="Type of approval"
     )
     status: Mapped[ApprovalStatus] = mapped_column(
-        Enum(ApprovalStatus),
+        String(50),
         nullable=False,
-        default=ApprovalStatus.PENDING,
+        default="pending",
         index=True,
         comment="Current approval status"
     )
@@ -81,7 +83,7 @@ class ApprovalAction(Base):
 
     # Approval details
     approver_id: Mapped[Optional[str]] = mapped_column(
-        String(255),
+        String(50),
         nullable=True,
         index=True,
         comment="User ID of the approver"
@@ -104,7 +106,7 @@ class ApprovalAction(Base):
 
     # Additional context
     customer_id: Mapped[Optional[str]] = mapped_column(
-        String(255),
+        String(50),
         nullable=True,
         comment="Customer ID for context"
     )
@@ -126,7 +128,7 @@ class ApprovalAction(Base):
 
     # System fields
     requested_by: Mapped[str] = mapped_column(
-        String(255),
+        String(50),
         nullable=False,
         comment="User ID who requested the approval"
     )
@@ -161,16 +163,16 @@ class ApprovalAudit(Base):
     """Approval audit trail model"""
     __tablename__ = "approval_audit"
 
-    # Primary key
-    id: Mapped[str] = mapped_column(
-        String(255),
+    # Primary key - SERIAL (auto-increment integer)
+    id: Mapped[int] = mapped_column(
+        Integer,
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        autoincrement=True
     )
 
     # Reference to approval action
     approval_action_id: Mapped[str] = mapped_column(
-        String(255),
+        String(50),
         nullable=False,
         index=True,
         comment="Reference to approval action"
@@ -195,7 +197,7 @@ class ApprovalAudit(Base):
 
     # Who performed the action
     user_id: Mapped[str] = mapped_column(
-        String(255),
+        String(50),
         nullable=False,
         index=True,
         comment="User ID who performed the action"

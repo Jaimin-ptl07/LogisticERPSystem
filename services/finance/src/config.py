@@ -1,6 +1,7 @@
 """
 Configuration settings for Finance Service
 """
+import os
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -17,7 +18,7 @@ class FinanceSettings(BaseSettings):
 
     # Server settings
     service_host: str = "0.0.0.0"
-    service_port: int = 8005
+    service_port: int = 8006
 
     # Database settings
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/logistics_erp"
@@ -37,15 +38,21 @@ class FinanceSettings(BaseSettings):
     allowed_headers: List[str] = ["*"]
     expose_headers: List[str] = []
 
-    # Authentication settings
-    JWT_SECRET_KEY: str = "your-secret-key-here"
-    JWT_ALGORITHM: str = "HS256"
+    # Authentication settings - Using global configuration like other services
+    GLOBAL_JWT_SECRET: str = os.getenv(
+        "JWT_SECRET",
+        "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
+    )
+    GLOBAL_JWT_ALGORITHM: str = os.getenv("GLOBAL_JWT_ALGORITHM", "HS256")
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Orders Service settings
-    ORDERS_SERVICE_URL: str = "http://orders-service:8002"
+    ORDERS_SERVICE_URL: str = "http://orders-service:8003"
     ORDERS_SERVICE_TIMEOUT: int = 30
+
+    # Auth Service settings
+    AUTH_SERVICE_URL: str = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8001")
 
     # Audit settings
     AUDIT_LOG_ENABLED: bool = True

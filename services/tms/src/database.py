@@ -89,7 +89,7 @@ class TripOrder(Base):
     items = Column(Integer, nullable=False)
     priority = Column(
         String(20),
-        CheckConstraint("priority IN ('high', 'medium', 'low')", name="check_priority"),
+        CheckConstraint("priority IN ('high', 'medium', 'low', 'normal')", name="check_priority"),
         nullable=False
     )
     delivery_status = Column(

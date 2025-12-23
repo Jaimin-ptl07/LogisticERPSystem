@@ -18,10 +18,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     Validates JWT tokens and extracts user information
     """
 
-    def __init__(self, app, skip_paths: list = None, jwt_secret: str = None):
+    def __init__(self, app, skip_paths: list = None, jwt_secret: str = None, jwt_algorithm: str = None):
         super().__init__(app)
         self.skip_paths = skip_paths or []
-        self.jwt_secret = jwt_secret or "your-secret-key-here"
+        self.jwt_secret = jwt_secret
+        self.jwt_algorithm = jwt_algorithm or "HS256"
 
     async def dispatch(self, request: Request, call_next):
         """
@@ -50,6 +51,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             user_id = payload.get("sub")
             tenant_id = payload.get("tenant_id")
             user_role = payload.get("role")
+            role_id = payload.get("role_id")
             permissions = payload.get("permissions", [])
 
             if not user_id or not tenant_id:
@@ -64,6 +66,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.user_id = user_id
             request.state.tenant_id = tenant_id
             request.state.user_role = user_role
+            request.state.role_id = role_id
             request.state.permissions = permissions
             request.state.token_payload = payload
 
@@ -112,22 +115,23 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             payload = jwt.decode(
                 token,
                 self.jwt_secret,
-                algorithms=["HS256"]
+                algorithms=[self.jwt_algorithm]
             )
             return payload
         except jwt.ExpiredSignatureError:
             raise JWTError("Token has expired")
-        except jwt.InvalidTokenError:
+        except JWTError:
             raise JWTError("Invalid token")
 
 
 class TokenData:
     """Token data class for dependency injection"""
-    def __init__(self, user_id: str, tenant_id: str, permissions: list = None, role: str = None):
+    def __init__(self, user_id: str, tenant_id: str, permissions: list = None, role: str = None, role_id: int = None):
         self.user_id = user_id
         self.tenant_id = tenant_id
         self.permissions = permissions or []
         self.role = role
+        self.role_id = role_id
 
     def is_super_user(self) -> bool:
         """Check if user has super user permissions"""
@@ -160,6 +164,7 @@ def get_token_data(request: Request) -> TokenData:
     tenant_id = getattr(request.state, 'tenant_id', None)
     permissions = getattr(request.state, 'permissions', [])
     role = getattr(request.state, 'user_role', None)
+    role_id = getattr(request.state, 'role_id', None)
 
     if not user_id or not tenant_id:
         raise HTTPException(
@@ -167,4 +172,4 @@ def get_token_data(request: Request) -> TokenData:
             detail="Authentication required"
         )
 
-    return TokenData(user_id=user_id, tenant_id=tenant_id, permissions=permissions, role=role)
+    return TokenData(user_id=user_id, tenant_id=tenant_id, permissions=permissions, role=role, role_id=role_id)

@@ -16,14 +16,17 @@ function getAuthToken(request: NextRequest): string | null {
   return tokenCookie?.value || null;
 }
 
-export async function GET(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ orderId: string }> }
+) {
   try {
-    const url = new URL(request.url);
-    const searchParams = url.searchParams.toString();
+    const { orderId } = await params; // Unwrap the params Promise
+    const body = await request.json();
 
-    // Forward the request to the Finance Service orders endpoint
-    const response = await fetch(`${FINANCE_SERVICE_URL}/api/v1/orders${searchParams ? `?${searchParams}` : ''}`, {
-      method: 'GET',
+    // Forward the request to the Finance Service single order approval endpoint
+    const response = await fetch(`${FINANCE_SERVICE_URL}/api/v1/approvals/order/${orderId}`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         // Forward authentication headers if any
@@ -31,6 +34,7 @@ export async function GET(request: NextRequest) {
           'Authorization': request.headers.get('authorization')!
         }),
       },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -38,18 +42,17 @@ export async function GET(request: NextRequest) {
       const errorText = await response.text();
       console.error('Error response:', errorText);
 
-      // Return the actual error
       return NextResponse.json(
-        { error: `Failed to fetch orders from Finance service: ${response.statusText}` },
+        { error: `Failed to approve order in Finance service: ${response.statusText}` },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    console.log("data",data)
     return NextResponse.json(data);
+
   } catch (error) {
-    console.error('Finance Orders API error:', error);
+    console.error('Finance Order Approval API error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

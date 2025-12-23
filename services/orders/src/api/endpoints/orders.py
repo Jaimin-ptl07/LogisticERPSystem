@@ -8,7 +8,7 @@ from httpx import AsyncClient
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, asc, func
+from sqlalchemy import select, and_, or_, desc, asc, func, cast, String
 
 from src.database import get_db
 from src.models.order import Order, OrderStatus
@@ -89,7 +89,7 @@ async def list_orders(
     sort_by: str = Query("created_at", regex="^(created_at|updated_at|order_number|total_amount)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read"])),
+    token_data: TokenData = Depends(require_permissions(["orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List orders with filtering and pagination"""
@@ -105,7 +105,7 @@ async def list_orders(
     filters = [Order.tenant_id == tenant_id, Order.is_active == True]
 
     if status:
-        filters.append(Order.status == status)
+        filters.append(cast(Order.status, String) == status.name)
     if customer_id:
         filters.append(Order.customer_id == customer_id)
     if branch_id:
@@ -232,7 +232,7 @@ async def list_orders(
 async def get_order(
     order_id: str,
     db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read"])),
+    token_data: TokenData = Depends(require_permissions(["orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order by ID"""
@@ -458,8 +458,8 @@ async def update_order_status(
 @router.get("/{order_id}/history", response_model=List[OrderStatusHistoryResponse])
 async def get_order_status_history(
     order_id: str,
-    db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read"])),
+    db: AsyncSession = Depends(get_db),    token_data: TokenData = Depends(require_permissions(["orders:read"])),
+
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """Get order status history"""

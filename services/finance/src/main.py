@@ -10,7 +10,8 @@ from fastapi.responses import JSONResponse
 
 from src.config import FinanceSettings
 from src.database import engine, Base
-from src.middleware.auth import AuthenticationMiddleware, TenantIsolationMiddleware
+from src.middleware.auth import AuthenticationMiddleware
+from src.middleware.tenant import TenantIsolationMiddleware
 from src.middleware.audit import AuditLoggingMiddleware
 from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.security import SecurityHeadersMiddleware
@@ -129,6 +130,8 @@ app.add_middleware(TenantIsolationMiddleware)
 # 6. Authentication middleware (innermost - executes first)
 app.add_middleware(
     AuthenticationMiddleware,
+    jwt_secret=settings.GLOBAL_JWT_SECRET,
+    jwt_algorithm=settings.GLOBAL_JWT_ALGORITHM,
     skip_paths=[
         "/health",
         "/ready",

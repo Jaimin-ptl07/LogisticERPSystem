@@ -7,9 +7,9 @@ from datetime import datetime
 from httpx import AsyncClient
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func
+from sqlalchemy import select, and_, or_, desc, func, cast, String as SQLString
 
 from src.database import get_db
 from src.models.approval import ApprovalAction, ApprovalAudit, ApprovalType, ApprovalStatus
@@ -26,6 +26,7 @@ from src.schemas import (
 from src.security import (
     TokenData,
     require_permissions,
+    require_any_permission,
     get_current_user_id,
     get_current_tenant_id,
 )
@@ -34,21 +35,22 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Orders Service URL
-ORDERS_SERVICE_URL = "http://orders-service:8002"
+ORDERS_SERVICE_URL = "http://orders-service:8003"
 
 
 async def update_order_status_in_service(
     order_id: str,
     status: str,
     approved: bool,
-    user_id: str,
-    tenant_id: str,
     reason: Optional[str] = None,
     notes: Optional[str] = None,
     payment_type: Optional[str] = None,
     headers: dict = None
 ) -> dict:
-    """Update order status in Orders Service"""
+    """
+    Update order status in Orders Service.
+    tenant_id and user_id are extracted from JWT token by Orders Service.
+    """
     async with AsyncClient(timeout=30.0) as client:
         try:
             if approved:
@@ -59,25 +61,19 @@ async def update_order_status_in_service(
                     "notes": notes,
                     "payment_type": payment_type
                 }
-                response = await client.post(
-                    f"{ORDERS_SERVICE_URL}/api/v1/orders/{order_id}/finance-approval",
-                    json=approval_data,
-                    params={"tenant_id": tenant_id, "user_id": user_id},
-                    headers=headers or {}
-                )
             else:
                 # Reject the order
-                rejection_data = {
+                approval_data = {
                     "approved": False,
                     "reason": reason,
                     "notes": notes
                 }
-                response = await client.post(
-                    f"{ORDERS_SERVICE_URL}/api/v1/orders/{order_id}/finance-approval",
-                    json=rejection_data,
-                    params={"tenant_id": tenant_id, "user_id": user_id},
-                    headers=headers or {}
-                )
+
+            response = await client.post(
+                f"{ORDERS_SERVICE_URL}/api/v1/orders/{order_id}/finance-approval",
+                json=approval_data,
+                headers=headers or {}
+            )
 
             if response.status_code == 200:
                 return response.json()
@@ -97,15 +93,16 @@ async def update_order_status_in_service(
 
 async def get_order_details_from_service(
     order_id: str,
-    tenant_id: str,
     headers: dict = None
 ) -> dict:
-    """Get order details from Orders Service"""
+    """
+    Get order details from Orders Service.
+    tenant_id is extracted from JWT token by Orders Service.
+    """
     async with AsyncClient(timeout=30.0) as client:
         try:
             response = await client.get(
                 f"{ORDERS_SERVICE_URL}/api/v1/orders/{order_id}",
-                params={"tenant_id": tenant_id},
                 headers=headers or {}
             )
 
@@ -175,11 +172,11 @@ router = APIRouter()
 async def approve_or_reject_order(
     order_id: str,
     approval_data: FinanceApprovalRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["finance:approve"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
-    request: "Request" = None,
 ):
     """
     Approve or reject a single order for finance.
@@ -203,7 +200,7 @@ async def approve_or_reject_order(
                 and_(
                     ApprovalAction.order_id == order_id,
                     ApprovalAction.tenant_id == tenant_id,
-                    ApprovalAction.approval_type == ApprovalType.FINANCE,
+                    cast(ApprovalAction.approval_type, SQLString) == ApprovalType.FINANCE.value,
                     ApprovalAction.is_active == True
                 )
             )
@@ -219,7 +216,6 @@ async def approve_or_reject_order(
         # Get order details from Orders Service
         order_details = await get_order_details_from_service(
             order_id=order_id,
-            tenant_id=tenant_id,
             headers=auth_headers
         )
 
@@ -283,8 +279,6 @@ async def approve_or_reject_order(
             order_id=order_id,
             status="finance_approved" if approval_data.approved else "finance_rejected",
             approved=approval_data.approved,
-            user_id=user_id,
-            tenant_id=tenant_id,
             reason=approval_data.reason,
             notes=approval_data.notes,
             payment_type=order_details.get("payment_type"),
@@ -309,12 +303,12 @@ async def approve_or_reject_order(
 
 @router.post("/bulk", response_model=BulkApprovalResponse)
 async def bulk_approve_or_reject_orders(
+    request: Request,
     bulk_data: BulkApprovalRequest,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["finance:approve_bulk"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
-    request: "Request" = None,
 ):
     """
     Approve or reject multiple orders in bulk.
@@ -385,8 +379,6 @@ async def bulk_approve_or_reject_orders(
                     order_id=order_id,
                     status="finance_approved" if bulk_data.approved else "finance_rejected",
                     approved=bulk_data.approved,
-                    user_id=user_id,
-                    tenant_id=tenant_id,
                     reason=bulk_data.reason,
                     notes=bulk_data.notes,
                     headers=auth_headers

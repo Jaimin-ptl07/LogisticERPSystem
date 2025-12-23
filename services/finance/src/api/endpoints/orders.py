@@ -6,7 +6,7 @@ from typing import List, Optional
 from datetime import datetime
 from httpx import AsyncClient
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import get_db
@@ -25,20 +25,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Orders Service URL
-ORDERS_SERVICE_URL = "http://orders-service:8002"
+ORDERS_SERVICE_URL = "http://orders-service:8003"
 
 
 async def fetch_orders_from_service(
-    tenant_id: str,
     status: Optional[str] = None,
     customer_id: Optional[str] = None,
     page: int = 1,
     per_page: int = 20,
     headers: dict = None
 ) -> dict:
-    """Fetch orders from Orders Service"""
+    """
+    Fetch orders from Orders Service.
+    tenant_id is extracted from JWT token by Orders Service.
+    """
     params = {
-        "tenant_id": tenant_id,
         "page": page,
         "per_page": per_page,
     }
@@ -51,9 +52,10 @@ async def fetch_orders_from_service(
     async with AsyncClient(timeout=30.0) as client:
         try:
             response = await client.get(
-                f"{ORDERS_SERVICE_URL}/api/v1/orders",
+                f"{ORDERS_SERVICE_URL}/api/v1/orders/",
                 params=params,
-                headers=headers or {}
+                headers=headers or {},
+                follow_redirects=True
             )
 
             if response.status_code == 200:
@@ -74,18 +76,18 @@ async def fetch_orders_from_service(
 
 async def fetch_order_by_id_from_service(
     order_id: str,
-    tenant_id: str,
     headers: dict = None
 ) -> dict:
-    """Fetch specific order from Orders Service"""
-    params = {"tenant_id": tenant_id}
-
+    """
+    Fetch specific order from Orders Service.
+    tenant_id is extracted from JWT token by Orders Service.
+    """
     async with AsyncClient(timeout=30.0) as client:
         try:
             response = await client.get(
-                f"{ORDERS_SERVICE_URL}/api/v1/orders/{order_id}",
-                params=params,
-                headers=headers or {}
+                f"{ORDERS_SERVICE_URL}/api/v1/orders/{order_id}/",
+                headers=headers or {},
+                follow_redirects=True
             )
 
             if response.status_code == 200:
@@ -116,15 +118,15 @@ router = APIRouter()
 
 @router.get("/", response_model=OrderListResponse)
 async def list_orders_for_approval(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by order status"),
     customer_id: Optional[str] = Query(None, description="Filter by customer ID"),
     date_from: Optional[datetime] = Query(None, description="Filter by date from"),
     date_to: Optional[datetime] = Query(None, description="Filter by date to"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Page size"),
-    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read", "finance:approve"])),
+    token_data: TokenData = Depends(require_any_permission(["orders:read", "finance:approve"])),
     tenant_id: str = Depends(get_current_tenant_id),
-    request: "Request" = None,  # We need the request to get headers
 ):
     """
     List orders that need finance approval.
@@ -137,22 +139,47 @@ async def list_orders_for_approval(
         if auth_header:
             auth_headers["Authorization"] = auth_header
 
-    # For finance approval, we typically want orders that are submitted for approval
+    # For finance approval, we want orders that are submitted, approved, or rejected
     # but we allow flexible filtering
     if not status:
-        # Default to orders that are submitted for finance approval
-        status = "submitted"
+        # Fetch all finance-relevant orders (submitted, finance_approved, finance_rejected)
+        # We'll make multiple calls to get all relevant statuses
+        relevant_statuses = ["submitted", "finance_approved", "finance_rejected"]
+        all_orders = []
 
-    try:
-        # Fetch orders from Orders Service
+        for status_filter in relevant_statuses:
+            try:
+                orders_data = await fetch_orders_from_service(
+                    status=status_filter,
+                    customer_id=customer_id,
+                    page=page,
+                    per_page=per_page,
+                    headers=auth_headers
+                )
+                all_orders.extend(orders_data.get("items", []))
+            except Exception as e:
+                logger.warning(f"Failed to fetch orders with status {status_filter}: {str(e)}")
+                continue
+
+        # Combine all orders
+        orders_data = {
+            "items": all_orders,
+            "total": len(all_orders),
+            "page": page,
+            "per_page": per_page,
+            "pages": 1
+        }
+    else:
+        # If specific status filter is provided, use it
         orders_data = await fetch_orders_from_service(
-            tenant_id=tenant_id,
             status=status,
             customer_id=customer_id,
             page=page,
             per_page=per_page,
             headers=auth_headers
         )
+
+    try:
 
         # Transform Orders Service response to Finance Service response format
         finance_orders = []
@@ -193,9 +220,9 @@ async def list_orders_for_approval(
 @router.get("/{order_id}", response_model=OrderApprovalResponse)
 async def get_order_for_approval(
     order_id: str,
-    token_data: TokenData = Depends(require_any_permission(["orders:read_all", "orders:read", "finance:approve"])),
+    request: Request,
+    token_data: TokenData = Depends(require_any_permission(["orders:read", "finance:approve"])),
     tenant_id: str = Depends(get_current_tenant_id),
-    request: "Request" = None,  # We need the request to get headers
 ):
     """
     Get specific order details for finance approval.
@@ -212,7 +239,6 @@ async def get_order_for_approval(
         # Fetch order from Orders Service
         order_data = await fetch_order_by_id_from_service(
             order_id=order_id,
-            tenant_id=tenant_id,
             headers=auth_headers
         )
 
@@ -245,9 +271,9 @@ async def get_order_for_approval(
 
 @router.get("/pending/summary")
 async def get_pending_approvals_summary(
+    request: Request,
     token_data: TokenData = Depends(require_any_permission(["finance:approve", "finance:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
-    request: "Request" = None,
 ):
     """
     Get summary of pending finance approvals.
@@ -263,7 +289,6 @@ async def get_pending_approvals_summary(
     try:
         # Fetch submitted orders that need finance approval
         orders_data = await fetch_orders_from_service(
-            tenant_id=tenant_id,
             status="submitted",
             per_page=100,  # Get more for summary
             headers=auth_headers

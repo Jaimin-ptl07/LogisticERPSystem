@@ -4,9 +4,10 @@ Provides financial analytics and reporting capabilities
 """
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc
+from sqlalchemy import select, func, and_, or_, desc, cast, String as SQLString
+from httpx import AsyncClient, ConnectError, TimeoutException
 
 from src.database import get_db
 from src.models.approval import ApprovalAction, ApprovalStatus, ApprovalType
@@ -19,11 +20,45 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+ORDERS_SERVICE_URL = "http://orders-service:8003"
+
 router = APIRouter()
+
+
+async def fetch_pending_orders_from_service(headers: dict = None) -> dict:
+    """Fetch pending orders from Orders Service"""
+    async with AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.get(
+                f"{ORDERS_SERVICE_URL}/api/v1/orders/",
+                params={"status": "submitted", "per_page": 100},  # max per_page is 100
+                headers=headers or {},
+                follow_redirects=True
+            )
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Fetched pending orders: total={data.get('total', 0)}, items_count={len(data.get('items', []))}")
+                return data
+            elif response.status_code == 401:
+                logger.warning(f"Authorization failed when fetching pending orders - returning empty")
+                return {"items": [], "total": 0}
+            else:
+                logger.warning(f"Failed to fetch pending orders: {response.status_code} - {response.text}")
+                return {"items": [], "total": 0}
+        except ConnectError as e:
+            logger.warning(f"Connection error fetching pending orders (service may be starting): {str(e)}")
+            return {"items": [], "total": 0}
+        except TimeoutException as e:
+            logger.warning(f"Timeout fetching pending orders: {str(e)}")
+            return {"items": [], "total": 0}
+        except Exception as e:
+            logger.error(f"Error fetching pending orders: {str(e)}")
+            return {"items": [], "total": 0}
 
 
 @router.get("/dashboard/summary")
 async def get_dashboard_summary(
+    request: Request,
     days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_any_permission(["finance:read", "finance:reports"])),
@@ -36,6 +71,13 @@ async def get_dashboard_summary(
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
 
+    # Get authorization header
+    auth_headers = {}
+    if request and hasattr(request, 'headers'):
+        auth_header = request.headers.get("authorization")
+        if auth_header:
+            auth_headers["Authorization"] = auth_header
+
     try:
         # Get approval statistics
         approval_stats_query = select(
@@ -45,7 +87,7 @@ async def get_dashboard_summary(
         ).where(
             and_(
                 ApprovalAction.tenant_id == tenant_id,
-                ApprovalAction.approval_type == ApprovalType.FINANCE,
+                cast(ApprovalAction.approval_type, SQLString) == ApprovalType.FINANCE.value,
                 ApprovalAction.created_at >= start_date,
                 ApprovalAction.created_at <= end_date,
                 ApprovalAction.is_active == True
@@ -72,7 +114,7 @@ async def get_dashboard_summary(
         ).where(
             and_(
                 ApprovalAction.tenant_id == tenant_id,
-                ApprovalAction.approval_type == ApprovalType.FINANCE,
+                cast(ApprovalAction.approval_type, SQLString) == ApprovalType.FINANCE.value,
                 ApprovalAction.created_at >= start_date,
                 ApprovalAction.created_at <= end_date,
                 ApprovalAction.is_active == True
@@ -93,7 +135,7 @@ async def get_dashboard_summary(
         ).where(
             and_(
                 ApprovalAction.tenant_id == tenant_id,
-                ApprovalAction.approval_type == ApprovalType.FINANCE,
+                cast(ApprovalAction.approval_type, SQLString) == ApprovalType.FINANCE.value,
                 ApprovalAction.created_at >= start_date,
                 ApprovalAction.created_at <= end_date,
                 ApprovalAction.approver_id.isnot(None),
@@ -113,14 +155,26 @@ async def get_dashboard_summary(
         ).where(
             and_(
                 ApprovalAction.tenant_id == tenant_id,
-                ApprovalAction.approval_type == ApprovalType.FINANCE,
-                ApprovalAction.status == ApprovalStatus.PENDING,
+                cast(ApprovalAction.approval_type, SQLString) == ApprovalType.FINANCE.value,
+                cast(ApprovalAction.status, SQLString) == ApprovalStatus.PENDING.value,
                 ApprovalAction.is_active == True
             )
         )
 
         pending_result = await db.execute(pending_query)
         pending_stats = pending_result.first()
+
+        # Fetch real-time pending orders from Orders Service
+        pending_orders_data = await fetch_pending_orders_from_service(auth_headers)
+        real_pending_count = pending_orders_data.get("total", 0)
+        pending_items = pending_orders_data.get("items", [])
+        real_pending_amount = sum(
+            order.get("total_amount", 0) or 0
+            for order in pending_items
+        )
+
+        logger.info(f"Dashboard Summary - Pending Orders: count={real_pending_count}, amount={real_pending_amount}")
+        logger.info(f"Dashboard Summary - Approval Stats: PENDING={stats_dict[ApprovalStatus.PENDING]}, APPROVED={stats_dict[ApprovalStatus.APPROVED]}, REJECTED={stats_dict[ApprovalStatus.REJECTED]}")
 
         return {
             "period": {
@@ -129,14 +183,14 @@ async def get_dashboard_summary(
                 "days": days
             },
             "summary": {
-                "total_orders": stats_dict[ApprovalStatus.PENDING]["count"] +
+                "total_orders": real_pending_count +
                                stats_dict[ApprovalStatus.APPROVED]["count"] +
                                stats_dict[ApprovalStatus.REJECTED]["count"],
-                "total_amount": stats_dict[ApprovalStatus.PENDING]["amount"] +
+                "total_amount": real_pending_amount +
                               stats_dict[ApprovalStatus.APPROVED]["amount"] +
                               stats_dict[ApprovalStatus.REJECTED]["amount"],
-                "pending_orders": stats_dict[ApprovalStatus.PENDING]["count"],
-                "pending_amount": stats_dict[ApprovalStatus.PENDING]["amount"],
+                "total_pending_orders": real_pending_count,
+                "total_pending_amount": real_pending_amount,
                 "approved_orders": stats_dict[ApprovalStatus.APPROVED]["count"],
                 "approved_amount": stats_dict[ApprovalStatus.APPROVED]["amount"],
                 "rejected_orders": stats_dict[ApprovalStatus.REJECTED]["count"],
@@ -165,8 +219,8 @@ async def get_dashboard_summary(
                 for approver in top_approvers
             ],
             "current_pending": {
-                "count": pending_stats.count if pending_stats else 0,
-                "amount": float(pending_stats.amount) if pending_stats and pending_stats.amount else 0
+                "count": real_pending_count,
+                "amount": real_pending_amount
             }
         }
 
@@ -194,7 +248,7 @@ async def get_approval_performance_report(
         # Build base query
         base_conditions = [
             ApprovalAction.tenant_id == tenant_id,
-            ApprovalAction.approval_type == ApprovalType.FINANCE,
+            cast(ApprovalAction.approval_type, SQLString) == ApprovalType.FINANCE.value,
             ApprovalAction.is_active == True
         ]
 
@@ -222,7 +276,7 @@ async def get_approval_performance_report(
         ).where(
             and_(
                 *base_conditions,
-                ApprovalAction.status == ApprovalStatus.APPROVED,
+                cast(ApprovalAction.status, SQLString) == ApprovalStatus.APPROVED.value,
                 ApprovalAction.approved_at.isnot(None)
             )
         ).group_by(ApprovalAction.approver_id, ApprovalAction.approver_name)
@@ -245,11 +299,11 @@ async def get_approval_performance_report(
             func.date(ApprovalAction.created_at).label('date'),
             func.count(ApprovalAction.id).label('total'),
             func.sum(func.case(
-                (ApprovalAction.status == ApprovalStatus.APPROVED, 1),
+                (cast(ApprovalAction.status, SQLString) == ApprovalStatus.APPROVED.value, 1),
                 else_=0
             )).label('approved'),
             func.sum(func.case(
-                (ApprovalAction.status == ApprovalStatus.REJECTED, 1),
+                (cast(ApprovalAction.status, SQLString) == ApprovalStatus.REJECTED.value, 1),
                 else_=0
             )).label('rejected')
         ).where(and_(*base_conditions)).group_by(
@@ -316,8 +370,8 @@ async def get_financial_summary_report(
         # Build base conditions
         base_conditions = [
             ApprovalAction.tenant_id == tenant_id,
-            ApprovalAction.approval_type == ApprovalType.FINANCE,
-            ApprovalAction.status == ApprovalStatus.APPROVED,
+            cast(ApprovalAction.approval_type, SQLString) == ApprovalType.FINANCE.value,
+            cast(ApprovalAction.status, SQLString) == ApprovalStatus.APPROVED.value,
             ApprovalAction.is_active == True
         ]
 
