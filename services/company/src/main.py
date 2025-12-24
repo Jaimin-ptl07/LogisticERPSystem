@@ -13,13 +13,27 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 from starlette.responses import Response as StarletteResponse
 
 from src.api.endpoints import branches, customers, vehicles, products, product_categories, users, roles, profiles
-from src.config_local import CompanySettings
+from src.config_local import settings
 from src.database import engine, Base
+from src.security import (
+    SecurityException,
+    security_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler,
+)
+from src.middleware import (
+    AuthenticationMiddleware,
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+    AuditLoggingMiddleware,
+    TenantIsolationMiddleware,
+    TenantContextMiddleware,
+)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
-settings = CompanySettings()
 
 # Initialize Prometheus metrics registry
 registry = CollectorRegistry()
@@ -78,28 +92,74 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add middleware
+# Add security middleware (order matters - add in reverse order of execution)
+# Security headers should be added first (outermost)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Audit logging for all requests
+if settings.AUDIT_LOG_ENABLED:
+    app.add_middleware(AuditLoggingMiddleware)
+
+# Rate limiting (if enabled)
+if settings.RATE_LIMIT_ENABLED:
+    app.add_middleware(RateLimitMiddleware)
+
+# Tenant isolation for multi-tenancy
+app.add_middleware(TenantIsolationMiddleware)
+
+# Tenant context for database operations
+app.add_middleware(TenantContextMiddleware)
+
+# Authentication middleware (must come before CORS for proper header handling)
+app.add_middleware(AuthenticationMiddleware)
+
+# Add standard middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.logistics-erp.com"] if settings.ENV == "production" else ["*"]
+    allowed_hosts=settings.TRUSTED_HOSTS if settings.SECURITY_ENABLE_TRUSTED_HOST else ["*"]
 )
 
 # Log CORS configuration for debugging
-logger.info(f"CORS Origins: {settings.CORS_ORIGINS}")
+logger.info(f"CORS Origins: {settings.ALLOW_ORIGINS}")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if settings.SECURITY_ENABLE_CORS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOW_ORIGINS,
+        allow_credentials=settings.ALLOW_CREDENTIALS,
+        allow_methods=settings.ALLOW_METHODS,
+        allow_headers=settings.ALLOW_HEADERS,
+    )
 
 # Add metrics tracking middleware
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start_time = time.time()
-    response = await call_next(request)
+
+    try:
+        response = await call_next(request)
+    except HTTPException as e:
+        # Don't convert HTTPExceptions to responses here
+        # Let them be handled by the exception handlers
+        # Still record the metrics for monitoring
+        endpoint = request.url.path
+        if endpoint.startswith("/"):
+            endpoint = endpoint.split("/")[-1] or "root"
+
+        http_requests_total.labels(
+            method=request.method,
+            endpoint=endpoint,
+            status_code=str(e.status_code)
+        ).inc()
+
+        duration = time.time() - start_time
+        http_request_duration_seconds.labels(
+            method=request.method,
+            endpoint=endpoint
+        ).observe(duration)
+
+        # Re-raise the HTTPException to be handled by proper exception handlers
+        raise
 
     # Calculate request duration
     duration = time.time() - start_time

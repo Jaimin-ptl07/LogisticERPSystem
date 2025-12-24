@@ -101,6 +101,7 @@ class Branch(Base):
     phone = Column(String(20))
     email = Column(String(100))
     manager_id = Column(String)  # Will be foreign key to auth service
+    created_by = Column(String)  # Will be foreign key to auth service (user who created it)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

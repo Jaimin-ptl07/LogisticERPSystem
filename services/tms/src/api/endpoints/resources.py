@@ -1,18 +1,26 @@
-"""Resources API endpoints - integration with Company service"""
+"""Resources API endpoints - dummy data service"""
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from fastapi import APIRouter, Depends, Query, Request
 from typing import List, Optional
-from fastapi import APIRouter, Query, HTTPException
 from httpx import AsyncClient
 import logging
 
 from src.schemas import Truck, Driver, Order, Branch
+from src.security import (
+    TokenData,
+    require_any_permission,
+    get_current_tenant_id
+)
+from src.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Company service URL
 COMPANY_SERVICE_URL = "http://company-service:8002"
+
+
 
 # Mock drivers data - will be integrated with driver service later
 DRIVERS = [
@@ -52,62 +60,48 @@ ORDERS = [
     ),
     Order(
         id="ORD-003",
-        customer="City Mart",
-        customerAddress="789 Main St, Downtown",
-        status="approved",
+        customer="Tech Solutions Ltd",
+        customerAddress="789 Tech Park Avenue, Innovation District",
+        status="pending",
         total=3200,
         weight=1200,
         volume=1800,
         date=date(2024, 1, 17),
         priority="high",
-        items=22,
-        address="789 Main St, Downtown"
+        items=25,
+        address="789 Tech Park Avenue, Innovation District"
     ),
     Order(
         id="ORD-004",
-        customer="SuperStore Chain",
-        customerAddress="321 Commercial Ave, Industrial Zone",
+        customer="Fresh Foods Market",
+        customerAddress="101 Fresh Street, Downtown",
         status="approved",
-        total=4500,
-        weight=1800,
-        volume=2400,
+        total=950,
+        weight=400,
+        volume=500,
         date=date(2024, 1, 18),
         priority="low",
-        items=35,
-        address="321 Commercial Ave, Industrial Zone"
-    ),
-    Order(
-        id="ORD-005",
-        customer="Local Pharmacy",
-        customerAddress="555 Health St, Medical District",
-        status="approved",
-        total=1500,
-        weight=300,
-        volume=450,
-        date=date(2024, 1, 19),
-        priority="high",
-        items=12,
-        address="555 Health St, Medical District"
-    ),
-    Order(
-        id="ORD-006",
-        customer="Heavy Industry Corp",
-        customerAddress="789 Industrial Blvd, Manufacturing Zone",
-        status="approved",
-        total=50000,
-        weight=10000,
-        volume=2500,
-        date=date(2024, 1, 20),
-        priority="high",
-        items=50,
-        address="789 Industrial Blvd, Manufacturing Zone"
+        items=6,
+        address="101 Fresh Street, Downtown"
     ),
 ]
 
 
 @router.get("/trucks", response_model=list[Truck])
-async def get_trucks(tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID")):
+async def get_trucks(
+    request: Request,
+    token_data: TokenData = Depends(
+        require_any_permission(["resources: read", "resources:read_all", "trips:read", "trips:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
     """Get all available trucks from Company service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         # Call Company service vehicles endpoint with status filter
         response = await client.get(
@@ -115,13 +109,22 @@ async def get_trucks(tenant_id: Optional[str] = Query("default-tenant", descript
             params={
                 "status": "available",
                 "is_active": True,
-                "per_page": 100
-            }
+                "per_page": 100,
+                "tenant_id": tenant_id
+            },
+            headers=headers
         )
 
         if response.status_code != 200:
             logger.error(f"Failed to fetch vehicles from Company service: {response.status_code}")
-            raise HTTPException(status_code=response.status_code, detail="Failed to fetch trucks from Company service")
+            # Return fallback data when company service is unavailable
+            return [Truck(
+                id="fallback-1",
+                plate="TEMP-001",
+                model="Fallback Truck",
+                capacity=1000.0,
+                status="available"
+            )]
 
         data = response.json()
         vehicles = data.get("items", [])
@@ -148,31 +151,162 @@ async def get_trucks(tenant_id: Optional[str] = Query("default-tenant", descript
         return trucks
 
 
-@router.get("/drivers", response_model=list[Driver])
-async def get_drivers():
-    """Get all available drivers"""
-    return [driver for driver in DRIVERS if driver.status == "active"]
+@router.get("/drivers", response_model=List[Driver])
+async def get_drivers(
+    status: Optional[str] = Query(None, description="Filter by driver status"),
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "drivers:read", "drivers:read_all", "drivers:update"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """Get all drivers with optional status filter"""
+    # In production, filter by tenant_id
+    drivers = DRIVERS
+
+    # Filter by status if provided
+    if status:
+        drivers = [driver for driver in drivers if driver.status == status]
+
+    return drivers
 
 
-@router.get("/orders", response_model=list[Order])
-async def get_orders():
-    """Get all approved orders"""
-    return [order for order in ORDERS if order.status == "approved"]
+@router.get("/orders", response_model=List[dict])
+async def get_orders(
+    request: Request,
+    status: Optional[str] = Query(None, description="Filter by order status"),
+    priority: Optional[str] = Query(None, description="Filter by priority"),
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """Get all orders from Orders service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
+    async with AsyncClient(timeout=30.0) as client:
+        try:
+            # Build query parameters for orders service
+            params = {
+                "tenant_id": tenant_id,
+                "per_page": 100  # Get up to 100 orders
+            }
+
+            # Add status filter if provided
+            if status:
+                params["status"] = status
+
+            # Add priority filter if provided
+            if priority:
+                params["priority"] = priority
+
+            # Call Orders service
+            logger.info(f"Calling orders service with params: {params}")
+            response = await client.get(
+                f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/",
+                params=params,
+                headers=headers
+            )
+
+            logger.info(f"Orders service response status: {response.status_code}")
+
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch orders from Orders service: {response.status_code}")
+                logger.error(f"Response text: {response.text}")
+                # Return empty list if orders service is unavailable
+                return []
+
+            data = response.json()
+            logger.info(f"Orders service response data: {data}")
+            orders = data.get("items", [])
+            logger.info(f"Extracted orders count: {len(orders)}")
+
+            # Transform orders to match TMS Order schema format
+            transformed_orders = []
+            for order in orders:
+                logger.info(f"Processing order: {order}")
+
+                # Handle the created_at field - it might be a string or datetime object
+                created_at = order.get("created_at")
+                if isinstance(created_at, str):
+                    # Parse the string datetime
+                    try:
+                        date_obj = datetime.fromisoformat(created_at.replace('Z', '+00:00')).date()
+                    except:
+                        date_obj = date.today()
+                elif created_at:
+                    # It's already a datetime object
+                    date_obj = created_at.date()
+                else:
+                    date_obj = date.today()
+
+                transformed_order = {
+                    "id": order.get("order_number", order.get("id")),
+                    "customer": order.get("customer", {}).get("name", "Unknown Customer") if order.get("customer") else "Unknown Customer",
+                    "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
+                    "status": order.get("status", "unknown"),
+                    "total": order.get("total_amount", 0),
+                    "weight": sum(item.get("total_weight", 0) or 0 for item in order.get("items", [])),
+                    "volume": sum(item.get("volume", 0) or 0 for item in order.get("items", [])),
+                    "date": date_obj,
+                    "priority": order.get("priority", "medium"),
+                    "items": len(order.get("items", [])),
+                    "address": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address"
+                }
+                logger.info(f"Transformed order: {transformed_order}")
+                transformed_orders.append(transformed_order)
+
+            logger.info(f"Final transformed orders count: {len(transformed_orders)}")
+            return transformed_orders
+
+        except Exception as e:
+            logger.error(f"Error fetching orders: {str(e)}")
+            # Return empty list on error
+            return []
 
 
 @router.get("/branches", response_model=list[Branch])
-async def get_branches(tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID")):
+async def get_branches(
+    request: Request,
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "trips:read", "trips:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
     """Get all active branches from Company service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with AsyncClient(timeout=30.0) as client:
         # Call Company service branches endpoint
         response = await client.get(
             f"{COMPANY_SERVICE_URL}/branches/",
-            params={"is_active": True, "per_page": 100}
+            params={
+                "is_active": True,
+                "per_page": 100,
+                "tenant_id": tenant_id
+            },
+            headers=headers
         )
 
         if response.status_code != 200:
             logger.error(f"Failed to fetch branches from Company service: {response.status_code}")
-            raise HTTPException(status_code=response.status_code, detail="Failed to fetch branches from Company service")
+            # Return fallback data when company service is unavailable
+            return [Branch(
+                id="default-branch",
+                code="MAIN",
+                name="Main Branch",
+                location="Default Location",
+                manager="System Manager",
+                phone="000-000-0000",
+                status="active"
+            )]
 
         data = response.json()
         branches_data = data.get("items", [])
@@ -201,10 +335,20 @@ async def get_branches(tenant_id: Optional[str] = Query("default-tenant", descri
 @router.get("/branches/{branch_id}/trucks", response_model=list[Truck])
 async def get_trucks_by_branch(
     branch_id: str,
-    tenant_id: Optional[str] = Query("default-tenant", description="Tenant ID")
+    request: Request,
+    token_data: TokenData = Depends(
+        require_any_permission(["resources:read", "resources:read_all", "trips:read", "trips:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """Get available trucks for a specific branch"""
     logger.info(f"Fetching trucks for branch_id: {branch_id}")
+
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
 
     async with AsyncClient(timeout=30.0) as client:
         # Call Company service vehicles endpoint filtered by branch
@@ -214,14 +358,23 @@ async def get_trucks_by_branch(
                 "branch_id": branch_id,
                 "status": "available",
                 "is_active": True,
-                "per_page": 100
-            }
+                "per_page": 100,
+                "tenant_id": tenant_id
+            },
+            headers=headers
         )
 
         if response.status_code != 200:
             logger.error(f"Failed to fetch vehicles for branch {branch_id}: {response.status_code}")
             logger.error(f"Response text: {response.text}")
-            raise HTTPException(status_code=response.status_code, detail="Failed to fetch trucks for branch")
+            # Return fallback data when company service is unavailable
+            return [Truck(
+                id="fallback-branch-1",
+                plate=f"TEMP-{branch_id}",
+                model="Branch Truck",
+                capacity=1000.0,
+                status="available"
+            )]
 
         data = response.json()
         vehicles = data.get("items", [])
