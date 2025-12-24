@@ -1101,6 +1101,33 @@ VALUES
     'Update order tracking'
 ),
 
+-- Finance Service permissions
+(
+    'finance',
+    'read',
+    'View finance information and pending approvals'
+),
+(
+    'finance',
+    'approve',
+    'Approve or reject orders in finance'
+),
+(
+    'finance',
+    'approve_bulk',
+    'Bulk approve or reject orders in finance'
+),
+(
+    'finance',
+    'reports',
+    'View finance reports and dashboard'
+),
+(
+    'finance',
+    'export',
+    'Export finance data'
+),
+
 -- Superuser permission
 ( 'superuser', 'access', 'Full system access' ) ON CONFLICT (resource, action) DO NOTHING;
 
@@ -1212,9 +1239,10 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers', 'shipping',
-                     'product_categories', 'dashboard', 'system', 'permissions')
+                     'product_categories', 'dashboard', 'system', 'permissions', 'finance')
   AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'manage_all', 'manage_own',
-                   'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own')
+                   'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own',
+                   'approve', 'approve_bulk', 'reports', 'export')
   AND p.resource != 'orders'  -- Exclude orders as they are handled above
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -1546,6 +1574,27 @@ VALUES
                 resource = 'dashboard'
                 AND action = 'read'
         )
+    ),
+    -- Finance Service permissions for Branch Manager (read and reports only)
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'read'
+        )
+    ),
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'reports'
+        )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Assign finance manager permissions (ID = 4)
@@ -1784,6 +1833,57 @@ VALUES
             WHERE
                 resource = 'dashboard'
                 AND action = 'read'
+        )
+    ),
+    -- Finance Service permissions for Finance Manager
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'read'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'approve'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'approve_bulk'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'reports'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'export'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -2592,6 +2692,17 @@ VALUES (
             FROM permissions
             WHERE
                 resource = 'dashboard'
+                AND action = 'read'
+        )
+    ),
+    -- Finance Service permissions for regular User (read only)
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
                 AND action = 'read'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
