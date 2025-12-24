@@ -1,6 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQuery } from './baseApi'
-import { getProductCategoryResponse } from '@/types/common'
+import { getProductCategoryResponse, getRoleAPIResponse } from '@/types/common'
 
 // Types
 export interface Branch {
@@ -849,7 +849,7 @@ export const companyApi = createApi({
     }),
 
     // Role Management endpoints
-    getRoles: builder.query<Role[], { include_permissions?: boolean }>({
+    getRoles: builder.query<getRoleAPIResponse, { include_permissions?: boolean }>({
       query: ({ include_permissions = true }) => {
         const params = new URLSearchParams()
         params.append('include_permissions', include_permissions.toString())

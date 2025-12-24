@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector } from '@/store/hooks';
-import { getDefaultRoute } from '@/lib/roles';
+import { getDefaultRoute, getUserRole } from '@/lib/roles';
 
 export default function Home() {
   const router = useRouter();
@@ -14,9 +14,15 @@ export default function Home() {
     if (!isLoading && !isAuthenticated) {
       router.push('/login');
     } else if (isAuthenticated && user) {
-      // If already authenticated, redirect based on user role
-      const defaultRoute = getDefaultRoute(user.role?.name);
-      router.push(defaultRoute);
+      // If already authenticated, redirect based on user role using getUserRole
+      const userRole = getUserRole(user);
+      if (userRole) {
+        const defaultRoute = getDefaultRoute(userRole);
+        router.push(defaultRoute);
+      } else {
+        console.error('Unable to determine user role', user);
+        router.push('/login');
+      }
     }
   }, [isLoading, isAuthenticated, user, router]);
 

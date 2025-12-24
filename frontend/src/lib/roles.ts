@@ -52,12 +52,12 @@ export const ROLE_NAMES: Record<Role, string> = {
 export const ROLE_ROUTES: Record<Role, string[]> = {
   [ROLES.SUPER_ADMIN]: [
     "/super-admin",
-    "/company-admin",
-    "/branch-manager",
-    "/finance-manager",
-    "/logistics-manager",
-    "/driver",
-    "/drivermodule", // Temporary renamed protected driver route
+    // "/company-admin",
+    // "/branch-manager",
+    // "/finance-manager",
+    // "/logistics-manager",
+    // "/driver",
+    // "/drivermodule", // Temporary renamed protected driver route
   ],
   [ROLES.COMPANY_ADMIN]: [
     "/company-admin",
@@ -75,7 +75,7 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
 
 // Default redirect per role
 export const ROLE_DEFAULT_ROUTE: Record<Role, string> = {
-  [ROLES.SUPER_ADMIN]: "/super-admin",
+  [ROLES.SUPER_ADMIN]: "/super-admin/dashboard",
   [ROLES.COMPANY_ADMIN]: "/company-admin/masters",
   [ROLES.BRANCH_MANAGER]: "/branch-manager/dashboard",
   [ROLES.FINANCE_MANAGER]: "/finance-manager/dashboard",

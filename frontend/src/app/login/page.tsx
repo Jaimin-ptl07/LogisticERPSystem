@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { loginAsync, clearError } from "@/store/slices/auth.slice";
-import { getDefaultRoute } from "@/lib/roles";
+import { getDefaultRoute, getUserRole } from "@/lib/roles";
 import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
@@ -31,10 +31,16 @@ export default function LoginPage() {
           router.push(redirect);
         }
       } else {
-        const defaultRoute = getDefaultRoute(user.role?.name);
-        // Only redirect if we're not already on the default route
-        if (window.location.pathname !== defaultRoute) {
-          router.push(defaultRoute);
+        // Use getUserRole to get the role from role_id
+        const userRole = getUserRole(user);
+        if (userRole) {
+          const defaultRoute = getDefaultRoute(userRole);
+          // Only redirect if we're not already on the default route
+          if (window.location.pathname !== defaultRoute) {
+            router.push(defaultRoute);
+          }
+        } else {
+          console.error("Unable to determine user role", user);
         }
       }
     }
@@ -61,8 +67,15 @@ export default function LoginPage() {
       if (redirect) {
         router.push(redirect);
       } else {
-        const defaultRoute = getDefaultRoute(userData.role?.name);
-        router.push(defaultRoute);
+        // Use getUserRole to get the role from role_id
+        const userRole = getUserRole(userData);
+        if (userRole) {
+          const defaultRoute = getDefaultRoute(userRole);
+          router.push(defaultRoute);
+        } else {
+          console.error("Unable to determine user role", userData);
+          router.push("/"); // Fallback to root
+        }
       }
     }
   };

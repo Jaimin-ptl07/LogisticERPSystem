@@ -65,14 +65,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // If accessing login page with token, redirect to default dashboard
-  // This ensures authenticated users are redirected away from login
+  // If accessing login page with token, redirect to root
+  // The root route will handle role-based redirection through the protected layout
   if (pathname === "/login" && token) {
     // We can't determine the user's role from the token in middleware,
-    // so we'll let the login page handle the redirect based on role
-    // But we can redirect to a default route and let the protected layout handle role-based routing
-    const defaultRoute = "/company-admin/masters"; // Fallback default
-    return NextResponse.redirect(new URL(defaultRoute, request.url));
+    // so redirect to root and let the application handle role-based routing
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   // Continue with the request

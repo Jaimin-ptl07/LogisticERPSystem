@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { driverAPI } from "@/lib/api";
 import { Truck, AlertTriangle, RefreshCw } from "lucide-react";
 

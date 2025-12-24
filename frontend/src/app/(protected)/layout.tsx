@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { getCurrentUserAsync } from "@/store/slices/auth.slice";
-import { canAccessRoute, getDefaultRoute } from "@/lib/roles";
+import { canAccessRoute, getDefaultRoute, getUserRole } from "@/lib/roles";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -42,8 +42,12 @@ export default function ProtectedLayout({
       return;
     }
     // Check role-based access
-    if (user && user.role?.name) {
-      const userRole = user.role.name ?? "super_admin";
+    if (user) {
+      const userRole = getUserRole(user);
+      if (!userRole) {
+        console.error("Unable to determine user role", user);
+        return;
+      }
       const defaultRoute = getDefaultRoute(userRole);
 
       // Reset redirect flag if pathname changed (but not if we just redirected)

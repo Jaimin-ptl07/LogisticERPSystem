@@ -9,9 +9,10 @@ import { OrderDetailsModal, CreateOrderModal } from "@/components/Modal";
 import {
   useGetOrdersQuery,
   useGetOrderByIdQuery,
+  useSubmitOrderMutation,
   Order,
 } from "@/services/api/ordersApi";
-import { Plus, Search, Package } from "lucide-react";
+import { Plus, Search, Package, Send } from "lucide-react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
 
@@ -32,8 +33,10 @@ export default function Orders() {
     per_page: 20,
     search: searchQuery || undefined,
   });
-
   const orders = ordersData?.items || [];
+
+  // Submit order mutation
+  const [submitOrder, { isLoading: isSubmitting }] = useSubmitOrderMutation();
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -45,12 +48,32 @@ export default function Orders() {
         return "warning";
       case "pending":
         return "default";
+      case "submitted":
+        return "info";
+      case "draft":
+        return "default";
       default:
         return "default";
     }
   };
 
+  const getStatusDisplay = (status: string) => {
+    switch (status) {
+      case "draft":
+        return "Draft";
+      case "submitted":
+        return "Submitted";
+      case "completed":
+        return "Completed";
+      default:
+        return (
+          status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ")
+        );
+    }
+  };
+
   const handleViewDetails = (order: Order) => {
+    console.log(order, "order");
     setSelectedOrder(order);
     setIsDetailsModalOpen(true);
   };
@@ -77,6 +100,16 @@ export default function Orders() {
     setIsDetailsModalOpen(true);
   };
 
+  const handleSubmitOrder = async (orderId: string) => {
+    try {
+      await submitOrder(orderId).unwrap();
+      toast.success("Order sent for approval successfully!");
+      refetchOrders(); // Refresh orders to show updated status
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send order for approval");
+    }
+  };
+
   const orderStats = {
     total: orders.length,
     pending: orders.filter((o) => o.status === "submitted").length,
@@ -88,7 +121,7 @@ export default function Orders() {
   };
 
   return (
-    <>
+    <AppLayout>
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex justify-between items-center">
@@ -196,9 +229,7 @@ export default function Orders() {
                             {order.order_number}
                           </h3>
                           <Badge variant={getStatusVariant(order.status)}>
-                            {order.status
-                              .replace(/_/g, " ")
-                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                            {getStatusDisplay(order.status)}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-600 mb-1 items-center">
@@ -262,13 +293,27 @@ export default function Orders() {
                           </div>
                         )}
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewDetails(order)}
-                      >
-                        View Details
-                      </Button>
+                      <div className="flex gap-2 mt-3">
+                        {order.status === "draft" && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleSubmitOrder(order.id)}
+                            disabled={isSubmitting}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Send className="w-4 h-4 mr-1" />
+                            Send for Approval
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDetails(order)}
+                        >
+                          View Details
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -281,9 +326,6 @@ export default function Orders() {
               <EmptyState
                 title="Error loading orders"
                 description="Failed to load orders. Please try again."
-                icon={
-                  <Package className="w-12 h-12 text-red-400 mx-auto mb-4" />
-                }
               />
             ) : (
               <EmptyState
@@ -312,6 +354,6 @@ export default function Orders() {
         onClose={handleCloseCreateModal}
         onSuccess={handleCreateOrderSuccess}
       />
-    </>
+    </AppLayout>
   );
 }

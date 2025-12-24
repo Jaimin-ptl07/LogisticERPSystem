@@ -31,7 +31,7 @@ export default function Orders() {
   } = useGetOrdersQuery({
     page: 1,
     per_page: 20,
-    search_query: searchQuery || undefined,
+    search: searchQuery || undefined,
   });
 
   const orders = ordersData?.items || [];

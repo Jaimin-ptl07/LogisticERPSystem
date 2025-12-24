@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
+import { AppLayout } from "@/components/layout/AppLayout";
 import {
   tmsAPI,
   tmsResourcesAPI,
@@ -35,6 +36,7 @@ import {
   GripVertical,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+
 export default function Trips() {
   // Utility function to format date in UK timezone
   const formatUKDateTime = (dateString?: string) => {
@@ -207,6 +209,22 @@ export default function Trips() {
 
   const handleStatusChange = async (tripId: string, newStatus: string) => {
     try {
+      // Check if trying to change to loading status and validate order statuses
+      if (newStatus === "loading") {
+        const trip = allTrips.find((t) => t.id === tripId);
+        if (trip && trip.orders) {
+          const hasPendingOrders = trip.orders.some(
+            (order) => order.status === "submitted"
+          );
+          if (hasPendingOrders) {
+            alert(
+              "Cannot change trip status to loading while there are orders submitted for approval."
+            );
+            return;
+          }
+        }
+      }
+
       await tmsAPI.updateTrip(tripId, { status: newStatus });
 
       // Refresh trips to show updated status
@@ -378,8 +396,35 @@ export default function Trips() {
     }
   };
 
+  const getOrderStatusVariant = (status: string) => {
+    switch (status) {
+      case "submitted":
+        return "default";
+      case "finance_approved":
+        return "success";
+      default:
+        return "default";
+    }
+  };
+
+  const getOrderStatusDisplay = (status: string) => {
+    switch (status) {
+      case "submitted":
+        return "Submitted";
+      case "finance_approved":
+        return "Finance Approved";
+      default:
+        return (
+          status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ")
+        );
+    }
+  };
+
   const getApprovedOrders = () =>
-    availableOrders.filter((order) => order.status === "approved");
+    availableOrders.filter(
+      (order) =>
+        order.status === "submitted" || order.status === "finance_approved"
+    );
   const getTrucksAvailable = () =>
     availableTrucks.filter((truck) => truck.status === "available");
   const getDriversAvailable = () =>
@@ -426,7 +471,8 @@ export default function Trips() {
   // Order assignment helper functions
   const getAvailableOrders = () => {
     return availableOrders.filter((order) => {
-      const isApproved = order.status === "approved";
+      const isApprovedStatus =
+        order.status === "submitted" || order.status === "finance_approved";
       const isNotAssigned = !isOrderAssigned(order.id);
       const matchesSearch =
         order.customer.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
@@ -434,7 +480,9 @@ export default function Trips() {
       const matchesPriority =
         orderPriorityFilter === "all" || order.priority === orderPriorityFilter;
 
-      return isApproved && isNotAssigned && matchesSearch && matchesPriority;
+      return (
+        isApprovedStatus && isNotAssigned && matchesSearch && matchesPriority
+      );
     });
   };
 
@@ -542,13 +590,13 @@ export default function Trips() {
         if (draggedOrder.sourceTripId) {
           await tmsAPI.removeOrderFromTrip(
             draggedOrder.sourceTripId,
-            draggedOrder.id
+            draggedOrder.order_id || draggedOrder.id
           );
         }
 
         // Assign order to new trip
         const orderData = {
-          order_id: draggedOrder.id,
+          order_id: draggedOrder.order_id || draggedOrder.id,
           customer: draggedOrder.customer,
           customerAddress: draggedOrder.customerAddress,
           total: draggedOrder.total,
@@ -1054,7 +1102,7 @@ export default function Trips() {
                 Trips ({activeTrips.length})
               </TabsTrigger>
               <TabsTrigger value="orders" className="text-black">
-                Approved Orders ({getApprovedOrders().length})
+                Orders ({getApprovedOrders().length})
               </TabsTrigger>
               <TabsTrigger value="resources" className="text-black">
                 Resources
@@ -1354,37 +1402,6 @@ export default function Trips() {
                                     </span>
                                   )}
                                 </h4>
-                                <div className="flex items-center gap-2">
-                                  {trip.status === "planning" && (
-                                    <Button
-                                      size="sm"
-                                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                                      onClick={() => handleAddOrderClick(trip)}
-                                    >
-                                      <Plus className="w-4 h-4 mr-1" />
-                                      Add Order
-                                    </Button>
-                                  )}
-                                  {trip.orders.length > 3 && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        toggleTripExpansion(trip.id)
-                                      }
-                                      className="text-gray-700"
-                                    >
-                                      {expandedTrips.has(trip.id) ? (
-                                        <ChevronUp className="w-4 h-4" />
-                                      ) : (
-                                        <ChevronDown className="w-4 h-4" />
-                                      )}
-                                      {expandedTrips.has(trip.id)
-                                        ? "Show Less"
-                                        : "Show More"}
-                                    </Button>
-                                  )}
-                                </div>
                               </div>
                               {trip.orders.length > 0 && (
                                 <div
@@ -1587,7 +1604,7 @@ export default function Trips() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-black">
-                    Approved Orders ({getApprovedOrders().length})
+                    Orders ({getApprovedOrders().length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1610,9 +1627,10 @@ export default function Trips() {
                             >
                               {order.priority}
                             </Badge>
-                            <Badge variant="success">
-                              {order.status.charAt(0).toUpperCase() +
-                                order.status.slice(1)}
+                            <Badge
+                              variant={getOrderStatusVariant(order.status)}
+                            >
+                              {getOrderStatusDisplay(order.status)}
                             </Badge>
                           </div>
                           <div className="text-right">

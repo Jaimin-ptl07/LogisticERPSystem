@@ -1,4 +1,4 @@
-import { ProductCategory } from "@/services/api/companyApi";
+import { ProductCategory, Role } from "@/services/api/companyApi";
 
 export interface OrderAssignData {
   //   user_id: string;
@@ -59,5 +59,13 @@ export interface getProductCategoryResponse{
   page:number,
   pages:number,
   per_Page:number,
+  total:number,
+}
+
+export interface getRoleAPIResponse{
+  items:Role[],
+  page:number,
+  pages:number,
+  per_page:number,
   total:number,
 }

@@ -190,9 +190,9 @@ export function Sidebar({
     if (!user || !userRole) return [];
 
     // Super admin sees everything
-    if (user.is_superuser || userRole === ROLES.SUPER_ADMIN) {
-      return navigationStructure;
-    }
+    // if (user.is_superuser || userRole === ROLES.SUPER_ADMIN) {
+    //   return navigationStructure;
+    // }
 
     // Get accessible routes for the user's role
     const accessibleRoutes = getAccessibleRoutes(userRole);
