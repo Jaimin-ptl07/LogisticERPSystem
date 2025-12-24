@@ -174,6 +174,18 @@ export default function Trips() {
 
   const handleStatusChange = async (tripId: string, newStatus: string) => {
     try {
+      // Check if trying to change to loading status and validate order statuses
+      if (newStatus === 'loading') {
+        const trip = allTrips.find(t => t.id === tripId);
+        if (trip && trip.orders) {
+          const hasPendingOrders = trip.orders.some(order => order.status === 'submitted');
+          if (hasPendingOrders) {
+            alert('Cannot change trip status to loading while there are orders submitted for approval.');
+            return;
+          }
+        }
+      }
+
       await tmsAPI.updateTrip(tripId, { status: newStatus });
 
       // Refresh trips to show updated status
@@ -335,7 +347,32 @@ export default function Trips() {
     }
   };
 
-  const getApprovedOrders = () => availableOrders.filter(order => order.status === 'approved');
+  const getOrderStatusVariant = (status: string) => {
+    switch (status) {
+      case 'submitted':
+        return 'default';
+      case 'finance_approved':
+        return 'success';
+      default:
+        return 'default';
+    }
+  };
+
+  const getOrderStatusDisplay = (status: string) => {
+    switch (status) {
+      case 'submitted':
+        return 'Submitted';
+      case 'finance_approved':
+        return 'Finance Approved';
+      default:
+        return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+    }
+  };
+
+  const getApprovedOrders = () => availableOrders.filter(order =>
+    order.status === 'submitted' ||
+    order.status === 'finance_approved'
+  );
   const getTrucksAvailable = () => availableTrucks.filter(truck => truck.status === 'available');
   const getDriversAvailable = () => availableDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
 
@@ -375,13 +412,14 @@ export default function Trips() {
   // Order assignment helper functions
   const getAvailableOrders = () => {
     return availableOrders.filter(order => {
-      const isApproved = order.status === 'approved';
+      const isApprovedStatus = order.status === 'submitted' ||
+        order.status === 'finance_approved';
       const isNotAssigned = !isOrderAssigned(order.id);
       const matchesSearch = order.customer.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
         order.id.toLowerCase().includes(orderSearchTerm.toLowerCase());
       const matchesPriority = orderPriorityFilter === 'all' || order.priority === orderPriorityFilter;
 
-      return isApproved && isNotAssigned && matchesSearch && matchesPriority;
+      return isApprovedStatus && isNotAssigned && matchesSearch && matchesPriority;
     });
   };
 
@@ -468,12 +506,12 @@ export default function Trips() {
 
         // If order is from another trip, we need to handle reassignment
         if (draggedOrder.sourceTripId) {
-          await tmsAPI.removeOrderFromTrip(draggedOrder.sourceTripId, draggedOrder.id);
+          await tmsAPI.removeOrderFromTrip(draggedOrder.sourceTripId, draggedOrder.order_id || draggedOrder.id);
         }
 
         // Assign order to new trip
         const orderData = {
-          order_id: draggedOrder.id,
+          order_id: draggedOrder.order_id || draggedOrder.id,
           customer: draggedOrder.customer,
           customerAddress: draggedOrder.customerAddress,
           total: draggedOrder.total,
@@ -853,7 +891,7 @@ export default function Trips() {
             <Tabs defaultValue="trips" className="w-full">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="trips" className="text-black">Trips ({activeTrips.length})</TabsTrigger>
-                <TabsTrigger value="orders" className="text-black">Approved Orders ({getApprovedOrders().length})</TabsTrigger>
+                <TabsTrigger value="orders" className="text-black">Orders ({getApprovedOrders().length})</TabsTrigger>
                 <TabsTrigger value="resources" className="text-black">Resources</TabsTrigger>
               </TabsList>
 
@@ -1132,7 +1170,7 @@ export default function Trips() {
                                     <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
                                       #{order.sequence_number !== undefined ? order.sequence_number + 1 : index + 1}
                                     </span>
-                                    <span className="font-medium text-gray-900">{order.id}</span>
+                                    <span className="font-medium text-gray-900">{order.order_id || order.id}</span>
                                     <span className="text-gray-900">{order.customer}</span>
                                     <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
                                       {order.priority.toUpperCase()}
@@ -1158,9 +1196,9 @@ export default function Trips() {
                                           onClick={async (e) => {
                                             e.stopPropagation();
                                             // Handle remove from trip
-                                            if (confirm(`Remove order ${order.id} from this trip?`)) {
+                                            if (confirm(`Remove order ${order.order_id || order.id} from this trip?`)) {
                                               try {
-                                                await tmsAPI.removeOrderFromTrip(trip.id, order.id);
+                                                await tmsAPI.removeOrderFromTrip(trip.id, order.order_id || order.id);
                                                 fetchTrips();
                                               } catch (err) {
                                                 alert(err instanceof Error ? err.message : 'Failed to remove order');
@@ -1222,7 +1260,7 @@ export default function Trips() {
           <TabsContent value="orders">
             <Card>
               <CardHeader>
-                <CardTitle className="text-black">Approved Orders ({getApprovedOrders().length})</CardTitle>
+                <CardTitle className="text-black">Orders ({getApprovedOrders().length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -1239,8 +1277,8 @@ export default function Trips() {
                           <Badge variant={getPriorityVariant(order.priority)} className="mt-1">
                             {order.priority}
                           </Badge>
-                          <Badge variant="success">
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                          <Badge variant={getOrderStatusVariant(order.status)}>
+                            {getOrderStatusDisplay(order.status)}
                           </Badge>
                         </div>
                         <div className="text-right">
