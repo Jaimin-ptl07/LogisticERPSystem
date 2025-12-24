@@ -56,6 +56,7 @@ export interface Trip {
 
 export interface OrderItem {
   id: string;
+  order_id?: string;
   customer: string;
   customerAddress?: string;
   status:
@@ -69,19 +70,15 @@ export interface OrderItem {
   weight: number;
   volume: number;
   date: string;
-  priority: "high" | "medium" | "low";
+  priority: 'high' | 'medium' | 'low' | 'normal';
   items: number;
+  quantity?: number;
   address?: string;
   originalOrderId?: string;
   originalItems?: number;
   originalWeight?: number;
   sequence_number?: number;
-  delivery_status?:
-    | "pending"
-    | "out-for-delivery"
-    | "delivered"
-    | "failed"
-    | "returned";
+  delivery_status?: string;
 }
 
 export interface TripPlan {

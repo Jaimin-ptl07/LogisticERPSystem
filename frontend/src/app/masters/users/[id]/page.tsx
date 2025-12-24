@@ -1,7 +1,6 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -16,52 +15,24 @@ import {
   Edit,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-
-// Mock user data - This will be replaced with real API calls
-const mockUser = {
-  id: "1",
-  name: "John Doe",
-  email: "john.doe@company.com",
-  role: "admin",
-  branch: "Mumbai Main",
-  status: "active",
-  lastLogin: "2024-01-15 10:30 AM",
-  createdAt: "2024-01-01",
-  phone: "+91 98765 43210",
-  address: "123, Main Street, Mumbai, Maharashtra 400001",
-};
+import { useGetUserQuery } from "@/services/api/companyApi";
+import { User as UserType } from "@/services/api/companyApi";
 
 export default function UserDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const [user, setUser] = useState(mockUser);
-  const [loading, setLoading] = useState(true);
+  const userId = params.id as string;
 
-  useEffect(() => {
-    // TODO: Replace with actual API call
-    const fetchUser = async () => {
-      try {
-        setLoading(true);
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        // In real implementation:
-        // const response = await fetch(`/api/users/${params.id}`);
-        // const data = await response.json();
-        // setUser(data);
-      } catch (error) {
-        toast.error("Failed to fetch user details");
-        router.push("/masters/users");
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Fetch user data with RTK Query
+  const {
+    data: user,
+    isLoading,
+    error,
+  } = useGetUserQuery(userId, {
+    skip: !userId,
+  });
 
-    if (params.id) {
-      fetchUser();
-    }
-  }, [params.id, router]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <AppLayout>
         <div className="max-w-4xl mx-auto inline space-y-6">
@@ -74,7 +45,7 @@ export default function UserDetailPage() {
     );
   }
 
-  if (!user) {
+  if (error || !user) {
     return (
       <AppLayout>
         <div className="max-w-4xl mx-auto">
@@ -83,7 +54,9 @@ export default function UserDetailPage() {
               User not found
             </h2>
             <p className="text-gray-500 mb-4">
-              The user you're looking for doesn't exist.
+              {error
+                ? "Failed to load user details."
+                : "The user you're looking for doesn't exist."}
             </p>
             <Button onClick={() => router.push("/masters/users")}>
               Back to Users
@@ -110,7 +83,9 @@ export default function UserDetailPage() {
               Back
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">{user.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {user.first_name} {user.last_name}
+              </h1>
               <p className="text-gray-500">User Details</p>
             </div>
           </div>
@@ -133,7 +108,9 @@ export default function UserDetailPage() {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm text-gray-500">Full Name</p>
-                <p className="font-medium">{user.name}</p>
+                <p className="font-medium">
+                  {user.first_name} {user.last_name}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Email Address</p>
@@ -144,12 +121,51 @@ export default function UserDetailPage() {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Phone Number</p>
-                <p className="font-medium">{user.phone || "N/A"}</p>
+                <p className="font-medium">{user.phone_number || "N/A"}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Address</p>
-                <p className="font-medium">{user.address || "N/A"}</p>
+                <p className="text-sm text-gray-500">Profile Type</p>
+                <Badge variant="secondary" className="capitalize">
+                  {user.profile_type}
+                </Badge>
               </div>
+              {user.profile && (
+                <div>
+                  <p className="text-sm text-gray-500">Employee ID</p>
+                  <p className="font-medium">
+                    {user.profile.employee_id || "N/A"}
+                  </p>
+                </div>
+              )}
+              {user.profile && (
+                <div>
+                  <p className="text-sm text-gray-500">Department</p>
+                  <p className="font-medium">
+                    {user.profile.department || "N/A"}
+                  </p>
+                </div>
+              )}
+              {user.profile && (
+                <div>
+                  <p className="text-sm text-gray-500">Designation</p>
+                  <p className="font-medium">
+                    {user.profile.designation || "N/A"}
+                  </p>
+                </div>
+              )}
+              {user.profile?.current_address && (
+                <div>
+                  <p className="text-sm text-gray-500">Current Address</p>
+                  <p className="font-medium text-sm">
+                    {user.profile.current_address.address_line1},<br />
+                    {user.profile.current_address.city},{" "}
+                    {user.profile.current_address.state}{" "}
+                    {user.profile.current_address.postal_code}
+                    <br />
+                    {user.profile.current_address.country}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -165,31 +181,49 @@ export default function UserDetailPage() {
               <div>
                 <p className="text-sm text-gray-500">Role</p>
                 <Badge
-                  variant={user.role === "admin" ? "destructive" : "secondary"}
+                  variant={
+                    user.role?.name.toLowerCase() === "admin"
+                      ? "destructive"
+                      : "secondary"
+                  }
                 >
-                  {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                  {user.role?.name || "N/A"}
                 </Badge>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Status</p>
+                <Badge variant={user.is_active ? "success" : "default"}>
+                  {user.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Superuser</p>
                 <Badge
-                  variant={user.status === "active" ? "success" : "danger"}
+                  variant={user.is_superuser ? "destructive" : "secondary"}
                 >
-                  {user.status === "active" ? "Active" : "Inactive"}
+                  {user.is_superuser ? "Yes" : "No"}
                 </Badge>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Assigned Branch</p>
                 <p className="font-medium flex items-center">
                   <Building className="w-4 h-4 mr-2" />
-                  {user.branch || "Not assigned"}
+                  {user.branch?.name || "Not assigned"}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Last Login</p>
                 <p className="font-medium flex items-center">
                   <Calendar className="w-4 h-4 mr-2" />
-                  {user.lastLogin}
+                  {user.last_login
+                    ? new Date(user.last_login).toLocaleString("en-US", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "Never"}
                 </p>
               </div>
             </CardContent>
@@ -208,9 +242,29 @@ export default function UserDetailPage() {
                 <p className="font-medium">{user.id}</p>
               </div>
               <div>
+                <p className="text-sm text-gray-500">Tenant ID</p>
+                <p className="font-medium">{user.tenant_id}</p>
+              </div>
+              <div>
                 <p className="text-sm text-gray-500">Created On</p>
                 <p className="font-medium">
-                  {new Date(user.createdAt).toLocaleDateString()}
+                  {new Date(user.created_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Last Updated</p>
+                <p className="font-medium">
+                  {user.updated_at
+                    ? new Date(user.updated_at).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })
+                    : "Never"}
                 </p>
               </div>
             </div>

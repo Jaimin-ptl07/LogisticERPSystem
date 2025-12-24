@@ -201,12 +201,15 @@ export function Sidebar({
     return navigationStructure.filter((nav) => {
       // If no subItems, check if the main href is accessible
       if (!nav.subItems || nav.subItems.length === 0) {
-        return nav.href && accessibleRoutes.some(route => nav.href!.startsWith(route));
+        return (
+          nav.href &&
+          accessibleRoutes.some((route) => nav.href!.startsWith(route))
+        );
       }
 
       // Check if any subItem is accessible
-      return nav.subItems.some(subItem =>
-        accessibleRoutes.some(route => subItem.href.startsWith(route))
+      return nav.subItems.some((subItem) =>
+        accessibleRoutes.some((route) => subItem.href.startsWith(route))
       );
     });
   };

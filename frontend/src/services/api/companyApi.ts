@@ -23,6 +23,134 @@ export interface Branch {
   vehicles?: any[]
 }
 
+// User Management Types
+export interface User {
+  id: string
+  tenant_id: string
+  email: string
+  first_name: string
+  last_name: string
+  phone_number?: string
+  profile_type: 'staff' | 'driver' | 'admin'
+  role_id: number
+  branch_id?: string
+  is_active: boolean
+  is_superuser: boolean
+  last_login?: string
+  created_at: string
+  updated_at?: string
+  role?: Role
+  branch?: Branch
+  profile?: UserProfile
+  documents?: UserDocument[]
+}
+
+export interface Role {
+  id: number
+  name: string
+  description?: string
+  tenant_id: string
+  permissions: Permission[]
+  is_system_role: boolean
+  created_at: string
+  updated_at?: string
+}
+
+export interface Permission {
+  id: number
+  name: string
+  resource: string
+  action: string
+  description?: string
+}
+
+export interface UserProfile {
+  id: string
+  user_id: string
+  employee_id?: string
+  department?: string
+  designation?: string
+  date_of_joining?: string
+  reporting_manager_id?: string
+  emergency_contact_name?: string
+  emergency_contact_number?: string
+  blood_group?: string
+  date_of_birth?: string
+  gender?: 'male' | 'female' | 'other'
+  marital_status?: 'single' | 'married' | 'divorced' | 'widowed'
+  nationality?: string
+  aadhar_number?: string
+  pan_number?: string
+  passport_number?: string
+  current_address?: Address
+  permanent_address?: Address
+  bank_details?: BankDetails
+  driving_license?: DrivingLicense
+  branch_manager_profile?: BranchManagerProfile
+  created_at: string
+  updated_at?: string
+}
+
+export interface BranchManagerProfile {
+  id?: string
+  employee_profile_id?: string
+  managed_branch_id?: string
+  can_create_quotes?: boolean
+  can_approve_discounts?: boolean
+  max_discount_percentage?: number
+  can_manage_inventory?: boolean
+  can_manage_vehicles?: boolean
+  staff_management_permissions?: {
+    hire?: boolean
+    terminate?: boolean
+    approve_leave?: boolean
+    schedule_shifts?: boolean
+    performance_reviews?: boolean
+    salary_adjustments?: boolean
+  }
+  created_at?: string
+  updated_at?: string
+}
+
+export interface Address {
+  address_line1: string
+  address_line2?: string
+  city: string
+  state: string
+  postal_code: string
+  country: string
+}
+
+export interface BankDetails {
+  bank_name: string
+  account_number: string
+  ifsc_code: string
+  branch_name: string
+  account_type: 'savings' | 'current'
+}
+
+export interface DrivingLicense {
+  license_number: string
+  license_type: string[]
+  issue_date: string
+  expiry_date: string
+  issuing_authority: string
+}
+
+export interface UserDocument {
+  id: string
+  user_id: string
+  document_type: string
+  file_name: string
+  file_path: string
+  file_size: number
+  mime_type: string
+  is_verified: boolean
+  uploaded_at: string
+  verified_at?: string
+  verified_by?: string
+}
+
 export interface Customer {
   id: string
   tenant_id: string
@@ -203,11 +331,102 @@ export interface PricingRuleCreate {
   is_active?: boolean
 }
 
+// User Management Form Types
+export interface UserCreate {
+  user_id: string  // Auth user ID
+  email?: string
+  first_name?: string
+  last_name?: string
+  phone?: string
+  profile_type?: 'staff' | 'driver' | 'admin'
+  role_id?: string
+  branch_id?: string
+  is_active?: boolean
+  send_invitation?: boolean
+}
+
+export interface UserUpdate {
+  email?: string
+  first_name?: string
+  last_name?: string
+  phone_number?: string
+  role_id?: number
+  branch_id?: string
+  is_active?: boolean
+}
+
+export interface UserInvitation {
+  email: string
+  first_name: string
+  last_name: string
+  role_id: number
+  branch_id?: string
+  message?: string
+}
+
+export interface RoleCreate {
+  name: string
+  description?: string
+  permission_ids: number[]
+}
+
+export interface RoleUpdate {
+  name?: string
+  description?: string
+  permission_ids?: number[]
+}
+
+export interface UserProfileCreate {
+  employee_id?: string
+  department?: string
+  designation?: string
+  date_of_joining?: string
+  reporting_manager_id?: string
+  emergency_contact_name?: string
+  emergency_contact_number?: string
+  blood_group?: string
+  date_of_birth?: string
+  gender?: 'male' | 'female' | 'other'
+  marital_status?: 'single' | 'married' | 'divorced' | 'widowed'
+  nationality?: string
+  aadhar_number?: string
+  pan_number?: string
+  passport_number?: string
+  current_address?: Address
+  permanent_address?: Address
+  bank_details?: BankDetails
+  driving_license?: DrivingLicense
+  branch_manager_profile?: BranchManagerProfile
+}
+
+export interface UserProfileUpdate {
+  employee_id?: string
+  department?: string
+  designation?: string
+  date_of_joining?: string
+  reporting_manager_id?: string
+  emergency_contact_name?: string
+  emergency_contact_number?: string
+  blood_group?: string
+  date_of_birth?: string
+  gender?: 'male' | 'female' | 'other'
+  marital_status?: 'single' | 'married' | 'divorced' | 'widowed'
+  nationality?: string
+  aadhar_number?: string
+  pan_number?: string
+  passport_number?: string
+  current_address?: Address
+  permanent_address?: Address
+  bank_details?: BankDetails
+  driving_license?: DrivingLicense
+  branch_manager_profile?: BranchManagerProfile
+}
+
 // Create API slice using base query with auth
 export const companyApi = createApi({
   reducerPath: 'companyApi',
   baseQuery: baseQuery,
-  tagTypes: ['Branch', 'Customer', 'Vehicle', 'Product', 'ProductCategory', 'PricingRule'],
+  tagTypes: ['Branch', 'Customer', 'Vehicle', 'Product', 'ProductCategory', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument'],
   endpoints: (builder) => ({
     // Branch endpoints
     getBranches: builder.query<{ items: Branch[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
@@ -508,6 +727,259 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['PricingRule'],
     }),
+
+    // User Management endpoints
+    getUsers: builder.query<{ items: User[]; total: number; page: number; per_page: number; pages: number }, {
+      page?: number;
+      per_page?: number;
+      search?: string;
+      role_id?: number;
+      branch_id?: string;
+      profile_type?: 'staff' | 'driver' | 'admin';
+      is_active?: boolean;
+      include_profile?: boolean;
+    }>({
+      query: ({
+        page = 1,
+        per_page = 20,
+        search,
+        role_id,
+        branch_id,
+        profile_type,
+        is_active,
+        include_profile = true
+      }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (search) params.append('search', search)
+        if (role_id) params.append('role_id', role_id.toString())
+        if (branch_id) params.append('branch_id', branch_id)
+        if (profile_type) params.append('profile_type', profile_type)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        params.append('include_profile', include_profile.toString())
+        return `company/users?${params}`
+      },
+      providesTags: ['User'],
+    }),
+    getUser: builder.query<User, string>({
+      query: (id) => `company/users/${id}?include_profile=true`,
+      providesTags: ['User'],
+    }),
+    createUser: builder.mutation<User, UserCreate>({
+      query: (userData) => ({
+        url: 'company/users/',
+        method: 'POST',
+        body: userData,
+      }),
+      invalidatesTags: ['User'],
+    }),
+    updateUser: builder.mutation<User, { id: string; user: Partial<UserUpdate> }>({
+      query: ({ id, user }) => ({
+        url: `company/users/${id}`,
+        method: 'PUT',
+        body: user,
+      }),
+      invalidatesTags: ['User', 'UserProfile'],
+    }),
+    deleteUser: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/users/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['User'],
+    }),
+    inviteUser: builder.mutation<void, UserInvitation>({
+      query: (invitation) => ({
+        url: 'company/users/invite',
+        method: 'POST',
+        body: invitation,
+      }),
+    }),
+    bulkInviteUsers: builder.mutation<void, { invitations: UserInvitation[] }>({
+      query: ({ invitations }) => ({
+        url: 'company/users/bulk-invite',
+        method: 'POST',
+        body: { invitations },
+      }),
+    }),
+    updateUserStatus: builder.mutation<User, { id: string; is_active: boolean }>({
+      query: ({ id, is_active }) => ({
+        url: `company/users/${id}/status`,
+        method: 'PUT',
+        body: { is_active },
+      }),
+      invalidatesTags: ['User'],
+    }),
+    resetUserPassword: builder.mutation<void, { id: string; new_password: string }>({
+      query: ({ id, new_password }) => ({
+        url: `company/users/${id}/reset-password`,
+        method: 'POST',
+        body: { new_password },
+      }),
+    }),
+    bulkUpdateUsers: builder.mutation<User[], { updates: Array<{ id: string; [key: string]: any }> }>({
+      query: (updates) => ({
+        url: 'company/users/bulk-update',
+        method: 'POST',
+        body: updates,
+      }),
+      invalidatesTags: ['User'],
+    }),
+    exportUsers: builder.mutation<Blob, {
+      role_id?: number;
+      branch_id?: string;
+      profile_type?: 'staff' | 'driver' | 'admin';
+      is_active?: boolean;
+      format?: 'csv' | 'excel';
+    }>({
+      query: ({ role_id, branch_id, profile_type, is_active, format = 'excel' }) => {
+        const params = new URLSearchParams()
+        if (role_id) params.append('role_id', role_id.toString())
+        if (branch_id) params.append('branch_id', branch_id)
+        if (profile_type) params.append('profile_type', profile_type)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        params.append('format', format)
+        return {
+          url: `company/users/export?${params}`,
+          method: 'GET',
+          responseHandler: (response) => response.blob(),
+        }
+      },
+    }),
+
+    // Role Management endpoints
+    getRoles: builder.query<Role[], { include_permissions?: boolean }>({
+      query: ({ include_permissions = true }) => {
+        const params = new URLSearchParams()
+        params.append('include_permissions', include_permissions.toString())
+        return `company/roles?${params}`
+      },
+      providesTags: ['Role'],
+    }),
+    getRole: builder.query<Role, string>({
+      query: (id) => `company/roles/${id}?include_permissions=true`,
+      providesTags: ['Role'],
+    }),
+    createRole: builder.mutation<Role, RoleCreate>({
+      query: (roleData) => ({
+        url: 'company/roles/',
+        method: 'POST',
+        body: roleData,
+      }),
+      invalidatesTags: ['Role'],
+    }),
+    updateRole: builder.mutation<Role, { id: string; role: Partial<RoleUpdate> }>({
+      query: ({ id, role }) => ({
+        url: `company/roles/${id}`,
+        method: 'PUT',
+        body: role,
+      }),
+      invalidatesTags: ['Role'],
+    }),
+    deleteRole: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/roles/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Role'],
+    }),
+    getPermissions: builder.query<Permission[], void>({
+      query: () => 'company/roles/permissions',
+      providesTags: ['Role'],
+    }),
+
+    // User Profile endpoints
+    getUserProfile: builder.query<UserProfile, string>({
+      query: (userId) => `company/profiles/employee/${userId}`,
+      providesTags: ['UserProfile'],
+    }),
+    createUserProfile: builder.mutation<UserProfile, { userId: string; profile: UserProfileCreate }>({
+      query: ({ userId, profile }) => ({
+        url: `company/profiles/employee`,
+        method: 'POST',
+        body: { ...profile, user_id: userId },
+      }),
+      invalidatesTags: ['UserProfile'],
+    }),
+    updateUserProfile: builder.mutation<UserProfile, { userId: string; profile: Partial<UserProfileUpdate> }>({
+      query: ({ userId, profile }) => ({
+        url: `company/profiles/employee/${userId}`,
+        method: 'PUT',
+        body: profile,
+      }),
+      invalidatesTags: ['UserProfile', 'User'],
+    }),
+    getProfileCompletion: builder.query<{ percentage: number; missing_sections: string[] }, string>({
+      query: (userId) => `company/profiles/employee/${userId}/completion`,
+      providesTags: ['UserProfile'],
+    }),
+
+    // Driver Profile endpoints
+    getDriverProfile: builder.query<any, string>({
+      query: (driverId) => `company/profiles/drivers/${driverId}`,
+      providesTags: ['UserProfile'],
+    }),
+    createDriverProfile: builder.mutation<any, { userId: string; profile: any }>({
+      query: ({ userId, profile }) => ({
+        url: `company/profiles/drivers`,
+        method: 'POST',
+        body: { employee_id: userId, ...profile },
+      }),
+      invalidatesTags: ['UserProfile'],
+    }),
+    updateDriverProfile: builder.mutation<any, { driverId: string; profile: Partial<any> }>({
+      query: ({ driverId, profile }) => ({
+        url: `company/profiles/drivers/${driverId}`,
+        method: 'PUT',
+        body: profile,
+      }),
+      invalidatesTags: ['UserProfile'],
+    }),
+
+    // User Documents endpoints
+    getUserDocuments: builder.query<UserDocument[], { profileId: string; document_type?: string }>({
+      query: ({ profileId, document_type }) => {
+        const params = new URLSearchParams()
+        if (document_type) params.append('document_type', document_type)
+        return `company/profiles/${profileId}/documents?${params}`
+      },
+      providesTags: ['UserDocument'],
+    }),
+    uploadUserDocument: builder.mutation<UserDocument, {
+      profileId: string;
+      document_type: string;
+      document_name: string;
+      file: File;
+    }>({
+      query: ({ profileId, document_type, document_name, file }) => {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('document_type', document_type)
+        formData.append('document_name', document_name)
+        return {
+          url: `company/profiles/documents`,
+          method: 'POST',
+          body: formData,
+          formData: true,
+        }
+      },
+      invalidatesTags: ['UserDocument'],
+    }),
+    verifyUserDocument: builder.mutation<UserDocument, { documentId: string }>({
+      query: ({ documentId }) => ({
+        url: `company/profiles/documents/${documentId}/verify`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['UserDocument'],
+    }),
+    deleteUserDocument: builder.mutation<void, { documentId: string }>({
+      query: ({ documentId }) => ({
+        url: `company/profiles/documents/${documentId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['UserDocument'],
+    }),
   }),
 })
 
@@ -556,4 +1028,38 @@ export const {
   useCreatePricingRuleMutation,
   useUpdatePricingRuleMutation,
   useDeletePricingRuleMutation,
+  // User Management hooks
+  useGetUsersQuery,
+  useLazyGetUsersQuery,
+  useGetUserQuery,
+  useCreateUserMutation,
+  useUpdateUserMutation,
+  useDeleteUserMutation,
+  useInviteUserMutation,
+  useBulkInviteUsersMutation,
+  useUpdateUserStatusMutation,
+  useResetUserPasswordMutation,
+  useBulkUpdateUsersMutation,
+  useExportUsersMutation,
+  // Role Management hooks
+  useGetRolesQuery,
+  useGetRoleQuery,
+  useCreateRoleMutation,
+  useUpdateRoleMutation,
+  useDeleteRoleMutation,
+  useGetPermissionsQuery,
+  // User Profile hooks
+  useGetUserProfileQuery,
+  useCreateUserProfileMutation,
+  useUpdateUserProfileMutation,
+  useGetProfileCompletionQuery,
+  // Driver Profile hooks
+  useGetDriverProfileQuery,
+  useCreateDriverProfileMutation,
+  useUpdateDriverProfileMutation,
+  // User Documents hooks
+  useGetUserDocumentsQuery,
+  useUploadUserDocumentMutation,
+  useVerifyUserDocumentMutation,
+  useDeleteUserDocumentMutation,
 } = companyApi

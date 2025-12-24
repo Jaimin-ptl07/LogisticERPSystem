@@ -150,11 +150,12 @@ export function createApiRoute(
   serviceUrl: string,
   path: string = ''
 ) {
-  return async (request: NextRequest, { params }: { params?: Record<string, string> } = {}) => {
+  return async (request: NextRequest, { params }: { params?: Promise<Record<string, string>> } = {}) => {
     // Extract route parameters from the path
     let finalPath = path
     if (params) {
-      Object.entries(params).forEach(([key, value]) => {
+      const resolvedParams = await params
+      Object.entries(resolvedParams).forEach(([key, value]) => {
         finalPath = finalPath.replace(`[${key}]`, value)
       })
     }

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database import get_db, Customer, Branch, BusinessType
+from src.helpers import validate_branch_exists
 from src.schemas import (
     Customer as CustomerSchema,
     CustomerCreate,
@@ -158,15 +159,12 @@ async def create_customer(
 
     # Validate home branch if provided
     if customer_data.home_branch_id:
-        branch_query = select(Branch).where(
-            Branch.id == customer_data.home_branch_id,
-            Branch.tenant_id == tenant_id
-        )
-        branch_result = await db.execute(branch_query)
-        if not branch_result.scalar_one_or_none():
+        try:
+            await validate_branch_exists(db, customer_data.home_branch_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid home branch"
+                detail=str(e)
             )
 
     # Create new customer
@@ -214,15 +212,12 @@ async def update_customer(
 
     # Validate home branch if provided
     if customer_data.home_branch_id:
-        branch_query = select(Branch).where(
-            Branch.id == customer_data.home_branch_id,
-            Branch.tenant_id == tenant_id
-        )
-        branch_result = await db.execute(branch_query)
-        if not branch_result.scalar_one_or_none():
+        try:
+            await validate_branch_exists(db, customer_data.home_branch_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid home branch"
+                detail=str(e)
             )
 
     # Update customer

@@ -24,7 +24,7 @@ COMPANY_SERVICE_URL = "http://company-service:8002"
 async def get_branches(
     request: Request,
     token_data: TokenData = Depends(
-        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+        require_any_permission(["resources:read", "orders:read"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
@@ -66,7 +66,7 @@ async def get_branches(
 async def get_products(
     request: Request,
     token_data: TokenData = Depends(
-        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+        require_any_permission(["resources:read", "orders:read"])
     ),
     tenant_id: str = Depends(get_current_tenant_id),
     branch_id: Optional[str] = Query(None, description="Filter by branch ID"),
@@ -137,7 +137,7 @@ async def get_products(
 async def get_customers(
     request: Request,
     token_data: TokenData = Depends(
-        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+        require_any_permission(["resources:read", "orders:read"])
     ),
     tenant_id: str = Depends(get_current_tenant_id),
     branch_id: Optional[str] = Query(None, description="Filter by home branch ID"),
@@ -190,7 +190,7 @@ async def get_customers(
 async def get_products_by_category(
     request: Request,
     token_data: TokenData = Depends(
-        require_any_permission(["resources:read", "resources:read_all", "orders:read", "orders:read_all"])
+        require_any_permission(["resources:read", "orders:read"])
     ),
     tenant_id: str = Depends(get_current_tenant_id),
     category_id: Optional[str] = Query(None),

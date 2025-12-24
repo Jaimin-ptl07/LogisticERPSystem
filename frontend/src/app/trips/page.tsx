@@ -209,6 +209,18 @@ export default function Trips() {
 
   const handleStatusChange = async (tripId: string, newStatus: string) => {
     try {
+      // Check if trying to change to loading status and validate order statuses
+      if (newStatus === 'loading') {
+        const trip = allTrips.find(t => t.id === tripId);
+        if (trip && trip.orders) {
+          const hasPendingOrders = trip.orders.some(order => order.status === 'submitted');
+          if (hasPendingOrders) {
+            alert('Cannot change trip status to loading while there are orders submitted for approval.');
+            return;
+          }
+        }
+      }
+
       await tmsAPI.updateTrip(tripId, { status: newStatus });
 
       // Refresh trips to show updated status
@@ -380,14 +392,34 @@ export default function Trips() {
     }
   };
 
-  const getApprovedOrders = () =>
-    availableOrders.filter((order) => order.status === "approved");
-  const getTrucksAvailable = () =>
-    availableTrucks.filter((truck) => truck.status === "available");
-  const getDriversAvailable = () =>
-    availableDrivers.filter(
-      (driver) => driver.status === "active" && !driver.currentTruck
-    );
+  const getOrderStatusVariant = (status: string) => {
+    switch (status) {
+      case 'submitted':
+        return 'default';
+      case 'finance_approved':
+        return 'success';
+      default:
+        return 'default';
+    }
+  };
+
+  const getOrderStatusDisplay = (status: string) => {
+    switch (status) {
+      case 'submitted':
+        return 'Submitted';
+      case 'finance_approved':
+        return 'Finance Approved';
+      default:
+        return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+    }
+  };
+
+  const getApprovedOrders = () => availableOrders.filter(order =>
+    order.status === 'submitted' ||
+    order.status === 'finance_approved'
+  );
+  const getTrucksAvailable = () => availableTrucks.filter(truck => truck.status === 'available');
+  const getDriversAvailable = () => availableDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
 
   // Check if order is already assigned to any trip
   const isOrderAssigned = (orderId: string) => {
@@ -427,8 +459,9 @@ export default function Trips() {
 
   // Order assignment helper functions
   const getAvailableOrders = () => {
-    return availableOrders.filter((order) => {
-      const isApproved = order.status === "approved";
+    return availableOrders.filter(order => {
+      const isApprovedStatus = order.status === 'submitted' ||
+        order.status === 'finance_approved';
       const isNotAssigned = !isOrderAssigned(order.id);
       const matchesSearch =
         order.customer.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
@@ -436,7 +469,7 @@ export default function Trips() {
       const matchesPriority =
         orderPriorityFilter === "all" || order.priority === orderPriorityFilter;
 
-      return isApproved && isNotAssigned && matchesSearch && matchesPriority;
+      return isApprovedStatus && isNotAssigned && matchesSearch && matchesPriority;
     });
   };
 
@@ -542,15 +575,12 @@ export default function Trips() {
 
         // If order is from another trip, we need to handle reassignment
         if (draggedOrder.sourceTripId) {
-          await tmsAPI.removeOrderFromTrip(
-            draggedOrder.sourceTripId,
-            draggedOrder.id
-          );
+          await tmsAPI.removeOrderFromTrip(draggedOrder.sourceTripId, draggedOrder.order_id || draggedOrder.id);
         }
 
         // Assign order to new trip
         const orderData = {
-          order_id: draggedOrder.id,
+          order_id: draggedOrder.order_id || draggedOrder.id,
           customer: draggedOrder.customer,
           customerAddress: draggedOrder.customerAddress,
           total: draggedOrder.total,
@@ -1061,15 +1091,9 @@ export default function Trips() {
             {/* Main Content Tabs */}
             <Tabs defaultValue="trips" className="w-full">
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="trips" className="text-black">
-                  Trips ({activeTrips.length})
-                </TabsTrigger>
-                <TabsTrigger value="orders" className="text-black">
-                  Approved Orders ({getApprovedOrders().length})
-                </TabsTrigger>
-                <TabsTrigger value="resources" className="text-black">
-                  Resources
-                </TabsTrigger>
+                <TabsTrigger value="trips" className="text-black">Trips ({activeTrips.length})</TabsTrigger>
+                <TabsTrigger value="orders" className="text-black">Orders ({getApprovedOrders().length})</TabsTrigger>
+                <TabsTrigger value="resources" className="text-black">Resources</TabsTrigger>
               </TabsList>
 
               {/* Trips Tab */}
@@ -1371,38 +1395,49 @@ export default function Trips() {
                                         )
                                       </span>
                                     )}
-                                  </h4>
-                                  <div className="flex items-center gap-2">
-                                    {trip.status === "planning" && (
-                                      <Button
-                                        size="sm"
-                                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                                        onClick={() =>
-                                          handleAddOrderClick(trip)
-                                        }
+                                    <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                                      #{order.sequence_number !== undefined ? order.sequence_number + 1 : index + 1}
+                                    </span>
+                                    <span className="font-medium text-gray-900">{order.order_id || order.id}</span>
+                                    <span className="text-gray-900">{order.customer}</span>
+                                    <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
+                                      {order.priority.toUpperCase()}
+                                    </Badge>
+                                    {trip.status === 'on-route' && order.delivery_status && (
+                                      <Badge
+                                        variant={getDeliveryStatusVariant(order.delivery_status)}
+                                        className="text-xs"
                                       >
                                         <Plus className="w-4 h-4 mr-1" />
                                         Add Order
                                       </Button>
                                     )}
-                                    {trip.orders.length > 3 && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                          toggleTripExpansion(trip.id)
-                                        }
-                                        className="text-gray-700"
-                                      >
-                                        {expandedTrips.has(trip.id) ? (
-                                          <ChevronUp className="w-4 h-4" />
-                                        ) : (
-                                          <ChevronDown className="w-4 h-4" />
-                                        )}
-                                        {expandedTrips.has(trip.id)
-                                          ? "Show Less"
-                                          : "Show More"}
-                                      </Button>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-sm">
+                                    <span className="text-gray-900">{order.items} items</span>
+                                    <span className="font-medium text-gray-900">{order.weight}kg</span>
+                                    {!isTripLocked(trip.status) && (
+                                      <div className="flex gap-1">
+                                        <Button size="sm" variant="outline">Edit</Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            // Handle remove from trip
+                                            if (confirm(`Remove order ${order.order_id || order.id} from this trip?`)) {
+                                              try {
+                                                await tmsAPI.removeOrderFromTrip(trip.id, order.order_id || order.id);
+                                                fetchTrips();
+                                              } catch (err) {
+                                                alert(err instanceof Error ? err.message : 'Failed to remove order');
+                                              }
+                                            }
+                                          }}
+                                        >
+                                          Remove
+                                        </Button>
+                                      </div>
                                     )}
                                   </div>
                                 </div>
@@ -1605,48 +1640,36 @@ export default function Trips() {
                 </Card>
               </TabsContent>
 
-              {/* Approved Orders Tab */}
-              <TabsContent value="orders">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-black">
-                      Approved Orders ({getApprovedOrders().length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {getApprovedOrders().map((order) => (
-                        <div
-                          key={order.id}
-                          className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, order)}
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-4">
-                              <h3 className="font-semibold text-gray-900">
-                                {order.id}
-                              </h3>
-                              <Badge
-                                variant={getPriorityVariant(order.priority)}
-                                className="mt-1"
-                              >
-                                {order.priority}
-                              </Badge>
-                              <Badge variant="success">
-                                {order.status.charAt(0).toUpperCase() +
-                                  order.status.slice(1)}
-                              </Badge>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-sm text-gray-500">
-                                {order.date}
-                              </span>
-                              <p className="text-lg font-semibold text-gray-900">
-                                ₹{order.total.toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
+          {/* Approved Orders Tab */}
+          <TabsContent value="orders">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-black">Orders ({getApprovedOrders().length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {getApprovedOrders().map((order) => (
+                    <div
+                      key={order.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, order)}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-4">
+                          <h3 className="font-semibold text-gray-900">{order.id}</h3>
+                          <Badge variant={getPriorityVariant(order.priority)} className="mt-1">
+                            {order.priority}
+                          </Badge>
+                          <Badge variant={getOrderStatusVariant(order.status)}>
+                            {getOrderStatusDisplay(order.status)}
+                          </Badge>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm text-gray-500">{order.date}</span>
+                          <p className="text-lg font-semibold text-gray-900">₹{order.total.toLocaleString()}</p>
+                        </div>
+                      </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>

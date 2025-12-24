@@ -197,10 +197,7 @@ export const ordersApi = createApi({
     }>({
       query: (params) => ({
         url: '/',
-        params: {
-          tenant_id: 'default-tenant',
-          ...params,
-        },
+        params: params,
       }),
       providesTags: ['Order'],
     }),
@@ -208,9 +205,6 @@ export const ordersApi = createApi({
     getOrderById: builder.query<Order, string>({
       query: (id) => ({
         url: `/${id}`,
-        params: {
-          tenant_id: 'default-tenant',
-        },
       }),
       providesTags: (result, error, id) => [{ type: 'Order', id }],
     }),
@@ -228,10 +222,7 @@ export const ordersApi = createApi({
       query: ({ id, data }) => ({
         url: `/${id}`,
         method: 'PUT',
-        body: {
-          tenant_id: 'default-tenant',
-          ...data,
-        },
+        body: data,
       }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Order', id }],
     }),
@@ -265,9 +256,6 @@ export const ordersApi = createApi({
     getBranches: builder.query<Branch[], void>({
       query: () => ({
         url: '/resources/branches',
-        params: {
-          tenant_id: 'default-tenant',
-        },
       }),
       providesTags: ['Branch'],
     }),
@@ -280,7 +268,6 @@ export const ordersApi = createApi({
       query: (params) => ({
         url: '/resources/products',
         params: {
-          tenant_id: 'default-tenant',
           is_active: true,
           ...params,
         },
@@ -294,10 +281,7 @@ export const ordersApi = createApi({
     }>({
       query: (params) => ({
         url: '/resources/products/by-category',
-        params: {
-          tenant_id: 'default-tenant',
-          ...params,
-        },
+        params: params,
       }),
       providesTags: ['Product'],
     }),
@@ -310,7 +294,6 @@ export const ordersApi = createApi({
       query: (params) => ({
         url: '/resources/customers',
         params: {
-          tenant_id: 'default-tenant',
           is_active: true,
           ...params,
         },

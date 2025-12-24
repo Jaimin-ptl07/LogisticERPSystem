@@ -244,10 +244,14 @@ async def metrics():
 async def http_exception_handler(request, exc):
     """Global HTTP exception handler"""
     logger.error(f"HTTP {exc.status_code}: {exc.detail}")
-    return {
-        "error": exc.detail,
-        "status_code": exc.status_code
-    }
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
 
 
 if __name__ == "__main__":

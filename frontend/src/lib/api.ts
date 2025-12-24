@@ -651,7 +651,7 @@ export const tmsAPI = {
   // Remove order from trip
   async removeOrderFromTrip(tripId: string, orderId: string) {
     // Use Next.js API route instead of direct TMS service
-    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?order_id=${orderId}`, {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders/remove?order_id=${orderId}`, {
       method: 'DELETE',
     });
   },

@@ -12,6 +12,7 @@ from src.security import (
     require_any_permission,
     get_current_tenant_id
 )
+from src.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -169,8 +170,9 @@ async def get_drivers(
     return drivers
 
 
-@router.get("/orders", response_model=List[Order])
+@router.get("/orders", response_model=List[dict])
 async def get_orders(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by order status"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     token_data: TokenData = Depends(
@@ -178,17 +180,92 @@ async def get_orders(
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
-    """Get all orders with optional filters"""
-    # In production, filter by tenant_id
-    orders = ORDERS
+    """Get all orders from Orders service"""
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
 
-    # Apply filters
-    if status:
-        orders = [order for order in orders if order.status == status]
-    if priority:
-        orders = [order for order in orders if order.priority == priority]
+    async with AsyncClient(timeout=30.0) as client:
+        try:
+            # Build query parameters for orders service
+            params = {
+                "tenant_id": tenant_id,
+                "per_page": 100  # Get up to 100 orders
+            }
 
-    return orders
+            # Add status filter if provided
+            if status:
+                params["status"] = status
+
+            # Add priority filter if provided
+            if priority:
+                params["priority"] = priority
+
+            # Call Orders service
+            logger.info(f"Calling orders service with params: {params}")
+            response = await client.get(
+                f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/",
+                params=params,
+                headers=headers
+            )
+
+            logger.info(f"Orders service response status: {response.status_code}")
+
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch orders from Orders service: {response.status_code}")
+                logger.error(f"Response text: {response.text}")
+                # Return empty list if orders service is unavailable
+                return []
+
+            data = response.json()
+            logger.info(f"Orders service response data: {data}")
+            orders = data.get("items", [])
+            logger.info(f"Extracted orders count: {len(orders)}")
+
+            # Transform orders to match TMS Order schema format
+            transformed_orders = []
+            for order in orders:
+                logger.info(f"Processing order: {order}")
+
+                # Handle the created_at field - it might be a string or datetime object
+                created_at = order.get("created_at")
+                if isinstance(created_at, str):
+                    # Parse the string datetime
+                    try:
+                        date_obj = datetime.fromisoformat(created_at.replace('Z', '+00:00')).date()
+                    except:
+                        date_obj = date.today()
+                elif created_at:
+                    # It's already a datetime object
+                    date_obj = created_at.date()
+                else:
+                    date_obj = date.today()
+
+                transformed_order = {
+                    "id": order.get("order_number", order.get("id")),
+                    "customer": order.get("customer", {}).get("name", "Unknown Customer") if order.get("customer") else "Unknown Customer",
+                    "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
+                    "status": order.get("status", "unknown"),
+                    "total": order.get("total_amount", 0),
+                    "weight": sum(item.get("total_weight", 0) or 0 for item in order.get("items", [])),
+                    "volume": sum(item.get("volume", 0) or 0 for item in order.get("items", [])),
+                    "date": date_obj,
+                    "priority": order.get("priority", "medium"),
+                    "items": len(order.get("items", [])),
+                    "address": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address"
+                }
+                logger.info(f"Transformed order: {transformed_order}")
+                transformed_orders.append(transformed_order)
+
+            logger.info(f"Final transformed orders count: {len(transformed_orders)}")
+            return transformed_orders
+
+        except Exception as e:
+            logger.error(f"Error fetching orders: {str(e)}")
+            # Return empty list on error
+            return []
 
 
 @router.get("/branches", response_model=list[Branch])

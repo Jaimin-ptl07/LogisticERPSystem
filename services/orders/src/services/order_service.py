@@ -73,7 +73,8 @@ class OrderService:
         """Get order by ID and tenant"""
         query = select(Order).where(
             and_(
-                Order.id == str(order_id),  # Convert to string to match VARCHAR column
+                # Convert to string to match VARCHAR column
+                Order.id == str(order_id),
                 Order.tenant_id == tenant_id,
                 Order.is_active == True
             )
@@ -95,7 +96,8 @@ class OrderService:
         import logging
         logger = logging.getLogger(__name__)
 
-        print(f"DEBUG: _fetch_product_details called for product_id: {product_id}")
+        print(
+            f"DEBUG: _fetch_product_details called for product_id: {product_id}")
         COMPANY_SERVICE_URL = "http://company-service:8002"
 
         async with AsyncClient(timeout=30.0) as client:
@@ -114,24 +116,32 @@ class OrderService:
                 if response.status_code == 200:
                     data = response.json()
                     products = data.get("items", [])
-                    print(f"DEBUG: Fetched {len(products)} products from company service")
+                    print(
+                        f"DEBUG: Fetched {len(products)} products from company service")
 
                     if products:
-                        print(f"DEBUG: Sample product structure: {products[0]}")  # Log first product for debugging
+                        # Log first product for debugging
+                        print(
+                            f"DEBUG: Sample product structure: {products[0]}")
 
                     # Find the product by ID
                     product = None
-                    print(f"DEBUG: Searching for product_id: {product_id} (type: {type(product_id)})")
-                    print(f"DEBUG: Available product IDs: {[str(p.get('id')) for p in products[:5]]}...")  # Log first 5 for debugging
+                    print(
+                        f"DEBUG: Searching for product_id: {product_id} (type: {type(product_id)})")
+                    # Log first 5 for debugging
+                    print(
+                        f"DEBUG: Available product IDs: {[str(p.get('id')) for p in products[:5]]}...")
 
                     for p in products:
                         if str(p.get("id")) == str(product_id):
                             product = p
-                            print(f"DEBUG: Found product: {product.get('name', 'Unknown')}")
+                            print(
+                                f"DEBUG: Found product: {product.get('name', 'Unknown')}")
                             break
 
                     if not product:
-                        print(f"DEBUG: Product {product_id} not found in {len(products)} products")
+                        print(
+                            f"DEBUG: Product {product_id} not found in {len(products)} products")
 
                     if product:
                         return {
@@ -145,7 +155,8 @@ class OrderService:
                             "unit": "pcs"  # Default unit, can be customized later
                         }
                     else:
-                        logger.error(f"Product {product_id} not found in company service")
+                        logger.error(
+                            f"Product {product_id} not found in company service")
                         return {
                             "id": str(product_id),
                             "name": "Unknown Product",
@@ -158,7 +169,8 @@ class OrderService:
                         }
                 else:
                     error_text = response.text
-                    logger.error(f"Failed to fetch products from company service: {response.status_code} - {error_text}")
+                    logger.error(
+                        f"Failed to fetch products from company service: {response.status_code} - {error_text}")
                     return {
                         "id": str(product_id),
                         "name": "Service Error",
@@ -213,9 +225,11 @@ class OrderService:
             # Process items and calculate totals
             order_items = []
             if order_data.items:
-                print(f"DEBUG: Processing {len(order_data.items)} items for order creation")
+                print(
+                    f"DEBUG: Processing {len(order_data.items)} items for order creation")
                 for i, item_data in enumerate(order_data.items):
-                    print(f"DEBUG: Processing item {i+1} - product_id: {item_data.product_id}")
+                    print(
+                        f"DEBUG: Processing item {i+1} - product_id: {item_data.product_id}")
                     # Fetch product details from product service
                     product = await self._fetch_product_details(item_data.product_id)
                     print(f"DEBUG: Got product: {product['name']}")
@@ -239,11 +253,11 @@ class OrderService:
                         product_code=product.get("code", ""),
                         description=product.get("description", ""),
                         quantity=item_data.quantity,
-                        unit=product.get("unit", "pcs"),
+                        unit="pcs",  # Default unit since it's not in product schema
                         unit_price=product["unit_price"],
                         total_price=item_total_price,
-                        weight=product["weight"],
-                        volume=product["volume"],
+                        weight=product.get("weight", 0),
+                        volume=product.get("volume", 0),
                     )
                     order_items.append(order_item)
 
@@ -333,7 +347,8 @@ class OrderService:
         user_id: str
     ) -> Order:
         """Update an existing order"""
-        query = select(Order).where(Order.id == str(order_id))  # Convert to string
+        query = select(Order).where(
+            Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
         order = result.scalar_one_or_none()
 
@@ -355,7 +370,8 @@ class OrderService:
 
     async def delete_order(self, order_id: str) -> None:
         """Soft delete an order"""
-        query = select(Order).where(Order.id == str(order_id))  # Convert to string
+        query = select(Order).where(
+            Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
         order = result.scalar_one_or_none()
 
@@ -606,8 +622,6 @@ class OrderService:
             OrderStatus.SUBMITTED: [OrderStatus.FINANCE_APPROVED, OrderStatus.FINANCE_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_APPROVED: [OrderStatus.LOGISTICS_APPROVED, OrderStatus.LOGISTICS_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
-            OrderStatus.LOGISTICS_APPROVED: [OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
-            OrderStatus.LOGISTICS_REJECTED: [OrderStatus.FINANCE_APPROVED, OrderStatus.CANCELLED],
             OrderStatus.ASSIGNED: [OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
             OrderStatus.PICKED_UP: [OrderStatus.IN_TRANSIT],
             OrderStatus.IN_TRANSIT: [OrderStatus.DELIVERED],

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database import get_db, Vehicle, Branch, VehicleType, VehicleStatus
+from src.helpers import validate_branch_exists
 from src.schemas import (
     Vehicle as VehicleSchema,
     VehicleCreate,
@@ -195,15 +196,12 @@ async def create_vehicle(
 
     # Validate branch if provided
     if vehicle_data.branch_id:
-        branch_query = select(Branch).where(
-            Branch.id == vehicle_data.branch_id,
-            Branch.tenant_id == tenant_id
-        )
-        branch_result = await db.execute(branch_query)
-        if not branch_result.scalar_one_or_none():
+        try:
+            await validate_branch_exists(db, vehicle_data.branch_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid branch"
+                detail=str(e)
             )
 
     # Create new vehicle
@@ -250,15 +248,12 @@ async def update_vehicle(
 
     # Validate branch if provided
     if vehicle_data.branch_id:
-        branch_query = select(Branch).where(
-            Branch.id == vehicle_data.branch_id,
-            Branch.tenant_id == tenant_id
-        )
-        branch_result = await db.execute(branch_query)
-        if not branch_result.scalar_one_or_none():
+        try:
+            await validate_branch_exists(db, vehicle_data.branch_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid branch"
+                detail=str(e)
             )
 
     # Update vehicle
