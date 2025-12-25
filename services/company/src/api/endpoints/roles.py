@@ -18,6 +18,20 @@ from src.schemas import (
     PaginatedResponse
 )
 from src.config_local import settings
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission,
+    ROLE_READ,
+    ROLE_CREATE,
+    ROLE_UPDATE,
+    ROLE_DELETE,
+    ROLE_ASSIGN,
+    USER_READ_ALL,
+    USER_READ,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -36,21 +50,16 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
-
-
 @router.get("/auth-roles")
-async def get_auth_roles(request: Request):
+async def get_auth_roles(
+    request: Request,
+    token_data: TokenData = Depends(require_any_permission([*ROLE_READ]))
+):
     """
     Get roles from auth service
     This endpoint calls the auth service's roles API and returns the roles
+
+    Requires: ROLE_READ permission
     """
     auth_service_url = settings.AUTH_SERVICE_URL
 
@@ -91,6 +100,8 @@ async def get_auth_roles(request: Request):
 
 @router.get("/", response_model=PaginatedResponse)
 async def list_roles(
+    token_data: TokenData = Depends(require_permissions([*ROLE_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
@@ -100,8 +111,9 @@ async def list_roles(
 ):
     """
     List all roles for the current tenant
+
+    Requires: ROLE_READ permission
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(CompanyRole).where(CompanyRole.tenant_id == tenant_id)
@@ -179,12 +191,15 @@ async def list_roles(
 @router.get("/{role_id}", response_model=CompanyRoleSchema)
 async def get_role(
     role_id: str,
+    token_data: TokenData = Depends(require_permissions([*ROLE_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get a specific role by ID
+
+    Requires: ROLE_READ permission
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get role without loading problematic relationships
     query = select(CompanyRole).where(
@@ -220,12 +235,16 @@ async def get_role(
 @router.post("/", response_model=CompanyRoleSchema, status_code=201)
 async def create_role(
     role_data: CompanyRoleCreate,
+    token_data: TokenData = Depends(require_permissions([*ROLE_CREATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new role
+
+    Requires: ROLE_CREATE permission
     """
-    tenant_id = await get_current_tenant_id()
 
     # Check if role name already exists
     existing_query = select(CompanyRole).where(
@@ -272,12 +291,16 @@ async def create_role(
 async def update_role(
     role_id: str,
     role_data: CompanyRoleUpdate,
+    token_data: TokenData = Depends(require_permissions([*ROLE_UPDATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a role
+
+    Requires: ROLE_UPDATE permission
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing role
     query = select(CompanyRole).where(
@@ -346,12 +369,15 @@ async def update_role(
 @router.delete("/{role_id}", status_code=204)
 async def delete_role(
     role_id: str,
+    token_data: TokenData = Depends(require_permissions([*ROLE_DELETE])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Delete a role
+
+    Requires: ROLE_DELETE permission
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing role
     query = select(CompanyRole).where(
@@ -393,12 +419,15 @@ async def delete_role(
 @router.get("/{role_id}/permissions")
 async def get_role_permissions(
     role_id: str,
+    token_data: TokenData = Depends(require_permissions([*ROLE_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get permissions for a specific role
+
+    Requires: ROLE_READ permission
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get role
     query = select(CompanyRole).where(
@@ -425,12 +454,16 @@ async def get_role_permissions(
 async def update_role_permissions(
     role_id: str,
     permissions: dict,
+    token_data: TokenData = Depends(require_permissions([*ROLE_ASSIGN])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update permissions for a specific role
+
+    Requires: ROLE_ASSIGN permission
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get role
     query = select(CompanyRole).where(
@@ -560,12 +593,17 @@ async def get_default_permissions():
 
 
 @router.post("/seed", status_code=201)
-async def seed_default_roles(db: AsyncSession = Depends(get_db)):
+async def seed_default_roles(
+    token_data: TokenData = Depends(require_permissions([*ROLE_CREATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Seed default system roles for a new tenant
+
+    Requires: ROLE_CREATE permission
     """
-    tenant_id = await get_current_tenant_id()
-    current_user_id = "system"  # Mock user ID for system operations
 
     # Define default roles
     default_roles = [

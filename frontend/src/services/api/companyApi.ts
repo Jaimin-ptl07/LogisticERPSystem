@@ -27,12 +27,14 @@ export interface Branch {
 export interface User {
   id: string
   tenant_id: string
+  user_id?: string
   email: string
   first_name: string
   last_name: string
   phone_number?: string
+  phone?: string
   profile_type: 'staff' | 'driver' | 'admin'
-  role_id: number
+  role_id: number | string
   branch_id?: string // Deprecated: Use branch_ids for multiple branches
   branch_ids?: string[] // New: Multiple branch assignments
   is_active: boolean
@@ -45,6 +47,43 @@ export interface User {
   branches?: Branch[] // New: All assigned branches
   profile?: UserProfile
   documents?: UserDocument[]
+
+  // Employee profile fields (from backend EmployeeProfile)
+  employee_code?: string
+  employee_id?: string
+  date_of_birth?: string
+  gender?: 'male' | 'female' | 'other'
+  blood_group?: string
+  emergency_contact_name?: string
+  emergency_contact_phone?: string
+  emergency_contact_number?: string
+  address?: string
+  city?: string
+  state?: string
+  postal_code?: string
+  country?: string
+  hire_date?: string
+  date_of_joining?: string
+  employment_type?: string
+  department?: string
+  designation?: string
+  reports_to?: string
+  salary?: number
+  bank_account_number?: string
+  bank_name?: string
+  bank_ifsc?: string
+  pan_number?: string
+  aadhaar_number?: string
+  aadhar_number?: string
+  passport_number?: string
+  marital_status?: 'single' | 'married' | 'divorced' | 'widowed'
+  nationality?: string
+  reporting_manager_id?: string
+  // Nested address objects
+  current_address?: Address
+  permanent_address?: Address
+  // Nested bank details
+  bank_details?: BankDetails
 }
 
 export interface Role {
@@ -833,7 +872,7 @@ export const companyApi = createApi({
       }),
     }),
     bulkUpdateUsers: builder.mutation<User[], { updates: Array<{ id: string; [key: string]: any }> }>({
-      query: (updates) => ({
+      query: ({ updates }) => ({
         url: 'company/users/bulk-update',
         method: 'POST',
         body: updates,
@@ -905,7 +944,7 @@ export const companyApi = createApi({
     // Get roles from auth service (via company service proxy)
     getAuthRoles: builder.query<AuthRole[], void>({
       query: () => 'company/roles/auth-roles',
-      providesTags: ['AuthRole'],
+      providesTags: ['Role'],
     }),
 
     // User Profile endpoints

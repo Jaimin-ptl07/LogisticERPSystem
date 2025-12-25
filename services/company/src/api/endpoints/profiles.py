@@ -54,6 +54,24 @@ from src.schemas import (
     ProfileStats,
     ProfileChangeHistory
 )
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission,
+    # User management permissions (reused for profile management)
+    USER_READ_ALL,
+    USER_READ,
+    USER_READ_OWN,
+    USER_CREATE,
+    USER_UPDATE,
+    USER_UPDATE_OWN,
+    USER_DELETE,
+    USER_ACTIVATE,
+    # Profile management permissions
+    PROFILE_UPLOAD_AVATAR,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -64,12 +82,17 @@ logger = logging.getLogger(__name__)
 async def get_profile_completion(
     profile_type: str,
     profile_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get profile completion percentage for any profile type
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Validate profile type
     valid_profile_types = ["employee", "driver", "finance_manager", "branch_manager", "logistics_manager"]
@@ -237,12 +260,17 @@ async def get_profile_completion(
 async def get_batch_profile_completion(
     profile_ids: List[str],
     profile_type: str = Query("employee", description="Profile type for all provided IDs"),
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get profile completion percentage for multiple profiles at once
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Validate profile type
     valid_profile_types = ["employee", "driver", "finance_manager", "branch_manager", "logistics_manager"]
@@ -361,12 +389,17 @@ async def upload_profile_avatar(
     profile_type: str,
     profile_id: str,
     file: UploadFile = FastAPIFile(...),
+    token_data: TokenData = Depends(require_permissions([*PROFILE_UPLOAD_AVATAR])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Upload profile avatar/image
+
+    Requires:
+    - profiles:upload_avatar (to upload profile images)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Validate file type
     allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/gif"]
@@ -435,12 +468,17 @@ async def upload_profile_avatar(
 @router.post("/search", response_model=ProfileSearchResponse)
 async def search_profiles(
     search_params: ProfileSearchParams,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Advanced profile search with multiple filters
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Start with base query
     query = select(EmployeeProfile).where(EmployeeProfile.tenant_id == tenant_id)
@@ -558,24 +596,6 @@ async def search_profiles(
     )
 
 
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
-
-
-# Helper function to get current user ID (mock for now)
-async def get_current_user_id() -> str:
-    """
-    Get current user ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "mock-user-id"
 
 
 # DRIVER PROFILE ENDPOINTS
@@ -583,12 +603,17 @@ async def get_current_user_id() -> str:
 @router.get("/drivers/{driver_id}", response_model=DriverProfileSchema)
 async def get_driver_profile(
     driver_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get driver profile by ID
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get driver profile with relationships
     query = select(DriverProfile).where(
@@ -610,12 +635,17 @@ async def get_driver_profile(
 @router.post("/drivers", response_model=DriverProfileSchema, status_code=201)
 async def create_driver_profile(
     driver_data: DriverProfileCreate,
+    token_data: TokenData = Depends(require_permissions([*USER_CREATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new driver profile
+
+    Requires:
+    - users:create (to create new profiles)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Verify employee profile exists
     try:
@@ -670,12 +700,18 @@ async def create_driver_profile(
 async def update_driver_profile(
     driver_id: str,
     driver_data: DriverProfileUpdate,
+    token_data: TokenData = Depends(require_any_permission([*USER_UPDATE, *USER_UPDATE_OWN])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update driver profile
+
+    Requires:
+    - users:update (to update any profile) OR
+    - users:update_own (to update own profile)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing driver profile
     query = select(DriverProfile).where(
@@ -721,12 +757,17 @@ async def update_driver_profile(
 async def list_driver_profiles(
     status: Optional[str] = Query(None),
     branch_id: Optional[uuid.UUID] = Query(None),
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List driver profiles with optional filters
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(DriverProfile).where(DriverProfile.tenant_id == tenant_id)
@@ -754,12 +795,17 @@ async def list_driver_profiles(
 @router.post("/finance-managers", response_model=FinanceManagerProfileSchema, status_code=201)
 async def create_finance_manager_profile(
     profile_data: FinanceManagerProfileCreate,
+    token_data: TokenData = Depends(require_permissions([*USER_CREATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new finance manager profile
+
+    Requires:
+    - users:create (to create new profiles)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Verify employee profile exists
     try:
@@ -802,12 +848,18 @@ async def create_finance_manager_profile(
 async def update_finance_manager_profile(
     profile_id: str,
     profile_data: FinanceManagerProfileUpdate,
+    token_data: TokenData = Depends(require_any_permission([*USER_UPDATE, *USER_UPDATE_OWN])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update finance manager profile
+
+    Requires:
+    - users:update (to update any profile) OR
+    - users:update_own (to update own profile)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing profile
     query = select(FinanceManagerProfile).where(
@@ -839,12 +891,17 @@ async def update_finance_manager_profile(
 @router.post("/branch-managers", response_model=BranchManagerProfileSchema, status_code=201)
 async def create_branch_manager_profile(
     profile_data: BranchManagerProfileCreate,
+    token_data: TokenData = Depends(require_permissions([*USER_CREATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new branch manager profile
+
+    Requires:
+    - users:create (to create new profiles)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Verify employee profile exists
     try:
@@ -896,12 +953,18 @@ async def create_branch_manager_profile(
 async def update_branch_manager_profile(
     profile_id: str,
     profile_data: BranchManagerProfileUpdate,
+    token_data: TokenData = Depends(require_any_permission([*USER_UPDATE, *USER_UPDATE_OWN])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update branch manager profile
+
+    Requires:
+    - users:update (to update any profile) OR
+    - users:update_own (to update own profile)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing profile
     query = select(BranchManagerProfile).where(
@@ -947,12 +1010,17 @@ async def update_branch_manager_profile(
 @router.post("/logistics-managers", response_model=LogisticsManagerProfileSchema, status_code=201)
 async def create_logistics_manager_profile(
     profile_data: LogisticsManagerProfileCreate,
+    token_data: TokenData = Depends(require_permissions([*USER_CREATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new logistics manager profile
+
+    Requires:
+    - users:create (to create new profiles)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Verify employee profile exists
     try:
@@ -995,12 +1063,18 @@ async def create_logistics_manager_profile(
 async def update_logistics_manager_profile(
     profile_id: str,
     profile_data: LogisticsManagerProfileUpdate,
+    token_data: TokenData = Depends(require_any_permission([*USER_UPDATE, *USER_UPDATE_OWN])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update logistics manager profile
+
+    Requires:
+    - users:update (to update any profile) OR
+    - users:update_own (to update own profile)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing profile
     query = select(LogisticsManagerProfile).where(
@@ -1040,13 +1114,17 @@ async def upload_document(
     issuing_authority: Optional[str] = None,
     notes: Optional[str] = None,
     file: UploadFile = FastAPIFile(...),
+    token_data: TokenData = Depends(require_permissions([*USER_CREATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Upload a document for an employee with enhanced validation and security
+
+    Requires:
+    - users:create (to create/upload documents)
     """
-    tenant_id = await get_current_tenant_id()
-    current_user_id = await get_current_user_id()
 
     # Verify employee profile exists
     try:
@@ -1155,7 +1233,7 @@ async def upload_document(
         issuing_authority=issuing_authority,
         notes=notes,
         is_verified=is_verified,
-        verified_by=current_user_id if is_verified else None,
+        verified_by=user_id if is_verified else None,
         verified_at=datetime.utcnow() if is_verified else None
     )
 
@@ -1172,12 +1250,17 @@ async def upload_document(
 @router.get("/documents/{document_id}", response_model=EmployeeDocumentSchema)
 async def get_document(
     document_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get document by ID
+
+    Requires:
+    - users:read_all (to view all documents) OR
+    - users:read (to view basic document info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get document with relationships
     query = select(EmployeeDocument).where(
@@ -1200,12 +1283,18 @@ async def get_document(
 async def update_document(
     document_id: str,
     document_data: EmployeeDocumentUpdate,
+    token_data: TokenData = Depends(require_any_permission([*USER_UPDATE, *USER_UPDATE_OWN])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update document metadata
+
+    Requires:
+    - users:update (to update any document) OR
+    - users:update_own (to update own documents)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing document
     query = select(EmployeeDocument).where(
@@ -1235,13 +1324,17 @@ async def update_document(
 @router.post("/documents/{document_id}/verify", response_model=EmployeeDocumentSchema)
 async def verify_document(
     document_id: str,
+    token_data: TokenData = Depends(require_permissions([*USER_UPDATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Mark a document as verified
+
+    Requires:
+    - users:update (to verify documents)
     """
-    tenant_id = await get_current_tenant_id()
-    current_user_id = await get_current_user_id()
 
     # Get document
     query = select(EmployeeDocument).where(
@@ -1256,7 +1349,7 @@ async def verify_document(
 
     # Mark as verified
     document.is_verified = True
-    document.verified_by = current_user_id
+    document.verified_by = user_id
     document.verified_at = datetime.utcnow()
 
     await db.commit()
@@ -1274,12 +1367,17 @@ async def list_documents(
     document_type: Optional[str] = Query(None),
     is_verified: Optional[bool] = Query(None),
     is_expiry_soon: Optional[bool] = Query(None),
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List documents with optional filters
+
+    Requires:
+    - users:read_all (to view all documents) OR
+    - users:read (to view basic document info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(EmployeeDocument).where(EmployeeDocument.tenant_id == tenant_id)
@@ -1319,12 +1417,17 @@ async def get_expiring_documents(
     days: int = Query(default=30, ge=1, le=365),
     employee_profile_id: Optional[str] = Query(None),
     document_type: Optional[str] = Query(None),
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get documents that are expiring within the specified number of days
+
+    Requires:
+    - users:read_all (to view all documents) OR
+    - users:read (to view basic document info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Calculate expiry threshold
     expiry_threshold = datetime.utcnow() + timedelta(days=days)
@@ -1382,12 +1485,17 @@ async def get_expiring_documents(
 @router.post("/export")
 async def export_profiles(
     export_params: ProfileExportParams,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Export profile data in various formats
+
+    Requires:
+    - users:read_all (to export all profiles) OR
+    - users:read (to export basic profile data)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build base query
     query = select(EmployeeProfile).where(EmployeeProfile.tenant_id == tenant_id)
@@ -1496,12 +1604,18 @@ async def export_profiles(
 async def reorder_documents(
     profile_id: str,
     reorder_data: DocumentReorder,
+    token_data: TokenData = Depends(require_any_permission([*USER_UPDATE, *USER_UPDATE_OWN])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Reorder documents for a profile
+
+    Requires:
+    - users:update (to reorder any documents) OR
+    - users:update_own (to reorder own documents)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Verify employee exists
     try:
@@ -1550,12 +1664,17 @@ async def reorder_documents(
 
 @router.get("/stats", response_model=ProfileStats)
 async def get_profile_statistics(
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get profile statistics dashboard
+
+    Requires:
+    - users:read_all (to view all statistics) OR
+    - users:read (to view basic statistics)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get total profiles
     total_query = select(func.count(EmployeeProfile.id)).where(
@@ -1733,12 +1852,17 @@ async def _calculate_average_completion(db: AsyncSession, tenant_id: str) -> flo
 async def get_profiles_by_role(
     include_inactive: bool = Query(False, description="Include inactive users in the response"),
     include_completion_stats: bool = Query(True, description="Include profile completion statistics"),
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get all users grouped by their roles with optional profile completion statistics
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build base query for users with role and branch information
     query = select(
@@ -1908,12 +2032,16 @@ async def get_profiles_by_role(
 async def bulk_profile_operation(
     operation: BulkProfileOperation,
     background_tasks: BackgroundTasks,
+    token_data: TokenData = Depends(require_permissions([*USER_UPDATE])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Perform bulk operations on profiles
+
+    Requires:
+    - users:update (to perform bulk operations)
     """
-    tenant_id = await get_current_tenant_id()
     operation_id = str(uuid.uuid4())
 
     # Initialize response
@@ -1995,12 +2123,17 @@ async def export_single_profile(tenant_id: str, profile_id: str, params: Dict[st
 async def get_profile_change_history(
     profile_type: str,
     profile_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get audit trail of profile changes
+
+    Requires:
+    - users:read_all (to view all history) OR
+    - users:read (to view basic history)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Verify profile type
     valid_profile_types = ["employee", "driver", "finance_manager", "branch_manager", "logistics_manager"]

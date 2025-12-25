@@ -22,7 +22,12 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id,
     require_permissions,
-    require_any_permission
+    require_any_permission,
+    CUSTOMER_READ_ALL,
+    CUSTOMER_READ,
+    CUSTOMER_CREATE,
+    CUSTOMER_UPDATE,
+    CUSTOMER_DELETE,
 )
 
 router = APIRouter()
@@ -266,9 +271,15 @@ async def delete_customer(
 
 @router.get("/business-types")
 @router.get("/business-types/")
-async def get_business_types():
+async def get_business_types(
+    token_data: TokenData = Depends(require_any_permission([*CUSTOMER_READ_ALL, *CUSTOMER_READ]))
+):
     """
     Get list of available business types
+
+    Requires:
+    - customers:read_all (to view all customers) OR
+    - customers:read (to view basic customer info)
     """
     try:
         # Return the enum values - these will be used as both value and display in frontend
