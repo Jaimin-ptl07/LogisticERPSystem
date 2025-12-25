@@ -7,12 +7,12 @@ import uuid
 import secrets
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import AsyncSessionLocal, EmployeeProfile, UserInvitation, CompanyRole, Branch
+from src.database import AsyncSessionLocal, EmployeeProfile, UserInvitation, CompanyRole, Branch, EmployeeBranch
 from src.helpers import validate_branch_exists, validate_role_exists, validate_employee_reporting_hierarchy, validate_employee_exists
 from src.schemas import (
     EmployeeProfile as EmployeeProfileSchema,
@@ -42,24 +42,30 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
+# Helper function to get tenant_id from request
+async def get_current_tenant_id(request: Request) -> str:
     """
     Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
+    Extracts tenant_id from request.state set by auth middleware
     """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
+    tenant_id = getattr(request.state, "tenant_id", None)
+    if not tenant_id:
+        # Fallback to mock implementation for testing without auth
+        return "default-tenant"
+    return tenant_id
 
 
-# Helper function to get current user ID (mock for now)
-async def get_current_user_id() -> str:
+# Helper function to get current user ID from request
+async def get_current_user_id(request: Request) -> str:
     """
     Get current user ID from authentication token
-    TODO: Implement proper authentication integration
+    Extracts user_id from request.state set by auth middleware
     """
-    # Mock implementation - in production, this will extract from JWT token
-    return "mock-user-id"
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        # Fallback to mock implementation for testing without auth
+        return "mock-user-id"
+    return user_id
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -353,12 +359,15 @@ async def get_user(
 @router.post("/", response_model=EmployeeProfileSchema, status_code=201)
 async def create_user(
     user_data: EmployeeProfileCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Create a new user
+    Create a new user with optional multiple branch assignments
+    Note: role_id is now optional and managed by the auth service
     """
-    tenant_id = await get_current_tenant_id()
+    tenant_id = await get_current_tenant_id(request)
+    current_user_id = await get_current_user_id(request)
 
     # Check if employee code already exists
     if user_data.employee_code:
@@ -385,30 +394,38 @@ async def create_user(
             detail="User profile already exists for this user ID"
         )
 
-    # Verify role exists
-    try:
-        role = await validate_role_exists(db, user_data.role_id, tenant_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
+    # Note: role_id is now auth service role ID (stored as string)
+    # No validation against company_roles table since we use auth service roles
 
-    # Verify branch exists if provided
+    # Extract branch_ids for later processing (exclude from EmployeeProfile creation)
+    branch_ids = user_data.branch_ids if user_data.branch_ids else []
+
+    # Verify single branch exists if provided (for backward compatibility)
     if user_data.branch_id:
         try:
             await validate_branch_exists(db, user_data.branch_id, tenant_id)
+            # Add to branch_ids if not already there
+            if user_data.branch_id not in branch_ids:
+                branch_ids.append(user_data.branch_id)
         except ValueError as e:
             raise HTTPException(
                 status_code=400,
                 detail=str(e)
             )
 
+    # Verify all branches in branch_ids exist
+    for branch_id in branch_ids:
+        try:
+            await validate_branch_exists(db, branch_id, tenant_id)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid branch ID {branch_id}: {str(e)}"
+            )
+
     # Validate reporting hierarchy if reports_to is provided
     if user_data.reports_to:
         try:
-            # Note: We don't have the employee_id yet since it's not created
-            # This validation will be more useful in update operations
             await validate_employee_exists(db, user_data.reports_to, tenant_id)
         except ValueError as e:
             raise HTTPException(
@@ -416,24 +433,37 @@ async def create_user(
                 detail=f"Invalid manager ID: {str(e)}"
             )
 
+    # Get user data as dict and exclude branch_ids (not a column in EmployeeProfile)
+    user_data_dict = user_data.model_dump(exclude={'branch_ids'})
+
     # Create new user
     user = EmployeeProfile(
         tenant_id=tenant_id,
-        **user_data.model_dump()
+        **user_data_dict
     )
 
     db.add(user)
     await db.commit()
-
-    # Load relationships for response
     await db.refresh(user)
+
+    # Create employee-branch assignments if branch_ids provided
+    if branch_ids:
+        for branch_id in branch_ids:
+            employee_branch = EmployeeBranch(
+                tenant_id=tenant_id,
+                employee_profile_id=user.id,
+                branch_id=branch_id,
+                assigned_by=current_user_id
+            )
+            db.add(employee_branch)
+
+        await db.commit()
 
     # Get the user with minimal relationship loading to avoid recursion
     query = select(EmployeeProfile).where(
         EmployeeProfile.id == user.id
     )
 
-    # Don't load the full role object to avoid recursion, get role data separately
     result = await db.execute(query)
     user = result.scalar_one()
 
@@ -450,26 +480,26 @@ async def create_user(
                 'tenant_id': role_obj.tenant_id,
                 'role_name': role_obj.role_name,
                 'display_name': role_obj.display_name,
-                'name': role_obj.display_name,  # Add name field for compatibility
+                'name': role_obj.display_name,
                 'description': role_obj.description,
                 'permissions': role_obj.permissions,
                 'is_active': role_obj.is_active if role_obj.is_active is not None else True,
                 'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
                 'created_at': role_obj.created_at,
                 'updated_at': role_obj.updated_at,
-                'employees': [],  # Empty to avoid recursion
-                'invitations': []  # Empty to avoid recursion
+                'employees': [],
+                'invitations': []
             }
 
-    # Get branch data separately
-    branch_data = None
-    if user.branch_id:
-        branch_query = select(Branch).where(Branch.id == user.branch_id)
-        branch_result = await db.execute(branch_query)
-        branch_obj = branch_result.scalar_one_or_none()
+    # Get all assigned branches
+    branches_data = []
+    if branch_ids:
+        branches_query = select(Branch).where(Branch.id.in_(branch_ids))
+        branches_result = await db.execute(branches_query)
+        branches_objs = branches_result.scalars().all()
 
-        if branch_obj:
-            branch_data = {
+        for branch_obj in branches_objs:
+            branches_data.append({
                 'id': branch_obj.id,
                 'tenant_id': branch_obj.tenant_id,
                 'code': branch_obj.code,
@@ -484,7 +514,10 @@ async def create_user(
                 'is_active': branch_obj.is_active if branch_obj.is_active is not None else True,
                 'created_at': branch_obj.created_at,
                 'updated_at': branch_obj.updated_at
-            }
+            })
+
+    # Get single branch data (for backward compatibility, use first branch)
+    branch_data = branches_data[0] if branches_data else None
 
     # Convert user to dict and add relationships
     user_dict = {
@@ -524,7 +557,8 @@ async def create_user(
         'updated_at': user.updated_at,
         'role': role_data,
         'branch': branch_data,
-        'documents': []  # Empty for now
+        'branches': branches_data,  # New: All assigned branches
+        'documents': []
     }
 
     return EmployeeProfileSchema.model_validate(user_dict)

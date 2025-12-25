@@ -139,9 +139,36 @@ class UserService:
         # Hash password
         password_hash = get_password_hash(user_data.password)
 
-        # If no role_id provided, get the default "User" role for the tenant
+        # Determine the role_id to use
         role_id = user_data.role_id
-        if role_id is None and user_data.tenant_id and user_data.tenant_id != "":
+
+        # If role_id is provided, validate it exists and belongs to the tenant
+        if role_id is not None and role_id > 0:
+            from sqlalchemy import select
+            role_query = select(Role).where(
+                Role.id == role_id
+            )
+            role_result = await db.execute(role_query)
+            role = role_result.scalar_one_or_none()
+
+            if not role:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Role with id {role_id} not found"
+                )
+
+            # Skip tenant validation for global roles (tenant_id = 550e8400-e29b-41d4-a716-446655440000)
+            # Global roles can be used by any tenant
+            GLOBAL_TENANT_ID = "550e8400-e29b-41d4-a716-446655440000"
+            if (user_data.tenant_id and
+                role.tenant_id != user_data.tenant_id and
+                role.tenant_id != GLOBAL_TENANT_ID):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Role does not belong to your tenant"
+                )
+        elif user_data.tenant_id and user_data.tenant_id != "":
+            # If no role_id provided, get the default "User" role for the tenant
             from sqlalchemy import select
             # Query for the "User" role (lowest privilege role) for the tenant
             role_query = select(Role).where(
@@ -181,6 +208,11 @@ class UserService:
                 print(f"Created User role with ID: {role_id}")
             else:
                 role_id = role.id
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="role_id is required for user creation"
+            )
 
         # Create user
         db_user = User(

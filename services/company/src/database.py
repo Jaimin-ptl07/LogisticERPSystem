@@ -300,7 +300,7 @@ class CompanyRole(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    employees = relationship("EmployeeProfile", back_populates="role")
+    # employees relationship removed - employee_profiles now use auth service roles
     invitations = relationship("UserInvitation", back_populates="role")
 
 
@@ -337,7 +337,7 @@ class EmployeeProfile(Base):
     tenant_id = Column(String(255), nullable=False)
     user_id = Column(String(255), unique=True, nullable=False)  # Reference to auth service users table
     employee_code = Column(String(20), unique=True)
-    role_id = Column(String(36), ForeignKey("company_roles.id"), nullable=False)
+    role_id = Column(String(50), nullable=True)  # Now nullable and stores auth service role ID as string
     branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     first_name = Column(String(100))
     last_name = Column(String(100))
@@ -369,9 +369,10 @@ class EmployeeProfile(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    role = relationship("CompanyRole", back_populates="employees")
+    # role relationship removed - now using auth service roles (role_id stores auth role ID as string)
     branch = relationship("Branch")
     documents = relationship("EmployeeDocument", back_populates="employee")
+    assigned_branches = relationship("EmployeeBranch", back_populates="employee", cascade="all, delete-orphan")
     driver_profile = relationship("DriverProfile", back_populates="employee", uselist=False)
     finance_manager_profile = relationship("FinanceManagerProfile", back_populates="employee", uselist=False)
     branch_manager_profile = relationship("BranchManagerProfile", back_populates="employee", uselist=False)
@@ -501,3 +502,20 @@ class EmployeeDocument(Base):
 
     # Relationships
     employee = relationship("EmployeeProfile", back_populates="documents")
+
+
+class EmployeeBranch(Base):
+    """Employee-branch junction table for many-to-many relationship"""
+    __tablename__ = "employee_branches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(255), nullable=False)
+    employee_profile_id = Column(String(36), ForeignKey("employee_profiles.id", ondelete="CASCADE"), nullable=False)
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="CASCADE"), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
+    assigned_by = Column(String(255))  # User ID who made the assignment
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    employee = relationship("EmployeeProfile", back_populates="assigned_branches")
+    branch = relationship("Branch")

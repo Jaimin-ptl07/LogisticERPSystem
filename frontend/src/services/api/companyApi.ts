@@ -33,7 +33,8 @@ export interface User {
   phone_number?: string
   profile_type: 'staff' | 'driver' | 'admin'
   role_id: number
-  branch_id?: string
+  branch_id?: string // Deprecated: Use branch_ids for multiple branches
+  branch_ids?: string[] // New: Multiple branch assignments
   is_active: boolean
   is_superuser: boolean
   last_login?: string
@@ -41,6 +42,7 @@ export interface User {
   updated_at?: string
   role?: Role
   branch?: Branch
+  branches?: Branch[] // New: All assigned branches
   profile?: UserProfile
   documents?: UserDocument[]
 }
@@ -340,7 +342,8 @@ export interface UserCreate {
   phone?: string
   profile_type?: 'staff' | 'driver' | 'admin'
   role_id?: string
-  branch_id?: string
+  branch_id?: string // Deprecated: Use branch_ids for multiple branches
+  branch_ids?: string[] // New: Multiple branch assignments
   is_active?: boolean
   send_invitation?: boolean
 }
@@ -374,6 +377,17 @@ export interface RoleUpdate {
   name?: string
   description?: string
   permission_ids?: number[]
+}
+
+// Auth service Role type (from roles table in auth database)
+export interface AuthRole {
+  id: number
+  name: string
+  description?: string
+  is_system: boolean
+  tenant_id: string
+  created_at: string
+  updated_at?: string
 }
 
 export interface UserProfileCreate {
@@ -851,9 +865,8 @@ export const companyApi = createApi({
     // Role Management endpoints
     getRoles: builder.query<getRoleAPIResponse, { include_permissions?: boolean }>({
       query: ({ include_permissions = true }) => {
-        const params = new URLSearchParams()
-        params.append('include_permissions', include_permissions.toString())
-        return `company/roles?${params}`
+        // Now uses auth service roles via company service proxy
+        return 'company/roles/auth-roles'
       },
       providesTags: ['Role'],
     }),
@@ -887,6 +900,12 @@ export const companyApi = createApi({
     getPermissions: builder.query<Permission[], void>({
       query: () => 'company/roles/permissions',
       providesTags: ['Role'],
+    }),
+
+    // Get roles from auth service (via company service proxy)
+    getAuthRoles: builder.query<AuthRole[], void>({
+      query: () => 'company/roles/auth-roles',
+      providesTags: ['AuthRole'],
     }),
 
     // User Profile endpoints
@@ -1047,6 +1066,7 @@ export const {
   useCreateRoleMutation,
   useUpdateRoleMutation,
   useDeleteRoleMutation,
+  useGetAuthRolesQuery,  // Get roles from auth service via company service
   useGetPermissionsQuery,
   // User Profile hooks
   useGetUserProfileQuery,

@@ -4,10 +4,11 @@ Role management endpoints
 from typing import List, Optional
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+import httpx
 
 from src.database import AsyncSessionLocal, CompanyRole, EmployeeProfile
 from src.schemas import (
@@ -16,6 +17,7 @@ from src.schemas import (
     CompanyRoleUpdate,
     PaginatedResponse
 )
+from src.config_local import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,6 +44,49 @@ async def get_current_tenant_id() -> str:
     """
     # Mock implementation - in production, this will extract from JWT token
     return "default-tenant"
+
+
+@router.get("/auth-roles")
+async def get_auth_roles(request: Request):
+    """
+    Get roles from auth service
+    This endpoint calls the auth service's roles API and returns the roles
+    """
+    auth_service_url = settings.AUTH_SERVICE_URL
+
+    # Get authorization header from request to pass to auth service
+    auth_headers = {
+        "Accept": "application/json"
+    }
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    try:
+        # Enable follow_redirects to handle 307 redirects
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(
+                f"{auth_service_url}/api/v1/roles",
+                headers=auth_headers
+            )
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Auth service returned error: {response.text}"
+                )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="Auth service request timed out"
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to reach auth service: {str(e)}"
+        )
 
 
 @router.get("/", response_model=PaginatedResponse)

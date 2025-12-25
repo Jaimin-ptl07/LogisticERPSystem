@@ -447,8 +447,9 @@ class EmployeeProfileBase(BaseSchema):
     """Base employee profile schema"""
     user_id: str = Field(..., min_length=36, max_length=255)
     employee_code: Optional[str] = Field(None, max_length=20)
-    role_id: str = Field(..., min_length=36, max_length=36)
-    branch_id: Optional[UUID] = None
+    role_id: Optional[str] = Field(None, max_length=50)  # Now stores auth service role ID as string
+    branch_id: Optional[UUID] = None  # Deprecated: Use branch_ids for multiple branches
+    branch_ids: Optional[List[UUID]] = None  # New: Multiple branch assignments
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
@@ -485,8 +486,9 @@ class EmployeeProfileCreate(EmployeeProfileBase):
 class EmployeeProfileUpdate(BaseSchema):
     """Schema for updating an employee profile"""
     employee_code: Optional[str] = Field(None, max_length=20)
-    role_id: Optional[str] = Field(None, min_length=36, max_length=36)
-    branch_id: Optional[UUID] = None
+    role_id: Optional[str] = Field(None, max_length=50)  # Now stores auth service role ID as string
+    branch_id: Optional[UUID] = None  # Deprecated: Use branch_ids for multiple branches
+    branch_ids: Optional[List[UUID]] = None  # New: Multiple branch assignments
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
@@ -525,9 +527,37 @@ class EmployeeProfileInDB(EmployeeProfileBase):
 
 class EmployeeProfile(EmployeeProfileInDB):
     """Schema for employee profile response"""
-    role: Optional[CompanyRole] = None
+    # role: Optional[CompanyRole] = None  # Removed - using auth service roles now
     branch: Optional[Branch] = None
+    branches: Optional[List[Branch]] = None  # New: All assigned branches
     documents: Optional[List["EmployeeDocument"]] = None
+
+
+# Employee Branch schemas (Junction table)
+class EmployeeBranchBase(BaseSchema):
+    """Base employee-branch assignment schema"""
+    employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    branch_id: UUID
+
+
+class EmployeeBranchCreate(EmployeeBranchBase):
+    """Schema for creating an employee-branch assignment"""
+    pass
+
+
+class EmployeeBranchInDB(EmployeeBranchBase):
+    """Schema for employee-branch assignment in database"""
+    id: UUID
+    tenant_id: str
+    assigned_at: datetime
+    assigned_by: Optional[str] = None
+    created_at: datetime
+
+
+class EmployeeBranch(EmployeeBranchInDB):
+    """Schema for employee-branch assignment response"""
+    employee: Optional[EmployeeProfile] = None
+    branch: Optional[Branch] = None
 
 
 # Driver Profile schemas

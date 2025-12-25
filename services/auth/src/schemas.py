@@ -60,6 +60,7 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     tenant_id: Optional[str] = None  # Optional for super admins
     role_id: Optional[int] = None  # Will be set to default role if not provided
+    is_superuser: bool = False  # Only superadmins can create superusers
 
 
 class UserUpdate(BaseSchema):
