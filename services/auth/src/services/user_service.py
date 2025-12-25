@@ -310,6 +310,7 @@ class UserService:
             "sub": user.id,
             "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
             "role_id": user.role_id,
+            "role": user.role.name,
             "email": user.email,
             "is_superuser": user.is_superuser
         })

@@ -28,7 +28,7 @@ async def get_branches(
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
-    """Get all active branches from Company service"""
+    """Get branches assigned to the current user from Company service"""
     # Get authorization header from the request and forward it
     headers = {}
     auth_header = request.headers.get("authorization")
@@ -37,9 +37,9 @@ async def get_branches(
 
     async with AsyncClient(timeout=30.0) as client:
         try:
-            # Call Company service branches endpoint
+            # Call Company service branches endpoint - get assigned branches for user
             response = await client.get(
-                f"{COMPANY_SERVICE_URL}/branches/",
+                f"{COMPANY_SERVICE_URL}/branches/my/assigned",
                 params={
                     "is_active": True,
                     "per_page": 100,

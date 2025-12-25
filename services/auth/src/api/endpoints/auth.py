@@ -66,6 +66,7 @@ async def get_current_user(
         "last_name": user.last_name,
         "tenant_id": user.tenant_id,
         "role_id": user.role_id,
+        "role": user.role.name,
         "is_active": user.is_active,
         "is_superuser": user.is_superuser,
         "permissions": token_data.permissions,
@@ -106,6 +107,7 @@ async def refresh_token(
         "sub": user.id,
         "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
         "role_id": user.role_id,
+        "role": user.role.name,  # Include role name in token
         "email": user.email,
         "is_superuser": user.is_superuser
     })

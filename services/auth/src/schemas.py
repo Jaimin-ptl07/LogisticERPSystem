@@ -180,6 +180,7 @@ class TokenData(BaseSchema):
     user_id: str
     tenant_id: Optional[str] = None  # Nullable for super admins
     role_id: int
+    role: Optional[str] = None  # Role name from JWT
     permissions: List[str]
     exp: Optional[datetime] = None
     is_superuser: bool = False
