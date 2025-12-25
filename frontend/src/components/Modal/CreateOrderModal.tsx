@@ -12,18 +12,10 @@ import {
   useCreateOrderMutation,
   useGetBranchesQuery,
   useGetCustomersQuery,
-  useGetProductsQuery
+  useGetProductsQuery,
 } from "@/services/api/ordersApi";
-import {
-  Calendar,
-  Package,
-  Plus,
-  X,
-  Info,
-  User,
-  Weight,
-  Clock,
-} from "lucide-react";
+import { Package, Plus, X, Info, User, Weight, Clock } from "lucide-react";
+import { skipToken } from "@reduxjs/toolkit/query";
 
 // Form validation schema
 const orderFormSchema = z.object({
@@ -89,14 +81,15 @@ export function CreateOrderModal({
   const orderItems = watch("orderItems");
 
   // Fetch real data from APIs
-  const { data: branchesData, isLoading: branchesLoading } = useGetBranchesQuery();
-  const { data: customersData, isLoading: customersLoading } = useGetCustomersQuery(
-    selectedBranch ? { branch_id: selectedBranch } : {}
-  );
+  const { data: branchesData, isLoading: branchesLoading } =
+    useGetBranchesQuery();
+  const { data: customersData, isLoading: customersLoading } =
+    useGetCustomersQuery(selectedBranch ? { branch_id: selectedBranch } : {});
 
-    const { data: productsData, isLoading: productsLoading } = useGetProductsQuery(
-    selectedBranch ? { branch_id: selectedBranch } : undefined
-  );
+  const { data: productsData, isLoading: productsLoading } =
+    useGetProductsQuery(
+      selectedBranch ? { branch_id: selectedBranch } : skipToken
+    );
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
 
   const branches = branchesData || [];
@@ -137,12 +130,14 @@ export function CreateOrderModal({
     if (selectedBranch && selectedBranch !== branchId) {
       setValue("customer", "");
       // Reset all order items
-      setValue("orderItems", [{
-        id: "1",
-        productName: "",
-        weight: 0,
-        quantity: 1,
-      }]);
+      setValue("orderItems", [
+        {
+          id: "1",
+          productName: "",
+          weight: 0,
+          quantity: 1,
+        },
+      ]);
     }
     setShowBranchNote(true);
     setTimeout(() => setShowBranchNote(false), 3000); // Hide note after 3 seconds
@@ -155,14 +150,21 @@ export function CreateOrderModal({
       weight: 0,
       quantity: 1,
     };
-    setValue("orderItems", [...orderItems, newItem]);
+    setValue("orderItems", [...orderItems, newItem], {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
   };
 
   const removeOrderItem = (id: string) => {
     if (orderItems.length > 1) {
       setValue(
         "orderItems",
-        orderItems.filter((item) => item.id !== id)
+        orderItems.filter((item) => item.id !== id),
+        {
+          shouldValidate: true,
+          shouldDirty: true,
+        }
       );
     }
   };
@@ -173,8 +175,8 @@ export function CreateOrderModal({
         const updatedItem = { ...item, [field]: value };
 
         // Auto-fill weight when product is selected
-        if (field === 'productName' && value) {
-          const product = products.find(p => p.name === value);
+        if (field === "productName" && value) {
+          const product = products.find((p) => p.name === value);
           if (product && (product.weight || product.current_stock)) {
             updatedItem.weight = product.weight || 1; // Default to 1kg if no weight
           }
@@ -190,12 +192,20 @@ export function CreateOrderModal({
   const onSubmit = async (data: OrderFormData) => {
     try {
       // Calculate totals
-      const totalWeight = data.orderItems.reduce((sum, item) => sum + (item.weight * item.quantity), 0);
-      const packageCount = data.orderItems.reduce((sum, item) => sum + item.quantity, 0);
+      const totalWeight = data.orderItems.reduce(
+        (sum, item) => sum + item.weight * item.quantity,
+        0
+      );
+      const packageCount = data.orderItems.reduce(
+        (sum, item) => sum + item.quantity,
+        0
+      );
 
       // Prepare order items with product IDs
-      const items = data.orderItems.map(item => {
-        const product = products.find(p => p.name === item.productName || p.code === item.productName);
+      const items = data.orderItems.map((item) => {
+        const product = products.find(
+          (p) => p.name === item.productName || p.code === item.productName
+        );
         return {
           product_id: product?.id || item.productName,
           quantity: item.quantity,
@@ -207,24 +217,26 @@ export function CreateOrderModal({
       // Create order data
       const orderData = {
         order_number: data.orderNumber,
-        tenant_id: 'default-tenant',
+        tenant_id: "default-tenant",
         customer_id: data.customer,
         branch_id: data.branch,
-        order_type: 'delivery' as const,
-        priority: 'normal' as const,
+        order_type: "delivery" as const,
+        priority: "normal" as const,
         total_weight: totalWeight,
         total_volume: totalWeight / 1000, // rough estimate
         package_count: packageCount,
         total_amount: 0, // Will be calculated based on items
-        payment_type: 'cod' as const,
+        payment_type: "cod" as const,
         pickup_date: new Date().toISOString(),
-        delivery_date: new Date(Date.now() + (data.dueDays * 24 * 60 * 60 * 1000)).toISOString(),
+        delivery_date: new Date(
+          Date.now() + data.dueDays * 24 * 60 * 60 * 1000
+        ).toISOString(),
         items: items,
         special_instructions: data.notes,
       };
 
       const createdOrder = await createOrder(orderData).unwrap();
-      toast.success('Order created successfully');
+      toast.success("Order created successfully");
 
       // Reset form and close modal
       reset();
@@ -235,8 +247,8 @@ export function CreateOrderModal({
         onSuccess(createdOrder);
       }
     } catch (error: any) {
-      console.error('Failed to create order:', error);
-      toast.error(error.message || 'Failed to create order');
+      console.error("Failed to create order:", error);
+      toast.error(error.message || "Failed to create order");
     }
   };
 
@@ -244,6 +256,13 @@ export function CreateOrderModal({
     reset();
     onClose();
   };
+
+  // Reset branch note when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setShowBranchNote(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -363,16 +382,18 @@ export function CreateOrderModal({
                     >
                       <option value="">Select Customer</option>
                       {customersLoading ? (
-                      <option disabled>Loading customers...</option>
-                    ) : customers.length === 0 ? (
-                      <option disabled>No customers available for this branch</option>
-                    ) : (
-                      customers.map((customer) => (
-                        <option key={customer.id} value={customer.id}>
-                          {customer.name}
+                        <option disabled>Loading customers...</option>
+                      ) : customers.length === 0 ? (
+                        <option disabled>
+                          No customers available for this branch
                         </option>
-                      ))
-                    )}
+                      ) : (
+                        customers.map((customer) => (
+                          <option key={customer.id} value={customer.id}>
+                            {customer.name}
+                          </option>
+                        ))
+                      )}
                     </select>
                     <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
@@ -385,7 +406,8 @@ export function CreateOrderModal({
               )}
               {selectedBranch && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Showing customers for {branches.find(b => b.id === selectedBranch)?.name}
+                  Showing customers for{" "}
+                  {branches.find((b) => b.id === selectedBranch)?.name}
                 </p>
               )}
             </div>
@@ -412,9 +434,15 @@ export function CreateOrderModal({
         </div>
 
         {/* Branch Note */}
-        {showBranchNote && (
+        <div
+          className={`transition-all duration-300 ease-in-out ${
+            showBranchNote
+              ? "opacity-100 max-h-24 mb-6"
+              : "opacity-0 max-h-0 overflow-hidden"
+          }`}
+        >
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
             <p className="text-sm text-blue-800">
               <strong>Note:</strong> Order status is automatically managed. New
               orders start as Pending and will automatically update to Loading
@@ -422,7 +450,7 @@ export function CreateOrderModal({
               when complete.
             </p>
           </div>
-        )}
+        </div>
 
         {/* Order Items */}
         <div className="space-y-4 bg-white rounded-lg border border-gray-200 p-4">
@@ -517,7 +545,9 @@ export function CreateOrderModal({
                     {productsLoading ? (
                       <option disabled>Loading products...</option>
                     ) : products.length === 0 ? (
-                      <option disabled>No products available for this branch</option>
+                      <option disabled>
+                        No products available for this branch
+                      </option>
                     ) : (
                       products.map((product) => (
                         <option key={product.id} value={product.name}>
@@ -531,7 +561,7 @@ export function CreateOrderModal({
                 {/* Weight */}
                 <div>
                   <label
-                    className={`block text-sm font-medium mb-1 flex items-center gap-1 ${
+                    className={`text-sm font-medium mb-1 flex items-center gap-1 ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
                     }`}
                   >
@@ -655,10 +685,20 @@ export function CreateOrderModal({
           </Button>
           <Button
             type="submit"
-            disabled={!isValid || !selectedBranch || isCreating || productsLoading || customersLoading}
+            disabled={
+              !isValid ||
+              !selectedBranch ||
+              isCreating ||
+              productsLoading ||
+              customersLoading
+            }
             className="cursor-pointer w-full sm:w-auto order-1 sm:order-2 bg-[#1ab052] hover:bg-[#158842] disabled:opacity-50"
           >
-            {isCreating ? 'Creating...' : (productsLoading || customersLoading) ? 'Loading...' : 'Create Order'}
+            {isCreating
+              ? "Creating..."
+              : productsLoading || customersLoading
+              ? "Loading..."
+              : "Create Order"}
           </Button>
         </div>
       </form>

@@ -1,5 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQuery } from './baseApi'
+import { getProductCategoryResponse, getRoleAPIResponse } from '@/types/common'
 
 // Types
 export interface Branch {
@@ -226,6 +227,8 @@ export interface Product {
   created_at: string
   updated_at?: string
   category?: ProductCategory
+  available_for_all_branches?:boolean
+  branches?:object[]
 }
 
 export interface PricingRule {
@@ -306,6 +309,7 @@ export interface ProductCreate {
   max_stock_level?: number
   current_stock?: number
   is_active?: boolean
+  available_for_all_branches?:boolean
 }
 
 export interface ProductCategoryCreate {
@@ -585,7 +589,7 @@ export const companyApi = createApi({
     }),
 
     // Product Category endpoints
-    getProductCategories: builder.query<ProductCategory[], { page?: number; per_page?: number; search?: string; parent_id?: string; is_active?: boolean; include_children?: boolean }>({
+    getProductCategories: builder.query<getProductCategoryResponse, { page?: number; per_page?: number; search?: string; parent_id?: string; is_active?: boolean; include_children?: boolean }>({
       query: ({ page = 1, per_page = 20, search, parent_id, is_active, include_children = true }) => {
         const params = new URLSearchParams()
         params.append('page', page.toString())
@@ -631,7 +635,7 @@ export const companyApi = createApi({
     }),
 
     // Product endpoints
-    getProducts: builder.query<{ items: Product[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; category_id?: string; min_price?: number; max_price?: number; is_active?: boolean; low_stock?: boolean }>({
+    getProducts: builder.query<{ items: Product[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number;branch_id?: string; search?: string; category_id?: string; min_price?: number; max_price?: number; is_active?: boolean; low_stock?: boolean }>({
       query: ({ page = 1, per_page = 20, search, category_id, min_price, max_price, is_active, low_stock }) => {
         const params = new URLSearchParams()
         params.append('page', page.toString())
@@ -845,7 +849,7 @@ export const companyApi = createApi({
     }),
 
     // Role Management endpoints
-    getRoles: builder.query<Role[], { include_permissions?: boolean }>({
+    getRoles: builder.query<getRoleAPIResponse, { include_permissions?: boolean }>({
       query: ({ include_permissions = true }) => {
         const params = new URLSearchParams()
         params.append('include_permissions', include_permissions.toString())

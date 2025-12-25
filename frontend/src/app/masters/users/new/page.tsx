@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { AppLayout } from "@/components/layout/AppLayout";
 import {
   ArrowLeft,
   Save,
@@ -19,28 +19,28 @@ import {
   Shield,
   Building,
   Phone,
-  Users
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
+  Users,
+} from "lucide-react";
+import { toast } from "react-hot-toast";
 import {
   useCreateUserMutation,
   useGetBranchesQuery,
-  useGetRolesQuery
-} from '@/services/api/companyApi';
-import { useCreateAuthUserMutation } from '@/services/api/authApi';
-import { UserCreate, Role, Branch } from '@/services/api/companyApi';
+  useGetRolesQuery,
+} from "@/services/api/companyApi";
+import { useCreateAuthUserMutation } from "@/services/api/authApi";
+import { UserCreate, Role, Branch } from "@/services/api/companyApi";
 
 const userCreateSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  first_name: z.string().min(1, 'First name is required'),
-  last_name: z.string().min(1, 'Last name is required'),
+  email: z.string().email("Invalid email address"),
+  first_name: z.string().min(1, "First name is required"),
+  last_name: z.string().min(1, "Last name is required"),
   phone_number: z.string().optional(),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  profile_type: z.enum(['staff', 'driver', 'admin']),
-  role_id: z.string().min(1, 'Role is required'),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  profile_type: z.enum(["staff", "driver", "admin"]),
+  role_id: z.string().min(1, "Role is required"),
   branch_id: z.string().optional(),
   is_active: z.boolean(),
-  send_invitation: z.boolean()
+  send_invitation: z.boolean(),
 });
 
 type UserCreateFormData = z.infer<typeof userCreateSchema>;
@@ -50,7 +50,10 @@ export default function NewUserPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch branches and roles
-  const { data: branchesData } = useGetBranchesQuery({ page: 1, per_page: 100 });
+  const { data: branchesData } = useGetBranchesQuery({
+    page: 1,
+    per_page: 100,
+  });
   const { data: rolesData } = useGetRolesQuery({});
 
   // Mutations
@@ -65,46 +68,46 @@ export default function NewUserPage() {
     handleSubmit,
     formState: { errors, isValid },
     watch,
-    setValue
+    setValue,
   } = useForm<UserCreateFormData>({
     resolver: zodResolver(userCreateSchema),
     defaultValues: {
-      email: '',
-      first_name: '',
-      last_name: '',
-      phone_number: '',
-      password: '',
-      profile_type: 'staff',
-      role_id: '', // Will be set when roles are loaded
+      email: "",
+      first_name: "",
+      last_name: "",
+      phone_number: "",
+      password: "",
+      profile_type: "staff",
+      role_id: "", // Will be set when roles are loaded
       is_active: true,
-      send_invitation: true
-    }
+      send_invitation: true,
+    },
   });
 
-  const selectedProfileType = watch('profile_type');
-  const selectedRoleId = watch('role_id');
-  const selectedBranchId = watch('branch_id');
+  const selectedProfileType = watch("profile_type");
+  const selectedRoleId = watch("role_id");
+  const selectedBranchId = watch("branch_id");
 
   // Debug: Log form validation state
   useEffect(() => {
-    console.log('Form errors:', errors);
-    console.log('Form isValid:', isValid);
-    console.log('selectedRoleId:', selectedRoleId);
-    console.log('Form values:', watch());
+    console.log("Form errors:", errors);
+    console.log("Form isValid:", isValid);
+    console.log("selectedRoleId:", selectedRoleId);
+    console.log("Form values:", watch());
   }, [errors, isValid, selectedRoleId, watch]);
 
   // Auto-select first role when roles are loaded
   useEffect(() => {
     if (roles && !selectedRoleId && roles.length > 0) {
-      console.log('Auto-selecting first role:', roles[0]);
-      setValue('role_id', roles[0].id);
+      console.log("Auto-selecting first role:", roles[0]);
+      setValue("role_id", roles[0].id);
     }
   }, [roles, selectedRoleId, setValue]);
 
   // Handle profile type change
   const handleProfileTypeChange = (profileType: string) => {
-    setValue('profile_type', profileType as any);
-    console.log('Profile type changed to:', profileType);
+    setValue("profile_type", profileType as any);
+    console.log("Profile type changed to:", profileType);
     // Role selection is now manual - user can choose any role regardless of profile type
   };
 
@@ -139,20 +142,20 @@ export default function NewUserPage() {
 
       await createUser(profileData).unwrap();
 
-      toast.success('User created successfully');
-      router.push('/masters/users');
+      toast.success("User created successfully");
+      router.push("/masters/users");
     } catch (error: any) {
-      console.error('User creation error:', error);
+      console.error("User creation error:", error);
 
       // Handle validation errors
       if (error?.data?.detail) {
         if (Array.isArray(error.data.detail)) {
           // Handle FastAPI validation errors
-          const errorMessages = error.data.detail.map((err: any) =>
-            `${err.loc?.join('.')} ${err.msg}`
-          ).join(', ');
+          const errorMessages = error.data.detail
+            .map((err: any) => `${err.loc?.join(".")} ${err.msg}`)
+            .join(", ");
           toast.error(`Validation error: ${errorMessages}`);
-        } else if (typeof error.data.detail === 'object') {
+        } else if (typeof error.data.detail === "object") {
           // Handle object error
           const errorMsg = JSON.stringify(error.data.detail);
           toast.error(`Validation error: ${errorMsg}`);
@@ -162,10 +165,15 @@ export default function NewUserPage() {
         }
       } else if (error?.status) {
         // Handle HTTP status errors
-        toast.error(`Error ${error.status}: ${error.statusText || 'Failed to create user'}`);
+        toast.error(
+          `Error ${error.status}: ${
+            error.statusText || "Failed to create user"
+          }`
+        );
       } else {
         // Handle other errors
-        const errorMessage = error?.error || error?.message || 'Failed to create user';
+        const errorMessage =
+          error?.error || error?.message || "Failed to create user";
         toast.error(errorMessage);
       }
     } finally {
@@ -175,7 +183,7 @@ export default function NewUserPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto inline space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -211,12 +219,14 @@ export default function NewUserPage() {
                   <Label htmlFor="first_name">First Name *</Label>
                   <Input
                     id="first_name"
-                    {...register('first_name')}
+                    {...register("first_name")}
                     placeholder="e.g., John"
-                    className={errors.first_name ? 'border-red-500' : ''}
+                    className={errors.first_name ? "border-red-500" : ""}
                   />
                   {errors.first_name && (
-                    <p className="text-sm text-red-600 mt-1">{errors.first_name.message}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.first_name.message}
+                    </p>
                   )}
                 </div>
 
@@ -224,12 +234,14 @@ export default function NewUserPage() {
                   <Label htmlFor="last_name">Last Name *</Label>
                   <Input
                     id="last_name"
-                    {...register('last_name')}
+                    {...register("last_name")}
                     placeholder="e.g., Doe"
-                    className={errors.last_name ? 'border-red-500' : ''}
+                    className={errors.last_name ? "border-red-500" : ""}
                   />
                   {errors.last_name && (
-                    <p className="text-sm text-red-600 mt-1">{errors.last_name.message}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.last_name.message}
+                    </p>
                   )}
                 </div>
               </div>
@@ -239,12 +251,14 @@ export default function NewUserPage() {
                 <Input
                   id="email"
                   type="email"
-                  {...register('email')}
+                  {...register("email")}
                   placeholder="e.g., john.doe@company.com"
-                  className={errors.email ? 'border-red-500' : ''}
+                  className={errors.email ? "border-red-500" : ""}
                 />
                 {errors.email && (
-                  <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.email.message}
+                  </p>
                 )}
               </div>
 
@@ -252,12 +266,14 @@ export default function NewUserPage() {
                 <Label htmlFor="phone_number">Phone Number</Label>
                 <Input
                   id="phone_number"
-                  {...register('phone_number')}
+                  {...register("phone_number")}
                   placeholder="e.g., +91 9876543210"
-                  className={errors.phone_number ? 'border-red-500' : ''}
+                  className={errors.phone_number ? "border-red-500" : ""}
                 />
                 {errors.phone_number && (
-                  <p className="text-sm text-red-600 mt-1">{errors.phone_number.message}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.phone_number.message}
+                  </p>
                 )}
               </div>
 
@@ -266,7 +282,7 @@ export default function NewUserPage() {
                   <Label htmlFor="profile_type">Profile Type *</Label>
                   <select
                     id="profile_type"
-                    {...register('profile_type')}
+                    {...register("profile_type")}
                     onChange={(e) => handleProfileTypeChange(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
@@ -275,7 +291,9 @@ export default function NewUserPage() {
                     <option value="admin">Admin</option>
                   </select>
                   {errors.profile_type && (
-                    <p className="text-sm text-red-600 mt-1">{errors.profile_type.message}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.profile_type.message}
+                    </p>
                   )}
                 </div>
 
@@ -283,9 +301,9 @@ export default function NewUserPage() {
                   <Label htmlFor="role_id">Role *</Label>
                   <select
                     id="role_id"
-                    {...register('role_id')}
+                    {...register("role_id")}
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.role_id ? 'border-red-500' : 'border-gray-300'
+                      errors.role_id ? "border-red-500" : "border-gray-300"
                     }`}
                   >
                     <option value="">Select Role</option>
@@ -296,7 +314,9 @@ export default function NewUserPage() {
                     ))}
                   </select>
                   {errors.role_id && (
-                    <p className="text-sm text-red-600 mt-1">Role is required</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      Role is required
+                    </p>
                   )}
                 </div>
               </div>
@@ -305,7 +325,7 @@ export default function NewUserPage() {
                 <Label htmlFor="branch_id">Assigned Branch</Label>
                 <select
                   id="branch_id"
-                  {...register('branch_id')}
+                  {...register("branch_id")}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Branch (Optional)</option>
@@ -316,7 +336,9 @@ export default function NewUserPage() {
                   ))}
                 </select>
                 {errors.branch_id && (
-                  <p className="text-sm text-red-600 mt-1">{errors.branch_id.message}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.branch_id.message}
+                  </p>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
                   Optional: Assign this user to a branch
@@ -339,12 +361,14 @@ export default function NewUserPage() {
                 <Input
                   id="password"
                   type="password"
-                  {...register('password')}
+                  {...register("password")}
                   placeholder="Enter password"
-                  className={errors.password ? 'border-red-500' : ''}
+                  className={errors.password ? "border-red-500" : ""}
                 />
                 {errors.password && (
-                  <p className="text-sm text-red-600 mt-1">{errors.password.message}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.password.message}
+                  </p>
                 )}
               </div>
 
@@ -352,7 +376,7 @@ export default function NewUserPage() {
                 <input
                   type="checkbox"
                   id="send_invitation"
-                  {...register('send_invitation')}
+                  {...register("send_invitation")}
                   className="rounded border-gray-300"
                 />
                 <Label htmlFor="send_invitation" className="text-sm">
@@ -364,7 +388,7 @@ export default function NewUserPage() {
                 <input
                   type="checkbox"
                   id="is_active"
-                  {...register('is_active')}
+                  {...register("is_active")}
                   className="rounded border-gray-300"
                 />
                 <Label htmlFor="is_active" className="text-sm">
