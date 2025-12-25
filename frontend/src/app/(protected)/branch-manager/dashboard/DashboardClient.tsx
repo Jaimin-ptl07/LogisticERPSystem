@@ -121,7 +121,7 @@ export default function Orders() {
   };
 
   return (
-    <AppLayout>
+    <>
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex justify-between items-center">
@@ -354,6 +354,6 @@ export default function Orders() {
         onClose={handleCloseCreateModal}
         onSuccess={handleCreateOrderSuccess}
       />
-    </AppLayout>
+    </>
   );
 }
