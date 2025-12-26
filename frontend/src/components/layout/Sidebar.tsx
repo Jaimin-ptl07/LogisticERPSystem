@@ -376,7 +376,7 @@ export function Sidebar({
                 {user?.first_name || "User"}
               </p>
               <p className="text-xs text-gray-500 truncate">
-                {user?.role?.name || "User"}
+                {user?.role_name || user?.role?.name || "User"}
               </p>
             </div>
           )}

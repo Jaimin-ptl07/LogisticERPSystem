@@ -198,7 +198,7 @@ export default function BranchManagerProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Branch Manager Details</CardTitle>

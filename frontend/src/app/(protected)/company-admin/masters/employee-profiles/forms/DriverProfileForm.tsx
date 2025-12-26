@@ -125,11 +125,31 @@ export default function DriverProfileForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    e.stopPropagation()
+
+    // Block submission if not in edit mode
+    if (!isEditing) {
+      console.warn('Form submission blocked: not in edit mode')
+      return
+    }
+
     try {
+      // Map form field names to backend schema field names
+      const mappedData = {
+        license_number: formData.license_number,
+        license_type: formData.license_types[0] || '',  // Take first license type
+        license_expiry: formData.license_expiry_date || undefined,
+        license_issuing_authority: formData.license_issuing_authority || undefined,
+        badge_number: formData.badge_number || undefined,
+        badge_expiry: formData.badge_expiry_date || undefined,
+        experience_years: formData.experience_years || 0,
+        preferred_vehicle_types: formData.vehicle_preferences || [],
+      }
+
       if (profile) {
-        await updateProfile({ driverId: user.id, profile: formData }).unwrap()
+        await updateProfile({ driverId: user.id, profile: mappedData }).unwrap()
       } else {
-        await createProfile({ userId: user.id, profile: formData }).unwrap()
+        await createProfile({ userId: user.id, profile: mappedData }).unwrap()
       }
       onSave()
     } catch (error) {
@@ -256,7 +276,7 @@ export default function DriverProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       {/* License Information */}
       <Card>
         <CardHeader>

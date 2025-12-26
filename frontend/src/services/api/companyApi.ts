@@ -89,6 +89,7 @@ export interface User {
 export interface Role {
   id: number
   name: string
+  role_name?: string  // Alternative field name from auth service
   description?: string
   tenant_id: string
   permissions: Permission[]

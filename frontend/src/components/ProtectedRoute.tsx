@@ -52,7 +52,8 @@ export function ProtectedRoute({
 
     // Check role-based access if required
     if (requiredRole && requiredRole.length > 0 && user) {
-      const hasRequiredRole = requiredRole.includes(user.role?.name || "");
+      const userRoleName = user.role_name || user.role?.name || "";
+      const hasRequiredRole = requiredRole.includes(userRoleName);
       if (!hasRequiredRole) {
         // Redirect to unauthorized page or dashboard
         router.push("/dashboard");
@@ -72,7 +73,8 @@ export function ProtectedRoute({
 
   // Check role-based access
   if (requiredRole && requiredRole.length > 0 && user) {
-    const hasRequiredRole = requiredRole.includes(user.role?.name || "");
+    const userRoleName = user.role_name || user.role?.name || "";
+    const hasRequiredRole = requiredRole.includes(userRoleName);
     if (!hasRequiredRole) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">

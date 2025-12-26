@@ -134,11 +134,52 @@ export default function EmployeeProfileForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    e.stopPropagation()
+
+    // Only submit if explicitly in edit mode
+    if (!isEditing) {
+      console.warn('Form submission blocked: not in edit mode')
+      return
+    }
+
     try {
+      // Helper function to convert empty string to undefined
+      const cleanValue = (value: string | undefined) => value && value.trim() ? value : undefined
+
+      // Flatten nested objects to match backend API structure
+      const flattenedData: any = {
+        employee_id: cleanValue(formData.employee_id),
+        department: cleanValue(formData.department),
+        designation: cleanValue(formData.designation),
+        date_of_joining: cleanValue(formData.date_of_joining),
+        reporting_manager_id: cleanValue(formData.reporting_manager_id),
+        emergency_contact_name: cleanValue(formData.emergency_contact_name),
+        emergency_contact_phone: cleanValue(formData.emergency_contact_number),
+        blood_group: cleanValue(formData.blood_group),
+        date_of_birth: cleanValue(formData.date_of_birth),
+        // Clean gender and marital_status - don't send empty strings
+        gender: cleanValue(formData.gender),
+        marital_status: cleanValue(formData.marital_status),
+        nationality: cleanValue(formData.nationality),
+        aadhar_number: cleanValue(formData.aadhar_number),
+        pan_number: cleanValue(formData.pan_number),
+        passport_number: cleanValue(formData.passport_number),
+        // Flatten current_address
+        address: cleanValue(formData.current_address?.address_line1),
+        city: cleanValue(formData.current_address?.city),
+        state: cleanValue(formData.current_address?.state),
+        postal_code: cleanValue(formData.current_address?.postal_code),
+        country: cleanValue(formData.current_address?.country),
+        // Flatten bank_details
+        bank_account_number: cleanValue(formData.bank_details?.account_number),
+        bank_name: cleanValue(formData.bank_details?.bank_name),
+        bank_ifsc: cleanValue(formData.bank_details?.ifsc_code),
+      }
+
       if (profile) {
-        await updateProfile({ userId: user.id, profile: formData }).unwrap()
+        await updateProfile({ userId: user.id, profile: flattenedData }).unwrap()
       } else {
-        await createProfile({ userId: user.id, profile: formData }).unwrap()
+        await createProfile({ userId: user.id, profile: flattenedData }).unwrap()
       }
       onSave()
     } catch (error) {
@@ -308,7 +349,7 @@ export default function EmployeeProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       {/* Personal Information */}
       <Card>
         <CardHeader>

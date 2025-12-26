@@ -522,27 +522,6 @@ export default function EmployeeProfileForm({
           </div>
         </CardContent>
       </Card>
-
-      {/* Form Actions */}
-      <div className="flex justify-end gap-3 pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={isUpdating}
-        >
-          <X className="w-4 h-4 mr-2" />
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={isUpdating}
-          className="flex items-center gap-2"
-        >
-          <Save className="w-4 h-4" />
-          {isUpdating ? 'Saving...' : 'Save Profile'}
-        </Button>
-      </div>
     </form>
   )
 }
