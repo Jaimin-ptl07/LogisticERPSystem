@@ -1595,6 +1595,26 @@ VALUES
                 resource = 'finance'
                 AND action = 'reports'
         )
+    ),
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'products'
+                AND action = 'read'
+        )
+    ),
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'products'
+                AND action = 'read_all'
+        )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Assign finance manager permissions (ID = 4)
@@ -2366,6 +2386,66 @@ VALUES
             WHERE
                 resource = 'dashboard'
                 AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'products'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'products'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'read_all'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 

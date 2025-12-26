@@ -79,7 +79,7 @@ export const ROLE_DEFAULT_ROUTE: Record<Role, string> = {
   [ROLES.COMPANY_ADMIN]: "/company-admin/masters",
   [ROLES.BRANCH_MANAGER]: "/branch-manager/dashboard",
   [ROLES.FINANCE_MANAGER]: "/finance-manager/dashboard",
-  [ROLES.LOGISTICS_MANAGER]: "/logistics-manager/dashboard",
+  [ROLES.LOGISTICS_MANAGER]: "/logistics-manager/trips-management",
   [ROLES.DRIVER]: "/drivermodule/trips", // Temporary renamed protected driver route
   [ROLES.USER]: "/user/profile", // Placeholder - will be updated with actual route
 };

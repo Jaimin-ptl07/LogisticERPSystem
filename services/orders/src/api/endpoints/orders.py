@@ -104,6 +104,47 @@ async def list_orders(
     # Build filters
     filters = [Order.tenant_id == tenant_id, Order.is_active == True]
 
+    # Check if user is Admin - if not, filter by assigned branches
+    is_admin = token_data.role == "Admin"
+    logger.info(f"Orders access check - user_id: {token_data.user_id}, role: {token_data.role}, is_admin: {is_admin}")
+
+    if not is_admin:
+        # Fetch assigned branches for non-admin users
+        try:
+            async with AsyncClient(timeout=30.0) as client:
+                branches_response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/branches/my/assigned",
+                    params={
+                        "is_active": True,
+                        "per_page": 100,
+                        "tenant_id": tenant_id
+                    },
+                    headers=auth_headers
+                )
+
+                if branches_response.status_code == 200:
+                    branches_data = branches_response.json()
+                    assigned_branch_ids = [branch["id"] for branch in branches_data.get("items", [])]
+
+                    if assigned_branch_ids:
+                        # Filter orders by assigned branches
+                        filters.append(Order.branch_id.in_(assigned_branch_ids))
+                        logger.info(f"Filtering orders by assigned branches: {assigned_branch_ids}")
+                    else:
+                        # No assigned branches - return empty result
+                        logger.warning(f"No assigned branches found for user {token_data.user_id}")
+                        return OrderListPaginatedResponse(
+                            items=[],
+                            total=0,
+                            page=page,
+                            per_page=per_page or 20,
+                            pages=0
+                        )
+                else:
+                    logger.error(f"Failed to fetch assigned branches: {branches_response.status_code}")
+        except Exception as e:
+            logger.error(f"Error fetching assigned branches: {str(e)}")
+
     if status:
         filters.append(cast(Order.status, String) == status.name)
     if customer_id:
