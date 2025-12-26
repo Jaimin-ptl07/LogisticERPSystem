@@ -194,10 +194,11 @@ export default function EmployeeProfileDetailPage() {
   // Fetch role-specific profile based on user's role
   const skipRoleProfile = !user || !user.id
 
-  const { data: driverProfile } = useGetDriverProfileByUserQuery(
+  const driverProfileResult = useGetDriverProfileByUserQuery(
     user?.id || '',
     { skip: skipRoleProfile || !isDriverRole(user) }
   )
+  const { data: driverProfile } = driverProfileResult
 
   const { data: branchManagerProfile } = useGetBranchManagerProfileByUserQuery(
     user?.id || '',
@@ -510,11 +511,11 @@ export default function EmployeeProfileDetailPage() {
               Cancel
             </Button>
             {!isEditing ? (
-              <Button onClick={() => setIsEditing(true)}>
+              <Button type="button" onClick={() => setIsEditing(true)}>
                 {activeTab === 'basic' ? (employeeProfileComplete ? 'Edit Basic Info' : 'Create Basic Profile') : `Create ${profileLabel} Profile`}
               </Button>
             ) : (
-              <Button type="submit" form="profile-form" disabled={isSaving}>
+              <Button type="submit" form="profile-form" disabled={isSaving || !isEditing}>
                 {isSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />

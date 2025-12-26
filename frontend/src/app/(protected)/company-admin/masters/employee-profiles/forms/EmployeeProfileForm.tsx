@@ -70,24 +70,38 @@ export default function EmployeeProfileForm({
   const [updateProfile, { isLoading: isUpdating }] = useUpdateEmployeeProfileMutation()
 
   useEffect(() => {
-    if (profile) {
+    // Use profile if available, otherwise fall back to user data
+    const dataSource = profile || user
+
+    if (dataSource) {
       setFormData({
-        employee_id: profile.employee_id || '',
-        department: profile.department || '',
-        designation: profile.designation || '',
-        date_of_joining: profile.date_of_joining || '',
-        reporting_manager_id: profile.reporting_manager_id || '',
-        emergency_contact_name: profile.emergency_contact_name || '',
-        emergency_contact_number: profile.emergency_contact_number || '',
-        blood_group: profile.blood_group || '',
-        date_of_birth: profile.date_of_birth || '',
-        gender: profile.gender || '',
-        marital_status: profile.marital_status || '',
-        nationality: profile.nationality || '',
-        aadhar_number: profile.aadhar_number || '',
-        pan_number: profile.pan_number || '',
-        passport_number: profile.passport_number || '',
-        current_address: profile.current_address || {
+        employee_id: dataSource.employee_id || dataSource.employee_code || '',
+        department: dataSource.department || '',
+        designation: dataSource.designation || '',
+        // API returns hire_date, form uses date_of_joining
+        date_of_joining: dataSource.date_of_joining || dataSource.hire_date ? (dataSource.date_of_joining || dataSource.hire_date || '').split('T')[0] : '',
+        reporting_manager_id: dataSource.reporting_manager_id || '',
+        emergency_contact_name: dataSource.emergency_contact_name || '',
+        // API returns emergency_contact_phone, form uses emergency_contact_number
+        emergency_contact_number: dataSource.emergency_contact_number || dataSource.emergency_contact_phone || '',
+        blood_group: dataSource.blood_group || '',
+        date_of_birth: dataSource.date_of_birth ? dataSource.date_of_birth.split('T')[0] : '',
+        gender: dataSource.gender || '',
+        marital_status: dataSource.marital_status || '',
+        nationality: dataSource.nationality || '',
+        aadhar_number: dataSource.aadhar_number || '',
+        pan_number: dataSource.pan_number || '',
+        passport_number: dataSource.passport_number || '',
+        // API returns flat address fields, form uses nested current_address
+        current_address: dataSource.current_address || {
+          address_line1: dataSource.address || '',
+          address_line2: '',
+          city: dataSource.city || '',
+          state: dataSource.state || '',
+          postal_code: dataSource.postal_code || '',
+          country: dataSource.country || ''
+        },
+        permanent_address: dataSource.permanent_address || {
           address_line1: '',
           address_line2: '',
           city: '',
@@ -95,24 +109,17 @@ export default function EmployeeProfileForm({
           postal_code: '',
           country: ''
         },
-        permanent_address: profile.permanent_address || {
-          address_line1: '',
-          address_line2: '',
-          city: '',
-          state: '',
-          postal_code: '',
-          country: ''
-        },
-        bank_details: profile.bank_details || {
-          bank_name: '',
-          account_number: '',
-          ifsc_code: '',
+        // API returns flat bank fields, form uses nested bank_details
+        bank_details: dataSource.bank_details || {
+          bank_name: dataSource.bank_name || '',
+          account_number: dataSource.bank_account_number || '',
+          ifsc_code: dataSource.bank_ifsc || '',
           branch_name: '',
           account_type: 'savings'
         }
       })
     }
-  }, [profile])
+  }, [profile, user])
 
   const handleInputChange = (field: string, value: any) => {
     if (field.includes('.')) {
@@ -187,7 +194,7 @@ export default function EmployeeProfileForm({
     }
   }
 
-  if (!isEditing && !profile) {
+  if (!isEditing && !profile && (!user || !user.id)) {
     return (
       <Card>
         <CardContent className="p-8 text-center">
@@ -207,7 +214,9 @@ export default function EmployeeProfileForm({
     )
   }
 
-  if (!isEditing && profile) {
+  if (!isEditing && (profile || (user && user.id))) {
+    // Use profile if available, otherwise fall back to user data
+    const dataSource = profile || user
     return (
       <div className="space-y-6">
         {/* Personal Information */}
@@ -219,35 +228,35 @@ export default function EmployeeProfileForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
-                <p className="text-gray-900">{profile.employee_id || '-'}</p>
+                <p className="text-gray-900">{dataSource.employee_id || dataSource.employee_code || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                <p className="text-gray-900">{profile.department || '-'}</p>
+                <p className="text-gray-900">{dataSource.department || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
-                <p className="text-gray-900">{profile.designation || '-'}</p>
+                <p className="text-gray-900">{dataSource.designation || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date of Joining</label>
-                <p className="text-gray-900">{profile.date_of_joining || '-'}</p>
+                <p className="text-gray-900">{dataSource.date_of_joining || dataSource.hire_date || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-                <p className="text-gray-900">{profile.date_of_birth || '-'}</p>
+                <p className="text-gray-900">{dataSource.date_of_birth || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-                <p className="text-gray-900 capitalize">{profile.gender || '-'}</p>
+                <p className="text-gray-900 capitalize">{dataSource.gender || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Marital Status</label>
-                <p className="text-gray-900 capitalize">{profile.marital_status || '-'}</p>
+                <p className="text-gray-900 capitalize">{dataSource.marital_status || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
-                <p className="text-gray-900">{profile.nationality || '-'}</p>
+                <p className="text-gray-900">{dataSource.nationality || '-'}</p>
               </div>
             </div>
           </CardContent>
@@ -262,24 +271,33 @@ export default function EmployeeProfileForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact Name</label>
-                <p className="text-gray-900">{profile.emergency_contact_name || '-'}</p>
+                <p className="text-gray-900">{dataSource.emergency_contact_name || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact Number</label>
-                <p className="text-gray-900">{profile.emergency_contact_number || '-'}</p>
+                <p className="text-gray-900">{dataSource.emergency_contact_number || dataSource.emergency_contact_phone || '-'}</p>
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Current Address</label>
               <p className="text-gray-900">
-                {profile.current_address ? (
+                {dataSource.current_address ? (
                   <>
-                    {profile.current_address.address_line1}
-                    {profile.current_address.address_line2 && `, ${profile.current_address.address_line2}`}
+                    {dataSource.current_address.address_line1}
+                    {dataSource.current_address.address_line2 && `, ${dataSource.current_address.address_line2}`}
                     <br />
-                    {profile.current_address.city}, {profile.current_address.state} {profile.current_address.postal_code}
+                    {dataSource.current_address.city}, {dataSource.current_address.state} {dataSource.current_address.postal_code}
                     <br />
-                    {profile.current_address.country}
+                    {dataSource.current_address.country}
+                  </>
+                ) : dataSource.address ? (
+                  <>
+                    {dataSource.address}
+                    {dataSource.city && `, ${dataSource.city}`}
+                    {dataSource.state && `, ${dataSource.state}`}
+                    {dataSource.postal_code && ` ${dataSource.postal_code}`}
+                    {dataSource.country && <br />}
+                    {dataSource.country}
                   </>
                 ) : '-'}
               </p>
@@ -296,19 +314,19 @@ export default function EmployeeProfileForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Number</label>
-                <p className="text-gray-900">{profile.aadhar_number || '-'}</p>
+                <p className="text-gray-900">{dataSource.aadhar_number || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
-                <p className="text-gray-900">{profile.pan_number || '-'}</p>
+                <p className="text-gray-900">{dataSource.pan_number || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Passport Number</label>
-                <p className="text-gray-900">{profile.passport_number || '-'}</p>
+                <p className="text-gray-900">{dataSource.passport_number || '-'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Blood Group</label>
-                <p className="text-gray-900">{profile.blood_group || '-'}</p>
+                <p className="text-gray-900">{dataSource.blood_group || '-'}</p>
               </div>
             </div>
           </CardContent>
@@ -320,23 +338,38 @@ export default function EmployeeProfileForm({
             <CardTitle className="text-lg">Bank Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profile.bank_details ? (
+            {dataSource.bank_details ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
-                  <p className="text-gray-900">{profile.bank_details.bank_name}</p>
+                  <p className="text-gray-900">{dataSource.bank_details.bank_name}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
-                  <p className="text-gray-900">{'****' + profile.bank_details.account_number.slice(-4)}</p>
+                  <p className="text-gray-900">{'****' + dataSource.bank_details.account_number.slice(-4)}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code</label>
-                  <p className="text-gray-900">{profile.bank_details.ifsc_code}</p>
+                  <p className="text-gray-900">{dataSource.bank_details.ifsc_code}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name</label>
-                  <p className="text-gray-900">{profile.bank_details.branch_name}</p>
+                  <p className="text-gray-900">{dataSource.bank_details.branch_name}</p>
+                </div>
+              </div>
+            ) : dataSource.bank_name ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
+                  <p className="text-gray-900">{dataSource.bank_name}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
+                  <p className="text-gray-900">{'****' + (dataSource.bank_account_number || '').slice(-4)}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code</label>
+                  <p className="text-gray-900">{dataSource.bank_ifsc || '-'}</p>
                 </div>
               </div>
             ) : (
@@ -600,27 +633,6 @@ export default function EmployeeProfileForm({
           </div>
         </CardContent>
       </Card>
-
-      {/* Form Actions */}
-      <div className="flex justify-end gap-3 pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={isCreating || isUpdating}
-        >
-          <X className="w-4 h-4 mr-2" />
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={isCreating || isUpdating}
-          className="flex items-center gap-2"
-        >
-          <Save className="w-4 h-4" />
-          {isCreating || isUpdating ? 'Saving...' : (profile ? 'Update Profile' : 'Create Profile')}
-        </Button>
-      </div>
     </form>
   )
 }

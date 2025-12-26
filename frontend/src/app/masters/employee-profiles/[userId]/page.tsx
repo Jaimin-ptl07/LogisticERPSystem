@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useGetUserQuery } from '@/services/api/companyApi'
+import { useGetDriverProfileByUserQuery, useGetBranchManagerProfileByUserQuery, useGetFinanceManagerProfileByUserQuery, useGetLogisticsManagerProfileByUserQuery } from '@/services/api/profileApi'
 import { User } from '@/services/api/companyApi'
+import { DriverProfile, BranchManagerProfileExtended, FinanceManagerProfile, LogisticsManagerProfile } from '@/services/api/profileApi'
 import EmployeeProfileForm from '../forms/EmployeeProfileForm'
 import DriverProfileForm from '../forms/DriverProfileForm'
 import BranchManagerProfileForm from '../forms/BranchManagerProfileForm'
@@ -89,6 +91,23 @@ export default function EmployeeProfileDetailPage() {
   // Fetch user details
   const { data: user, isLoading, error, refetch } = useGetUserQuery(userId)
 
+  // Fetch role-specific profiles
+  const driverProfileResult = useGetDriverProfileByUserQuery(userId, { skip: !user })
+  const { data: driverProfile } = driverProfileResult
+  const { data: branchManagerProfile } = useGetBranchManagerProfileByUserQuery(userId, { skip: !user })
+  const { data: financeManagerProfile } = useGetFinanceManagerProfileByUserQuery(userId, { skip: !user })
+  const { data: logisticsManagerProfile } = useGetLogisticsManagerProfileByUserQuery(userId, { skip: !user })
+
+  // Debug logging for driver profile
+  useEffect(() => {
+    console.log('Page - driverProfileResult:', driverProfileResult)
+    console.log('Page - driverProfile:', driverProfile)
+    console.log('Page - isLoading:', driverProfileResult.isLoading)
+    console.log('Page - isFetching:', driverProfileResult.isFetching)
+    console.log('Page - status:', driverProfileResult.status)
+    console.log('Page - error:', driverProfileResult.error)
+  }, [driverProfileResult])
+
   // Redirect to list page if user not found
   useEffect(() => {
     if (error && !isLoading) {
@@ -100,6 +119,16 @@ export default function EmployeeProfileDetailPage() {
   const ProfileIcon = config.icon
   const profileLabel = config.label
   const employeeProfileComplete = hasEmployeeProfile(user || null)
+
+  // Debug logging for user and config
+  useEffect(() => {
+    console.log('Page - user:', user)
+    console.log('Page - config:', config)
+    console.log('Page - profileLabel:', profileLabel)
+    console.log('Page - employeeProfileComplete:', employeeProfileComplete)
+    console.log('Page - activeTab:', activeTab)
+    console.log('Page - config.tabId:', config.tabId)
+  }, [user, config, profileLabel, employeeProfileComplete, activeTab])
 
   // Define tabs based on employee profile completion
   const tabs = [
@@ -141,9 +170,23 @@ export default function EmployeeProfileDetailPage() {
   const renderForm = () => {
     if (!user) return null
 
+    // Get the appropriate profile based on active tab
+    let profile: DriverProfile | BranchManagerProfileExtended | FinanceManagerProfile | LogisticsManagerProfile | null = null
+    if (activeTab === 'license') {
+      profile = driverProfile || null
+      console.log('renderForm - activeTab: license, profile:', profile)
+      console.log('renderForm - driverProfile:', driverProfile)
+    } else if (activeTab === 'branch') {
+      profile = branchManagerProfile || null
+    } else if (activeTab === 'finance') {
+      profile = financeManagerProfile || null
+    } else if (activeTab === 'logistics') {
+      profile = logisticsManagerProfile || null
+    }
+
     const formProps = {
       user,
-      profile: undefined,
+      profile,
       isEditing,
       onEdit: () => setIsEditing(true),
       onSave: handleSave,
@@ -363,7 +406,11 @@ export default function EmployeeProfileDetailPage() {
               Cancel
             </Button>
             {!isEditing ? (
-              <Button onClick={() => setIsEditing(true)}>
+              <Button type="button" onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIsEditing(true)
+              }}>
                 {activeTab === 'basic' ? (employeeProfileComplete ? 'Edit Basic Info' : 'Create Basic Profile') : `Create ${profileLabel} Profile`}
               </Button>
             ) : (

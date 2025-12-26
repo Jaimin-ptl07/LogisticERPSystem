@@ -26,6 +26,12 @@ export default function DriverProfileForm({
   onSave,
   onCancel
 }: DriverProfileFormProps) {
+  // Debug logging to understand data flow
+  console.log('DriverProfileForm - profile:', profile)
+  console.log('DriverProfileForm - profile.employee:', profile?.employee)
+  console.log('DriverProfileForm - isEditing:', isEditing)
+  console.log('DriverProfileForm - user:', user)
+
   const [formData, setFormData] = useState({
     license_number: '',
     license_types: [] as string[],
@@ -173,8 +179,64 @@ export default function DriverProfileForm({
   }
 
   if (!isEditing && profile) {
+    // Use employee data from profile.employee if available, otherwise fallback to user
+    const employee = profile.employee || {}
+    const employeeName = employee.first_name && employee.last_name
+      ? `${employee.first_name} ${employee.last_name}`
+      : `${user.first_name} ${user.last_name}`
+
     return (
       <div className="space-y-6">
+        {/* Employee Basic Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Basic Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
+                <p className="text-gray-900">{employee.employee_id || employee.employee_code || user.employee_id || user.employee_code || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <p className="text-gray-900">{employee.email || user.email || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <p className="text-gray-900">{employee.phone_number || employee.phone || user.phone_number || user.phone || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                <p className="text-gray-900">{employee.department || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
+                <p className="text-gray-900">{employee.designation || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date of Joining</label>
+                <p className="text-gray-900">
+                  {employee.date_of_joining || employee.hire_date
+                    ? (new Date(employee.date_of_joining || employee.hire_date)).toLocaleDateString()
+                    : '-'}
+                </p>
+              </div>
+            </div>
+            {employee.current_address && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                <p className="text-gray-900">
+                  {employee.current_address.address_line1}
+                  {employee.current_address.city && `, ${employee.current_address.city}`}
+                  {employee.current_address.state && `, ${employee.current_address.state}`}
+                  {employee.current_address.postal_code && ` - ${employee.current_address.postal_code}`}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* License Information */}
         <Card>
           <CardHeader>
@@ -194,12 +256,8 @@ export default function DriverProfileForm({
                 <p className="text-gray-900">{profile.license_issuing_authority || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Issue Date</label>
-                <p className="text-gray-900">{profile.license_issue_date || '-'}</p>
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-                <p className="text-gray-900">{profile.license_expiry || '-'}</p>
+                <p className="text-gray-900">{profile.license_expiry ? (new Date(profile.license_expiry)).toLocaleDateString() : '-'}</p>
               </div>
             </div>
             <div>
@@ -230,7 +288,7 @@ export default function DriverProfileForm({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Badge Expiry Date</label>
-                <p className="text-gray-900">{profile.badge_expiry || '-'}</p>
+                <p className="text-gray-900">{profile.badge_expiry ? (new Date(profile.badge_expiry)).toLocaleDateString() : '-'}</p>
               </div>
             </div>
           </CardContent>
@@ -245,16 +303,24 @@ export default function DriverProfileForm({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Preferences</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {profile.preferred_vehicle_types?.map((vehicle, index) => (
-                  <span key={index} className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
-                    {vehicle}
-                  </span>
-                )) || <span className="text-gray-600">No vehicle preferences specified</span>}
+                {profile.preferred_vehicle_types && profile.preferred_vehicle_types.length > 0 ? (
+                  profile.preferred_vehicle_types.map((vehicle, index) => (
+                    <span key={index} className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
+                      {vehicle}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-gray-600">No vehicle preferences specified</span>
+                )}
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Experience</label>
               <p className="text-gray-900">{profile.experience_years || 0} years</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <p className="text-gray-900 capitalize">{profile.current_status || 'available'}</p>
             </div>
           </CardContent>
         </Card>
