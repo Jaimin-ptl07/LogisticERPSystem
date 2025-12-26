@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from fastapi import HTTPException, status
 
 from ..database import User, Role, Permission, RefreshToken
@@ -33,7 +33,7 @@ class UserService:
     async def get_by_id(db: AsyncSession, user_id: str) -> Optional[User]:
         """Get user by ID with relationships"""
         query = select(User).options(
-            selectinload(User.role).selectinload(Role.permissions),
+            joinedload(User.role).selectinload(Role.permissions),
             selectinload(User.tenant)
         ).where(User.id == user_id)
         result = await db.execute(query)
@@ -341,6 +341,8 @@ class UserService:
             "last_name": user.last_name or "",
             "tenant_id": user.tenant_id,
             "role_id": user.role_id,
+            "role_name": user.role.name if user.role else None,  # Consistent across tenants
+            "is_system_role": user.role.is_system if user.role else None,  # Whether this is a system role
             "is_active": user.is_active,
             "is_superuser": user.is_superuser,
             "permissions": permissions,
@@ -348,7 +350,8 @@ class UserService:
             "role": {
                 "id": user.role.id,
                 "name": user.role.name,
-                "description": user.role.description
+                "description": user.role.description,
+                "is_system": user.role.is_system
             } if user.role else None,
             "tenant": {
                 "id": user.tenant.id,

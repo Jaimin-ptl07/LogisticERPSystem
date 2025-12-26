@@ -3,7 +3,7 @@ Pydantic schemas for Company Service
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from uuid import UUID
 from .database import BusinessType, VehicleType, VehicleStatus, ServiceType
 
@@ -442,6 +442,22 @@ class CompanyRole(CompanyRoleInDB):
     invitations: Optional[List[UserInvitation]] = None
 
 
+# Auth Service Role schema (for roles from the auth service)
+class AuthRole(BaseModel):
+    """Schema for auth service role response"""
+    id: int  # Auth service returns role ID as integer
+    role_name: str
+    name: str
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+    is_system_role: bool = False
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
+    employees: List[Any] = []
+    invitations: List[Any] = []
+
+
 # Employee Profile schemas
 class EmployeeProfileBase(BaseSchema):
     """Base employee profile schema"""
@@ -480,7 +496,16 @@ class EmployeeProfileBase(BaseSchema):
 
 class EmployeeProfileCreate(EmployeeProfileBase):
     """Schema for creating an employee profile"""
-    pass
+
+    @model_validator(mode='after')
+    def validate_branch_assignment(self):
+        # Ensure at least one branch is assigned
+        if not self.branch_id and not self.branch_ids:
+            raise ValueError('At least one branch must be assigned')
+        # Auto-set branch_id from branch_ids[0] if not provided
+        if not self.branch_id and self.branch_ids:
+            self.branch_id = self.branch_ids[0]
+        return self
 
 
 class EmployeeProfileUpdate(BaseSchema):
@@ -527,7 +552,7 @@ class EmployeeProfileInDB(EmployeeProfileBase):
 
 class EmployeeProfile(EmployeeProfileInDB):
     """Schema for employee profile response"""
-    # role: Optional[CompanyRole] = None  # Removed - using auth service roles now
+    role: Optional[AuthRole] = None  # Auth service role
     branch: Optional[Branch] = None
     branches: Optional[List[Branch]] = None  # New: All assigned branches
     documents: Optional[List["EmployeeDocument"]] = None
@@ -565,7 +590,7 @@ class DriverProfileBase(BaseSchema):
     """Base driver profile schema"""
     employee_profile_id: str = Field(..., min_length=36, max_length=36)
     license_number: str = Field(..., min_length=2, max_length=50)
-    license_type: str = Field(..., max_length=20)
+    license_type: str = Field(..., max_length=50)  # Increased from 20 to accommodate longer license types
     license_expiry: datetime
     license_issuing_authority: Optional[str] = Field(None, max_length=100)
     badge_number: Optional[str] = Field(None, max_length=50)
@@ -592,7 +617,7 @@ class DriverProfileCreate(DriverProfileBase):
 class DriverProfileUpdate(BaseSchema):
     """Schema for updating a driver profile"""
     license_number: Optional[str] = Field(None, min_length=2, max_length=50)
-    license_type: Optional[str] = Field(None, max_length=20)
+    license_type: Optional[str] = Field(None, max_length=50)  # Increased from 20 to match base schema
     license_expiry: Optional[datetime] = None
     license_issuing_authority: Optional[str] = Field(None, max_length=100)
     badge_number: Optional[str] = Field(None, max_length=50)

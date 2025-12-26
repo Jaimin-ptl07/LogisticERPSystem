@@ -301,7 +301,7 @@ class CompanyRole(Base):
 
     # Relationships
     # employees relationship removed - employee_profiles now use auth service roles
-    invitations = relationship("UserInvitation", back_populates="role")
+    # invitations relationship removed - invitations now use auth service roles
 
 
 class UserInvitation(Base):
@@ -312,7 +312,8 @@ class UserInvitation(Base):
     tenant_id = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False)
     invitation_token = Column(String(255), unique=True, nullable=False)
-    role_id = Column(String(36), ForeignKey("company_roles.id"), nullable=False)
+    # Now stores auth service role ID as string (no FK constraint)
+    role_id = Column(String(50), nullable=True)  # Changed from String(36) with FK to company_roles
     branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     invited_by = Column(String(255), nullable=False)  # User ID who sent the invitation
     invited_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -325,7 +326,7 @@ class UserInvitation(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    role = relationship("CompanyRole", back_populates="invitations")
+    # role relationship removed - now using auth service roles (role_id stores auth role ID as string)
     branch = relationship("Branch")
 
 
@@ -389,7 +390,7 @@ class DriverProfile(Base):
     employee_profile_id = Column(String(36), ForeignKey("employee_profiles.id", ondelete="CASCADE"), nullable=False)
     tenant_id = Column(String(255), nullable=False)
     license_number = Column(String(50), unique=True, nullable=False)
-    license_type = Column(String(20), nullable=False)  # light_motor, heavy_motor, transport, goods
+    license_type = Column(String(50), nullable=False)  # e.g., Light Motor Vehicle (LMV), Heavy Motor Vehicle (HMV)
     license_expiry = Column(DateTime(timezone=True), nullable=False)
     license_issuing_authority = Column(String(100))
     badge_number = Column(String(50))

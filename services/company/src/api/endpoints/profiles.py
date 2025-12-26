@@ -7,13 +7,14 @@ import json
 import csv
 import io
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File as FastAPIFile, BackgroundTasks, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File as FastAPIFile, BackgroundTasks, Response, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import uuid
 import os
+import httpx
 from datetime import datetime, timedelta
 
 from src.database import (
@@ -24,9 +25,9 @@ from src.database import (
     LogisticsManagerProfile,
     EmployeeProfile,
     EmployeeDocument,
-    CompanyRole,
     Branch
 )
+from src.config_local import settings
 from src.helpers import validate_employee_exists, validate_branch_exists
 from src.schemas import (
     DriverProfile as DriverProfileSchema,
@@ -76,7 +77,127 @@ from src.security import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# HELPER FUNCTIONS - Convert SQLAlchemy models to response dictionaries
+# These helpers avoid lazy-loading issues with nested relationships
+# ============================================================================
+
+def driver_profile_to_dict(driver: DriverProfile) -> dict:
+    """Convert DriverProfile SQLAlchemy model to dictionary"""
+    return {
+        "id": str(driver.id),
+        "employee_profile_id": driver.employee_profile_id,
+        "tenant_id": driver.tenant_id,
+        "license_number": driver.license_number,
+        "license_type": driver.license_type,
+        "license_expiry": driver.license_expiry,
+        "license_issuing_authority": driver.license_issuing_authority,
+        "badge_number": driver.badge_number,
+        "badge_expiry": driver.badge_expiry,
+        "experience_years": driver.experience_years,
+        "preferred_vehicle_types": driver.preferred_vehicle_types,
+        "current_status": driver.current_status,
+        "last_trip_date": driver.last_trip_date,
+        "total_trips": driver.total_trips,
+        "total_distance": driver.total_distance,
+        "average_rating": driver.average_rating,
+        "accident_count": driver.accident_count,
+        "traffic_violations": driver.traffic_violations,
+        "medical_fitness_certificate_date": driver.medical_fitness_certificate_date,
+        "police_verification_date": driver.police_verification_date,
+        "is_active": driver.is_active,
+        "created_at": driver.created_at,
+        "updated_at": driver.updated_at,
+        "employee": None
+    }
+
+
+def finance_manager_profile_to_dict(profile: FinanceManagerProfile) -> dict:
+    """Convert FinanceManagerProfile SQLAlchemy model to dictionary"""
+    return {
+        "id": str(profile.id),
+        "employee_profile_id": profile.employee_profile_id,
+        "tenant_id": profile.tenant_id,
+        "can_approve_payments": profile.can_approve_payments,
+        "max_approval_limit": profile.max_approval_limit,
+        "managed_branches": profile.managed_branches,
+        "access_levels": profile.access_levels,
+        "is_active": profile.is_active,
+        "created_at": profile.created_at,
+        "updated_at": profile.updated_at,
+        "employee": None
+    }
+
+
+def branch_manager_profile_to_dict(profile: BranchManagerProfile) -> dict:
+    """Convert BranchManagerProfile SQLAlchemy model to dictionary"""
+    return {
+        "id": str(profile.id),
+        "employee_profile_id": profile.employee_profile_id,
+        "tenant_id": profile.tenant_id,
+        "managed_branch_id": str(profile.managed_branch_id) if profile.managed_branch_id else None,
+        "can_create_quotes": profile.can_create_quotes,
+        "can_approve_discounts": profile.can_approve_discounts,
+        "max_discount_percentage": profile.max_discount_percentage,
+        "can_manage_inventory": profile.can_manage_inventory,
+        "can_manage_vehicles": profile.can_manage_vehicles,
+        "staff_management_permissions": profile.staff_management_permissions,
+        "is_active": profile.is_active,
+        "created_at": profile.created_at,
+        "updated_at": profile.updated_at,
+        "employee": None,
+        "managed_branch": None
+    }
+
+
+def logistics_manager_profile_to_dict(profile: LogisticsManagerProfile) -> dict:
+    """Convert LogisticsManagerProfile SQLAlchemy model to dictionary"""
+    return {
+        "id": str(profile.id),
+        "employee_profile_id": profile.employee_profile_id,
+        "tenant_id": profile.tenant_id,
+        "managed_zones": profile.managed_zones,
+        "can_assign_drivers": profile.can_assign_drivers,
+        "can_approve_overtime": profile.can_approve_overtime,
+        "can_plan_routes": profile.can_plan_routes,
+        "vehicle_management_permissions": profile.vehicle_management_permissions,
+        "is_active": profile.is_active,
+        "created_at": profile.created_at,
+        "updated_at": profile.updated_at,
+        "employee": None
+    }
+
+
+def employee_document_to_dict(document: EmployeeDocument) -> dict:
+    """Convert EmployeeDocument SQLAlchemy model to dictionary"""
+    return {
+        "id": str(document.id),
+        "tenant_id": document.tenant_id,
+        "employee_profile_id": document.employee_profile_id,
+        "document_type": document.document_type,
+        "document_name": document.document_name,
+        "document_number": document.document_number,
+        "file_path": document.file_path,
+        "file_url": document.file_url,
+        "file_size": document.file_size,
+        "file_type": document.file_type,
+        "issue_date": document.issue_date,
+        "expiry_date": document.expiry_date,
+        "issuing_authority": document.issuing_authority,
+        "is_verified": document.is_verified,
+        "verified_by": document.verified_by,
+        "verified_at": document.verified_at,
+        "notes": document.notes,
+        "is_active": document.is_active,
+        "created_at": document.created_at,
+        "updated_at": document.updated_at
+    }
+
+
+# ============================================================================
 # ENHANCED PROFILE MANAGEMENT ENDPOINTS
+# ============================================================================
 
 @router.get("/{profile_type}/{profile_id}/completion", response_model=ProfileCompletionResponse)
 async def get_profile_completion(
@@ -615,12 +736,10 @@ async def get_driver_profile(
     - users:read (to view basic profile info)
     """
 
-    # Get driver profile with relationships
+    # Get driver profile
     query = select(DriverProfile).where(
         DriverProfile.id == driver_id,
         DriverProfile.tenant_id == tenant_id
-    ).options(
-        selectinload(DriverProfile.employee)
     )
 
     result = await db.execute(query)
@@ -629,7 +748,7 @@ async def get_driver_profile(
     if not driver:
         raise HTTPException(status_code=404, detail="Driver profile not found")
 
-    return DriverProfileSchema.model_validate(driver)
+    return DriverProfileSchema(**driver_profile_to_dict(driver))
 
 
 @router.post("/drivers", response_model=DriverProfileSchema, status_code=201)
@@ -646,6 +765,8 @@ async def create_driver_profile(
     Requires:
     - users:create (to create new profiles)
     """
+
+    logger.info(f"create_driver_profile called with employee_profile_id={driver_data.employee_profile_id}, tenant_id={tenant_id}")
 
     # Verify employee profile exists
     try:
@@ -690,10 +811,9 @@ async def create_driver_profile(
     await db.commit()
     await db.refresh(driver)
 
-    # Load relationships for response
-    await db.refresh(driver, ["employee"])
+    logger.info(f"Driver profile created: id={driver.id}, employee_profile_id={driver.employee_profile_id}, tenant_id={driver.tenant_id}")
 
-    return DriverProfileSchema.model_validate(driver)
+    return DriverProfileSchema(**driver_profile_to_dict(driver))
 
 
 @router.put("/drivers/{driver_id}", response_model=DriverProfileSchema)
@@ -747,10 +867,7 @@ async def update_driver_profile(
     await db.commit()
     await db.refresh(driver)
 
-    # Load relationships for response
-    await db.refresh(driver, ["employee"])
-
-    return DriverProfileSchema.model_validate(driver)
+    return DriverProfileSchema(**driver_profile_to_dict(driver))
 
 
 @router.get("/drivers/", response_model=List[DriverProfileSchema])
@@ -787,10 +904,78 @@ async def list_driver_profiles(
     result = await db.execute(query)
     drivers = result.scalars().all()
 
-    return [DriverProfileSchema.model_validate(driver) for driver in drivers]
+    return [DriverProfileSchema(**driver_profile_to_dict(driver)) for driver in drivers]
+
+
+@router.get("/drivers/by-user/{user_id}", response_model=DriverProfileSchema)
+async def get_driver_profile_by_user(
+    user_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get driver profile by user ID (employee_profile_id)
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
+    """
+    logger.info(f"get_driver_profile_by_user called with user_id={user_id}, tenant_id={tenant_id}")
+
+    query = select(DriverProfile).where(
+        DriverProfile.employee_profile_id == user_id,
+        DriverProfile.tenant_id == tenant_id
+    )
+
+    result = await db.execute(query)
+    driver = result.scalar_one_or_none()
+
+    if not driver:
+        # Log all driver profiles for this tenant to help debug
+        all_drivers_query = select(DriverProfile).where(DriverProfile.tenant_id == tenant_id)
+        all_drivers_result = await db.execute(all_drivers_query)
+        all_drivers = all_drivers_result.scalars().all()
+
+        logger.error(f"Driver profile not found for user_id={user_id}, tenant_id={tenant_id}")
+        logger.error(f"Existing driver profiles for tenant: {[(d.id, d.employee_profile_id) for d in all_drivers]}")
+        raise HTTPException(status_code=404, detail="Driver profile not found")
+
+    logger.info(f"Found driver profile: id={driver.id}, employee_profile_id={driver.employee_profile_id}")
+    return DriverProfileSchema(**driver_profile_to_dict(driver))
 
 
 # FINANCE MANAGER PROFILE ENDPOINTS
+
+@router.get("/finance-managers/by-user/{user_id}", response_model=FinanceManagerProfileSchema)
+async def get_finance_manager_profile_by_user(
+    user_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get finance manager profile by user ID (employee_profile_id)
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
+    """
+    query = select(FinanceManagerProfile).where(
+        FinanceManagerProfile.employee_profile_id == user_id,
+        FinanceManagerProfile.tenant_id == tenant_id
+    ).options(
+        selectinload(FinanceManagerProfile.employee)
+    )
+
+    result = await db.execute(query)
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Finance manager profile not found")
+
+    return FinanceManagerProfileSchema(**finance_manager_profile_to_dict(profile))
+
 
 @router.post("/finance-managers", response_model=FinanceManagerProfileSchema, status_code=201)
 async def create_finance_manager_profile(
@@ -841,7 +1026,7 @@ async def create_finance_manager_profile(
     # Load relationships for response
     await db.refresh(profile, ["employee"])
 
-    return FinanceManagerProfileSchema.model_validate(profile)
+    return FinanceManagerProfileSchema(**finance_manager_profile_to_dict(profile))
 
 
 @router.put("/finance-managers/{profile_id}", response_model=FinanceManagerProfileSchema)
@@ -883,10 +1068,41 @@ async def update_finance_manager_profile(
     # Load relationships for response
     await db.refresh(profile, ["employee"])
 
-    return FinanceManagerProfileSchema.model_validate(profile)
+    return FinanceManagerProfileSchema(**finance_manager_profile_to_dict(profile))
 
 
 # BRANCH MANAGER PROFILE ENDPOINTS
+
+@router.get("/branch-managers/by-user/{user_id}", response_model=BranchManagerProfileSchema)
+async def get_branch_manager_profile_by_user(
+    user_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get branch manager profile by user ID (employee_profile_id)
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
+    """
+    query = select(BranchManagerProfile).where(
+        BranchManagerProfile.employee_profile_id == user_id,
+        BranchManagerProfile.tenant_id == tenant_id
+    ).options(
+        selectinload(BranchManagerProfile.employee),
+        selectinload(BranchManagerProfile.managed_branch)
+    )
+
+    result = await db.execute(query)
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Branch manager profile not found")
+
+    return BranchManagerProfileSchema(**branch_manager_profile_to_dict(profile))
+
 
 @router.post("/branch-managers", response_model=BranchManagerProfileSchema, status_code=201)
 async def create_branch_manager_profile(
@@ -946,7 +1162,7 @@ async def create_branch_manager_profile(
     # Load relationships for response
     await db.refresh(profile, ["employee", "managed_branch"])
 
-    return BranchManagerProfileSchema.model_validate(profile)
+    return BranchManagerProfileSchema(**branch_manager_profile_to_dict(profile))
 
 
 @router.put("/branch-managers/{profile_id}", response_model=BranchManagerProfileSchema)
@@ -1002,10 +1218,40 @@ async def update_branch_manager_profile(
     # Load relationships for response
     await db.refresh(profile, ["employee", "managed_branch"])
 
-    return BranchManagerProfileSchema.model_validate(profile)
+    return BranchManagerProfileSchema(**branch_manager_profile_to_dict(profile))
 
 
 # LOGISTICS MANAGER PROFILE ENDPOINTS
+
+@router.get("/logistics-managers/by-user/{user_id}", response_model=LogisticsManagerProfileSchema)
+async def get_logistics_manager_profile_by_user(
+    user_id: str,
+    token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get logistics manager profile by user ID (employee_profile_id)
+
+    Requires:
+    - users:read_all (to view all profiles) OR
+    - users:read (to view basic profile info)
+    """
+    query = select(LogisticsManagerProfile).where(
+        LogisticsManagerProfile.employee_profile_id == user_id,
+        LogisticsManagerProfile.tenant_id == tenant_id
+    ).options(
+        selectinload(LogisticsManagerProfile.employee)
+    )
+
+    result = await db.execute(query)
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Logistics manager profile not found")
+
+    return LogisticsManagerProfileSchema(**logistics_manager_profile_to_dict(profile))
+
 
 @router.post("/logistics-managers", response_model=LogisticsManagerProfileSchema, status_code=201)
 async def create_logistics_manager_profile(
@@ -1056,7 +1302,7 @@ async def create_logistics_manager_profile(
     # Load relationships for response
     await db.refresh(profile, ["employee"])
 
-    return LogisticsManagerProfileSchema.model_validate(profile)
+    return LogisticsManagerProfileSchema(**logistics_manager_profile_to_dict(profile))
 
 
 @router.put("/logistics-managers/{profile_id}", response_model=LogisticsManagerProfileSchema)
@@ -1098,7 +1344,7 @@ async def update_logistics_manager_profile(
     # Load relationships for response
     await db.refresh(profile, ["employee"])
 
-    return LogisticsManagerProfileSchema.model_validate(profile)
+    return LogisticsManagerProfileSchema(**logistics_manager_profile_to_dict(profile))
 
 
 # DOCUMENT MANAGEMENT ENDPOINTS
@@ -1244,7 +1490,7 @@ async def upload_document(
     # Load relationships for response
     await db.refresh(document, ["employee"])
 
-    return EmployeeDocumentSchema.model_validate(document)
+    return EmployeeDocumentSchema(**employee_document_to_dict(document))
 
 
 @router.get("/documents/{document_id}", response_model=EmployeeDocumentSchema)
@@ -1276,7 +1522,7 @@ async def get_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    return EmployeeDocumentSchema.model_validate(document)
+    return EmployeeDocumentSchema(**employee_document_to_dict(document))
 
 
 @router.put("/documents/{document_id}", response_model=EmployeeDocumentSchema)
@@ -1318,7 +1564,7 @@ async def update_document(
     # Load relationships for response
     await db.refresh(document, ["employee"])
 
-    return EmployeeDocumentSchema.model_validate(document)
+    return EmployeeDocumentSchema(**employee_document_to_dict(document))
 
 
 @router.post("/documents/{document_id}/verify", response_model=EmployeeDocumentSchema)
@@ -1358,7 +1604,7 @@ async def verify_document(
     # Load relationships for response
     await db.refresh(document, ["employee"])
 
-    return EmployeeDocumentSchema.model_validate(document)
+    return EmployeeDocumentSchema(**employee_document_to_dict(document))
 
 
 @router.get("/documents/", response_model=List[EmployeeDocumentSchema])
@@ -1409,7 +1655,7 @@ async def list_documents(
     result = await db.execute(query)
     documents = result.scalars().all()
 
-    return [EmployeeDocumentSchema.model_validate(doc) for doc in documents]
+    return [EmployeeDocumentSchema(**employee_document_to_dict(doc)) for doc in documents]
 
 
 @router.get("/documents/expiring", response_model=List[EmployeeDocumentSchema])
@@ -1463,7 +1709,7 @@ async def get_expiring_documents(
     # Enhance response with days until expiry
     response_documents = []
     for doc in documents:
-        doc_dict = EmployeeDocumentSchema.model_validate(doc).model_dump()
+        doc_dict = EmployeeDocumentSchema(**employee_document_to_dict(doc)).model_dump()
         days_until_expiry = (doc.expiry_date - datetime.utcnow()).days
         doc_dict["days_until_expiry"] = days_until_expiry
 
@@ -1850,6 +2096,7 @@ async def _calculate_average_completion(db: AsyncSession, tenant_id: str) -> flo
 
 @router.get("/by-role", response_model=Dict[str, Any])
 async def get_profiles_by_role(
+    request: Request,
     include_inactive: bool = Query(False, description="Include inactive users in the response"),
     include_completion_stats: bool = Query(True, description="Include profile completion statistics"),
     token_data: TokenData = Depends(require_any_permission([*USER_READ_ALL, *USER_READ])),
@@ -1859,54 +2106,107 @@ async def get_profiles_by_role(
     """
     Get all users grouped by their roles with optional profile completion statistics
 
+    Now uses auth service for user and role data instead of company_roles table
+
     Requires:
     - users:read_all (to view all profiles) OR
     - users:read (to view basic profile info)
     """
 
-    # Build base query for users with role and branch information
-    query = select(
-        EmployeeProfile,
-        CompanyRole,
-        Branch
-    ).select_from(
-        EmployeeProfile
-    ).outerjoin(
-        CompanyRole, EmployeeProfile.role_id == CompanyRole.id
-    ).outerjoin(
-        Branch, EmployeeProfile.branch_id == Branch.id
+    # Get authorization header from request to pass to auth service
+    auth_headers = {"Accept": "application/json"}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    # Fetch users from auth service for this tenant
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            users_response = await client.get(
+                f"{settings.AUTH_SERVICE_URL}/api/v1/users/",
+                params={"tenant_id": tenant_id, "limit": 1000},
+                headers=auth_headers
+            )
+            if users_response.status_code != 200:
+                logger.error(f"Failed to fetch users from auth service: {users_response.status_code}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to fetch users from auth service"
+                )
+            auth_users = users_response.json()
+        except httpx.RequestError as e:
+            logger.error(f"Error calling auth service: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Auth service unavailable"
+            )
+
+    # Get all employee profiles for this tenant
+    query = select(EmployeeProfile).options(
+        selectinload(EmployeeProfile.branch)
     ).where(
         EmployeeProfile.tenant_id == tenant_id
     )
 
-    # Filter active users if requested
     if not include_inactive:
         query = query.where(EmployeeProfile.is_active == True)
 
-    # Order by role name, then by employee name
-    query = query.order_by(
-        CompanyRole.display_name.asc().nullslast(),
-        EmployeeProfile.first_name.asc(),
-        EmployeeProfile.last_name.asc()
-    )
-
-    # Execute query
     result = await db.execute(query)
-    rows = result.all()
+    employee_profiles = result.scalars().all()
 
-    # Group users by role
+    # Create a map of user_id -> employee_profile
+    profile_map = {ep.user_id: ep for ep in employee_profiles}
+
+    # Fetch all roles from auth service for role name lookup
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            roles_response = await client.get(
+                f"{settings.AUTH_SERVICE_URL}/api/v1/roles/",
+                headers=auth_headers
+            )
+            roles_map = {}
+            if roles_response.status_code == 200:
+                auth_roles = roles_response.json()
+                for role in auth_roles:
+                    roles_map[str(role["id"])] = {
+                        "id": str(role["id"]),
+                        "name": role["name"],
+                        "role_name": role["name"],
+                        "display_name": role.get("description") or role["name"],
+                        "is_system_role": role.get("is_system", False)
+                    }
+        except httpx.RequestError as e:
+            logger.error(f"Error fetching roles from auth service: {e}")
+            roles_map = {}
+
+    # Import the helper function from users.py
+    from src.api.endpoints.users import extract_auth_token
+    auth_token = extract_auth_token(request)
+
+    # Group users by role from auth service
     roles_dict: Dict[str, Dict[str, Any]] = {}
 
-    for employee, role, branch in rows:
-        role_id = str(role.id) if role else "unassigned"
-        role_name = role.display_name if role else "Unassigned"
+    for auth_user in auth_users:
+        # Skip if no employee profile exists
+        employee = profile_map.get(auth_user["id"])
+        if not employee:
+            continue
+
+        # Use employee's role_id (from employee_profiles table) instead of auth_user's role_id
+        role_id = str(employee.role_id) if employee.role_id else "unassigned"
+
+        # Get role information from roles_map (fetched from auth service)
+        role_info = roles_map.get(role_id, {})
+        role_name = role_info.get("role_name") or role_info.get("name") or "Unassigned"
+        is_system_role = role_info.get("is_system_role", False)
 
         # Initialize role group if not exists
         if role_id not in roles_dict:
             roles_dict[role_id] = {
                 "role_id": role_id,
                 "role_name": role_name,
-                "role_display_name": role.display_name if role else "Unassigned",
+                "role_display_name": role_name,
+                "is_system_role": is_system_role,
                 "users": [],
                 "total_count": 0,
                 "active_count": 0,
@@ -1940,9 +2240,14 @@ async def get_profiles_by_role(
             total_sections = len(set(completed_sections + missing_sections))
             completion_percentage = (len(completed_sections) / total_sections * 100) if total_sections > 0 else 0
 
+        # Get branch information
+        branch_name = None
+        if employee.branch:
+            branch_name = employee.branch.name
+
         # Create user object
         user_data = {
-            "id": employee.id,
+            "id": str(employee.id),  # Convert UUID to string
             "user_id": employee.user_id,
             "employee_code": employee.employee_code,
             "first_name": employee.first_name,
@@ -1952,10 +2257,12 @@ async def get_profiles_by_role(
             "department": employee.department,
             "designation": employee.designation,
             "branch_id": str(employee.branch_id) if employee.branch_id else None,
-            "branch_name": branch.name if branch else None,
+            "branch_name": branch_name,
             "is_active": employee.is_active,
             "created_at": employee.created_at.isoformat() if employee.created_at else None,
-            "updated_at": employee.updated_at.isoformat() if employee.updated_at else None
+            "updated_at": employee.updated_at.isoformat() if employee.updated_at else None,
+            "role_id": role_id,
+            "role_name": role_name
         }
 
         # Add completion stats if requested
@@ -1976,7 +2283,7 @@ async def get_profiles_by_role(
         else:
             roles_dict[role_id]["inactive_count"] += 1
 
-    # Convert to list and sort
+    # Convert to list and sort (Unassigned at the end)
     roles_list = list(roles_dict.values())
     roles_list.sort(key=lambda x: (x["role_name"] == "Unassigned", x["role_name"]))
 

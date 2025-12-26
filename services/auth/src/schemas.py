@@ -94,6 +94,9 @@ class UserInDB(UserBase):
 class User(UserInDB):
     """Schema for user response"""
     tenant: Optional[Tenant] = None
+    # Additional role information from role relationship
+    role_name: Optional[str] = None
+    is_system_role: Optional[bool] = None
 
 
 # Role schemas

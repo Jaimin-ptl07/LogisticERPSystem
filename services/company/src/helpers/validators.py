@@ -5,16 +5,20 @@ from typing import Optional
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
+import logging
 
 from src.database import (
     Branch,
-    CompanyRole,
     EmployeeProfile,
     ProductCategory,
     Customer,
     Vehicle,
     Product
 )
+from src.config_local import settings
+
+logger = logging.getLogger(__name__)
 
 
 async def validate_branch_exists(
@@ -56,32 +60,48 @@ async def validate_role_exists(
     db: AsyncSession,
     role_id: str,
     tenant_id: str
-) -> CompanyRole:
+) -> dict:
     """
-    Validate that a company role exists for the given tenant
+    Validate that a role exists in the auth service
+
+    Now queries auth service instead of company_roles table since roles are managed centrally
 
     Args:
-        db: Database session
-        role_id: Role ID to validate
-        tenant_id: Tenant ID for scoping
+        db: Database session (unused, kept for backward compatibility)
+        role_id: Role ID to validate (can be string or int)
+        tenant_id: Tenant ID for scoping (unused, auth handles this)
 
     Returns:
-        CompanyRole object if found
+        Role dict if found
 
     Raises:
         ValueError: If role doesn't exist
     """
-    query = select(CompanyRole).where(
-        CompanyRole.id == role_id,
-        CompanyRole.tenant_id == tenant_id
-    )
-    result = await db.execute(query)
-    role = result.scalar_one_or_none()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Call auth service to get all roles
+            response = await client.get(
+                f"{settings.AUTH_SERVICE_URL}/api/v1/roles/",
+                headers={"Accept": "application/json"}
+            )
 
-    if not role:
-        raise ValueError(f"Role with ID {role_id} not found")
+            if response.status_code != 200:
+                raise ValueError(f"Unable to validate role: Auth service returned {response.status_code}")
 
-    return role
+            roles = response.json()
+
+            # Find role by ID (handle both string and int IDs)
+            role_id_int = int(role_id) if role_id.isdigit() else role_id
+            role = next((r for r in roles if r["id"] == role_id_int), None)
+
+            if not role:
+                raise ValueError(f"Role with ID {role_id} not found in auth service")
+
+            return role
+
+    except httpx.RequestError as e:
+        logger.error(f"Error calling auth service for role validation: {e}")
+        raise ValueError(f"Unable to validate role: Auth service unavailable")
 
 
 async def validate_employee_exists(
