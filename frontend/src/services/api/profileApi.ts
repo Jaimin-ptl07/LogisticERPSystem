@@ -12,36 +12,31 @@ export interface EmployeeProfile extends UserProfile {
 export interface DriverProfile {
   id?: string
   user_id: string
-  employee_id?: string
+  employee_profile_id?: string
+  tenant_id?: string
   license_number?: string
-  license_types?: string[]
+  license_type?: string  // Backend returns single string, not array
   license_issue_date?: string
-  license_expiry_date?: string
+  license_expiry?: string  // Backend returns license_expiry, not license_expiry_date
   license_issuing_authority?: string
   badge_number?: string
-  badge_expiry_date?: string
-  vehicle_preferences?: string[]
+  badge_expiry?: string  // Backend returns badge_expiry, not badge_expiry_date
+  preferred_vehicle_types?: string[]  // Backend returns preferred_vehicle_types, not vehicle_preferences
   preferred_routes?: string[]
   experience_years?: number
-  accident_history?: {
-    date: string
-    description: string
-    severity: 'minor' | 'major' | 'critical'
-  }[]
-  training_certifications?: {
-    name: string
-    issued_date: string
-    expiry_date?: string
-    issuing_authority: string
-  }[]
-  medical_fitness_certificate?: {
-    certificate_number: string
-    issued_date: string
-    expiry_date: string
-    issuing_doctor: string
-  }
+  current_status?: string
+  last_trip_date?: string
+  total_trips?: number
+  total_distance?: number
+  average_rating?: number
+  accident_count?: number
+  traffic_violations?: number
+  medical_fitness_certificate_date?: string
+  police_verification_date?: string
+  is_active?: boolean
   created_at?: string
   updated_at?: string
+  employee?: EmployeeProfile
   user?: User
 }
 

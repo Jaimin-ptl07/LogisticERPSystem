@@ -87,7 +87,7 @@ export default function EmployeeProfileDetailPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   // Fetch user details
-  const { data: user, isLoading, error, refetch } = useGetUserQuery({ userId })
+  const { data: user, isLoading, error, refetch } = useGetUserQuery(userId)
 
   // Redirect to list page if user not found
   useEffect(() => {
