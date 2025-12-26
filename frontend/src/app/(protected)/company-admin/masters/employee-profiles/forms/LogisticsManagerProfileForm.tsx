@@ -202,7 +202,7 @@ export default function LogisticsManagerProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Logistics Manager Details</CardTitle>

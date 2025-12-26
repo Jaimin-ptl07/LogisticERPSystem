@@ -18,13 +18,14 @@ async def get_roles(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get all non-system roles.
+    Get all non-system roles for the current tenant.
     Only returns roles where is_system = false.
-    No tenant filter applied.
+    Filters by tenant_id to ensure tenant isolation.
     """
-    # Build query - filter by is_system = false only (no tenant filter)
+    # Build query - filter by is_system = false and tenant_id
     query = select(Role).where(
-        Role.is_system == False
+        Role.is_system == False,
+        Role.tenant_id == token_data.tenant_id
     )
 
     # Order by id for consistent ordering

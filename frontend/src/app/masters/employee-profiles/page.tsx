@@ -1,21 +1,19 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useGetProfilesByRoleQuery, useGetProfileStatsQuery } from '@/services/api/profileApi'
-import { User } from '@/services/api/companyApi'
 import { ProfilesByRoleResponse, ProfileStatsResponse, RoleData } from '@/services/api/profileApi'
 import RoleUserList from './RoleUserList'
-import ProfileDetailModal from './ProfileDetailModal'
 import { Search, Filter, Users, UserCheck, UserX, Download } from 'lucide-react'
 
 export default function EmployeeProfilesPage() {
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null)
-  const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const [showProfileModal, setShowProfileModal] = useState(false)
   const [filterStatus, setFilterStatus] = useState<'all' | 'completed' | 'pending'>('all')
 
   // Fetch profiles grouped by roles
@@ -72,19 +70,12 @@ export default function EmployeeProfilesPage() {
 
   const filteredStats = calculateFilteredStats()
 
-  const handleUserClick = (user: User) => {
-    setSelectedUser(user)
-    setShowProfileModal(true)
-  }
-
-  const handleCloseModal = () => {
-    setSelectedUser(null)
-    setShowProfileModal(false)
-    refetchProfiles()
+  const handleUserClick = (userId: string) => {
+    router.push(`/masters/employee-profiles/${userId}`)
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6 pb-20">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -249,15 +240,6 @@ export default function EmployeeProfilesPage() {
           ))
         )}
       </div>
-
-      {/* Profile Detail Modal */}
-      {showProfileModal && selectedUser && (
-        <ProfileDetailModal
-          user={selectedUser}
-          isOpen={showProfileModal}
-          onClose={handleCloseModal}
-        />
-      )}
     </div>
   )
 }

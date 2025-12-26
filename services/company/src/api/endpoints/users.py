@@ -6,13 +6,15 @@ from datetime import datetime, timedelta
 import uuid
 import secrets
 import logging
+import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import AsyncSessionLocal, EmployeeProfile, UserInvitation, CompanyRole, Branch, EmployeeBranch
+from src.config_local import settings
+from src.database import AsyncSessionLocal, EmployeeProfile, UserInvitation, Branch, EmployeeBranch
 from src.helpers import validate_branch_exists, validate_role_exists, validate_employee_reporting_hierarchy, validate_employee_exists
 from src.schemas import (
     EmployeeProfile as EmployeeProfileSchema,
@@ -23,6 +25,24 @@ from src.schemas import (
     UserInvitationUpdate,
     PaginatedResponse,
     UserManagementResponse
+)
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission,
+    # User management permissions
+    USER_READ_ALL,
+    USER_READ,
+    USER_READ_OWN,
+    USER_CREATE,
+    USER_UPDATE,
+    USER_UPDATE_OWN,
+    USER_DELETE,
+    USER_MANAGE_ALL,
+    USER_INVITE,
+    USER_ACTIVATE,
 )
 
 router = APIRouter()
@@ -42,46 +62,119 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
-# Helper function to get tenant_id from request
-async def get_current_tenant_id(request: Request) -> str:
-    """
-    Get current tenant ID from authentication token
-    Extracts tenant_id from request.state set by auth middleware
-    """
-    tenant_id = getattr(request.state, "tenant_id", None)
-    if not tenant_id:
-        # Fallback to mock implementation for testing without auth
-        return "default-tenant"
-    return tenant_id
+def extract_auth_token(request: Request) -> Optional[str]:
+    """Extract JWT token from request Authorization header."""
+    auth_header = request.headers.get("authorization")
+    if not auth_header:
+        return None
+
+    # Handle both "Bearer token" and "token" formats
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()  # Remove "Bearer " prefix
+    return auth_header.strip()
 
 
-# Helper function to get current user ID from request
-async def get_current_user_id(request: Request) -> str:
+async def get_role_from_auth_service(role_id: Optional[str], auth_token: Optional[str] = None) -> dict:
     """
-    Get current user ID from authentication token
-    Extracts user_id from request.state set by auth middleware
+    Fetch role data from auth service by ID.
+    Always returns a role dict, even if fetch fails (returns minimal role object).
+
+    Args:
+        role_id: The role ID (as string) to fetch
+        auth_token: Optional JWT token to authenticate with auth service
+
+    Returns:
+        Role data dict (never None - returns minimal object if fetch fails)
     """
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        # Fallback to mock implementation for testing without auth
-        return "mock-user-id"
-    return user_id
+    # Return minimal role object if no role_id
+    if not role_id:
+        return {
+            'id': 0,
+            'role_name': 'Unknown',
+            'name': 'Unknown',
+            'display_name': 'Unknown Role',
+            'description': None,
+            'is_active': True,
+            'is_system_role': False,
+            'created_at': None,
+            'updated_at': None,
+            'employees': [],
+            'invitations': []
+        }
+
+    try:
+        # Convert to int for auth service API
+        role_id_int = int(role_id) if role_id.isdigit() else role_id
+
+        # Prepare headers with auth token if provided
+        headers = {"Accept": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+
+        async with httpx.AsyncClient(timeout=10.0) as client:  # Increased timeout
+            response = await client.get(
+                f"{settings.AUTH_SERVICE_URL}/api/v1/roles/",
+                headers=headers
+            )
+            if response.status_code == 200:
+                roles = response.json()
+                role = next((r for r in roles if r["id"] == role_id_int), None)
+                if role:
+                    return {
+                        'id': role['id'],  # Return as int to match frontend Role interface
+                        'role_name': role['name'],
+                        'name': role['name'],  # Add 'name' field for frontend compatibility
+                        'display_name': role.get('description') or role['name'],
+                        'description': role.get('description'),
+                        'is_active': role.get('is_active', True),
+                        'is_system_role': role.get('is_system', False),
+                        'created_at': role.get('created_at'),
+                        'updated_at': role.get('updated_at'),
+                        'employees': [],  # Empty to avoid recursion
+                        'invitations': []  # Empty to avoid recursion
+                    }
+                else:
+                    logger.warning(f"Role ID {role_id} (as int: {role_id_int}) not found in auth service")
+            else:
+                logger.warning(f"Auth service returned status {response.status_code} when fetching roles")
+    except Exception as e:
+        logger.error(f"Failed to fetch role {role_id} from auth service: {e}", exc_info=True)
+
+    # Return minimal role object on failure (instead of None)
+    return {
+        'id': int(role_id) if role_id and role_id.isdigit() else 0,
+        'role_name': f'Role {role_id}',
+        'name': f'Role {role_id}',
+        'display_name': f'Role {role_id}',
+        'description': None,
+        'is_active': True,
+        'is_system_role': False,
+        'created_at': None,
+        'updated_at': None,
+        'employees': [],
+        'invitations': []
+    }
 
 
 @router.get("/", response_model=PaginatedResponse)
 async def list_users(
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     role_id: Optional[str] = Query(None),
     branch_id: Optional[uuid.UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
+    token_data: TokenData = Depends(require_any_permission([USER_READ_ALL[0], USER_READ[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List all users for the current tenant
+
+    Requires:
+    - users:read_all or users:read
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(EmployeeProfile).where(EmployeeProfile.tenant_id == tenant_id)
@@ -124,30 +217,10 @@ async def list_users(
 
     # Process each user to get relationship data
     processed_users = []
+    auth_token = extract_auth_token(request)
     for user in users:
-        # Get role data separately
-        role_data = None
-        if user.role_id:
-            role_query = select(CompanyRole).where(CompanyRole.id == user.role_id)
-            role_result = await db.execute(role_query)
-            role_obj = role_result.scalar_one_or_none()
-
-            if role_obj:
-                role_data = {
-                    'id': role_obj.id,
-                    'tenant_id': role_obj.tenant_id,
-                    'role_name': role_obj.role_name,
-                    'display_name': role_obj.display_name,
-                    'name': role_obj.display_name,
-                    'description': role_obj.description,
-                    'permissions': role_obj.permissions,
-                    'is_active': role_obj.is_active if role_obj.is_active is not None else True,
-                    'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
-                    'created_at': role_obj.created_at,
-                    'updated_at': role_obj.updated_at,
-                    'employees': [],  # Empty to avoid recursion
-                    'invitations': []  # Empty to avoid recursion
-                }
+        # Get role data from auth service (always returns a dict now)
+        role_data = await get_role_from_auth_service(user.role_id, auth_token)
 
         # Get branch data separately
         branch_data = None
@@ -181,6 +254,7 @@ async def list_users(
             'user_id': user.user_id,
             'employee_code': user.employee_code,
             'role_id': user.role_id,
+            'role_name': role_data.get('role_name') or role_data.get('name'),  # Add role_name at top level
             'branch_id': user.branch_id,
             'first_name': user.first_name,
             'last_name': user.last_name,
@@ -228,13 +302,18 @@ async def list_users(
 
 @router.get("/{user_id}", response_model=EmployeeProfileSchema)
 async def get_user(
+    request: Request,
     user_id: str,
+    token_data: TokenData = Depends(require_any_permission([USER_READ_ALL[0], USER_READ[0], USER_READ_OWN[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get a specific user by ID
+
+    Requires:
+    - users:read_all or users:read or users:read_own (for own profile)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Debug logging
     logger.info(f"Looking for user_id: {user_id} with tenant_id: {tenant_id}")
@@ -263,29 +342,9 @@ async def get_user(
 
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Get role data separately without loading relationships to avoid recursion
-    role_data = None
-    if user.role_id:
-        role_query = select(CompanyRole).where(CompanyRole.id == user.role_id)
-        role_result = await db.execute(role_query)
-        role_obj = role_result.scalar_one_or_none()
-
-        if role_obj:
-            role_data = {
-                'id': role_obj.id,
-                'tenant_id': role_obj.tenant_id,
-                'role_name': role_obj.role_name,
-                'display_name': role_obj.display_name,
-                'name': role_obj.display_name,
-                'description': role_obj.description,
-                'permissions': role_obj.permissions,
-                'is_active': role_obj.is_active if role_obj.is_active is not None else True,
-                'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
-                'created_at': role_obj.created_at,
-                'updated_at': role_obj.updated_at,
-                'employees': [],  # Empty to avoid recursion
-                'invitations': []  # Empty to avoid recursion
-            }
+    # Get role data from auth service (always returns a dict now)
+    auth_token = extract_auth_token(request)
+    role_data = await get_role_from_auth_service(user.role_id, auth_token)
 
     # Get branch data separately
     branch_data = None
@@ -313,44 +372,87 @@ async def get_user(
             }
 
     # Convert user to dict and add relationships
+    # Map backend fields to frontend expected format
     user_dict = {
         'id': user.id,
         'tenant_id': user.tenant_id,
         'user_id': user.user_id,
+        # Backend field name
         'employee_code': user.employee_code,
+        # Frontend expected field name (mapped)
+        'employee_id': user.employee_code,
         'role_id': user.role_id,
-        'branch_id': user.branch_id,
+        'role_name': role_data.get('role_name') or role_data.get('name'),  # Add role_name at top level
+        'branch_id': str(user.branch_id) if user.branch_id else None,
+        'branch_ids': [str(user.branch_id)] if user.branch_id else [],
         'first_name': user.first_name,
         'last_name': user.last_name,
         'phone': user.phone,
+        'phone_number': user.phone,
         'email': user.email,
-        'date_of_birth': user.date_of_birth,
+        'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
         'gender': user.gender,
         'blood_group': user.blood_group,
         'emergency_contact_name': user.emergency_contact_name,
         'emergency_contact_phone': user.emergency_contact_phone,
+        # Frontend expected field name (mapped)
+        'emergency_contact_number': user.emergency_contact_phone,
+        # Address fields - individual
         'address': user.address,
         'city': user.city,
         'state': user.state,
         'postal_code': user.postal_code,
         'country': user.country,
+        # Frontend expected nested address object
+        'current_address': {
+            'address_line1': user.address or '',
+            'address_line2': '',
+            'city': user.city or '',
+            'state': user.state or '',
+            'postal_code': user.postal_code or '',
+            'country': user.country or 'India'
+        } if user.address or user.city else None,
+        'permanent_address': {
+            'address_line1': user.address or '',
+            'address_line2': '',
+            'city': user.city or '',
+            'state': user.state or '',
+            'postal_code': user.postal_code or '',
+            'country': user.country or 'India'
+        } if user.address or user.city else None,
         'hire_date': user.hire_date,
+        # Frontend expected field name (mapped)
+        'date_of_joining': user.hire_date.isoformat() if user.hire_date else None,
         'employment_type': user.employment_type,
         'department': user.department,
         'designation': user.designation,
         'reports_to': user.reports_to,
         'salary': user.salary,
+        # Bank details - individual
         'bank_account_number': user.bank_account_number,
         'bank_name': user.bank_name,
         'bank_ifsc': user.bank_ifsc,
+        # Frontend expected nested bank_details object
+        'bank_details': {
+            'bank_name': user.bank_name or '',
+            'account_number': user.bank_account_number or '',
+            'ifsc_code': user.bank_ifsc or '',
+            'branch_name': '',
+            'account_type': 'savings'
+        } if user.bank_name or user.bank_account_number else None,
         'pan_number': user.pan_number,
         'aadhaar_number': user.aadhar_number,
+        'aadhar_number': user.aadhar_number,
         'is_active': user.is_active,
-        'created_at': user.created_at,
-        'updated_at': user.updated_at,
+        'is_superuser': user.is_superuser if hasattr(user, 'is_superuser') else False,
+        'last_login': None,
+        'created_at': user.created_at.isoformat() if user.created_at else None,
+        'updated_at': user.updated_at.isoformat() if user.updated_at else None,
         'role': role_data,
         'branch': branch_data,
-        'documents': []  # Empty for now
+        'branches': [branch_data] if branch_data else [],
+        'documents': [],  # Empty for now
+        'profile': None  # Will be populated if profile exists
     }
 
     return EmployeeProfileSchema.model_validate(user_dict)
@@ -358,16 +460,40 @@ async def get_user(
 
 @router.post("/", response_model=EmployeeProfileSchema, status_code=201)
 async def create_user(
-    user_data: EmployeeProfileCreate,
     request: Request,
+    user_data: EmployeeProfileCreate,
+    token_data: TokenData = Depends(require_permissions([USER_CREATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new user with optional multiple branch assignments
     Note: role_id is now optional and managed by the auth service
+
+    Requires:
+    - users:create
     """
-    tenant_id = await get_current_tenant_id(request)
-    current_user_id = await get_current_user_id(request)
+
+    # Validate that at least one branch is provided
+    branch_ids = user_data.branch_ids if user_data.branch_ids else []
+
+    if not user_data.branch_id and not branch_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one branch must be assigned to the user"
+        )
+
+    # Auto-set branch_id from branch_ids[0] if not provided
+    final_branch_id = user_data.branch_id
+    if not final_branch_id and branch_ids:
+        final_branch_id = branch_ids[0]
+
+    # Verify branch exists
+    try:
+        await validate_branch_exists(db, final_branch_id, tenant_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Check if employee code already exists
     if user_data.employee_code:
@@ -398,20 +524,13 @@ async def create_user(
     # No validation against company_roles table since we use auth service roles
 
     # Extract branch_ids for later processing (exclude from EmployeeProfile creation)
-    branch_ids = user_data.branch_ids if user_data.branch_ids else []
+    # Already validated at the start of the function
+    if not branch_ids:
+        branch_ids = user_data.branch_ids if user_data.branch_ids else []
 
-    # Verify single branch exists if provided (for backward compatibility)
-    if user_data.branch_id:
-        try:
-            await validate_branch_exists(db, user_data.branch_id, tenant_id)
-            # Add to branch_ids if not already there
-            if user_data.branch_id not in branch_ids:
-                branch_ids.append(user_data.branch_id)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=400,
-                detail=str(e)
-            )
+    # Add final_branch_id to branch_ids if not already there
+    if final_branch_id and final_branch_id not in branch_ids:
+        branch_ids.append(final_branch_id)
 
     # Verify all branches in branch_ids exist
     for branch_id in branch_ids:
@@ -435,6 +554,9 @@ async def create_user(
 
     # Get user data as dict and exclude branch_ids (not a column in EmployeeProfile)
     user_data_dict = user_data.model_dump(exclude={'branch_ids'})
+
+    # Ensure branch_id is set (use final_branch_id which may have been auto-populated)
+    user_data_dict['branch_id'] = final_branch_id
 
     # Create new user
     user = EmployeeProfile(
@@ -467,29 +589,9 @@ async def create_user(
     result = await db.execute(query)
     user = result.scalar_one()
 
-    # Get role data separately without loading relationships
-    role_data = None
-    if user.role_id:
-        role_query = select(CompanyRole).where(CompanyRole.id == user.role_id)
-        role_result = await db.execute(role_query)
-        role_obj = role_result.scalar_one_or_none()
-
-        if role_obj:
-            role_data = {
-                'id': role_obj.id,
-                'tenant_id': role_obj.tenant_id,
-                'role_name': role_obj.role_name,
-                'display_name': role_obj.display_name,
-                'name': role_obj.display_name,
-                'description': role_obj.description,
-                'permissions': role_obj.permissions,
-                'is_active': role_obj.is_active if role_obj.is_active is not None else True,
-                'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
-                'created_at': role_obj.created_at,
-                'updated_at': role_obj.updated_at,
-                'employees': [],
-                'invitations': []
-            }
+    # Get role data from auth service
+    auth_token = extract_auth_token(request)
+    role_data = await get_role_from_auth_service(user.role_id, auth_token)
 
     # Get all assigned branches
     branches_data = []
@@ -526,6 +628,7 @@ async def create_user(
         'user_id': user.user_id,
         'employee_code': user.employee_code,
         'role_id': user.role_id,
+        'role_name': role_data.get('role_name') or role_data.get('name'),  # Add role_name at top level
         'branch_id': user.branch_id,
         'first_name': user.first_name,
         'last_name': user.last_name,
@@ -566,14 +669,19 @@ async def create_user(
 
 @router.put("/{user_id}", response_model=EmployeeProfileSchema)
 async def update_user(
+    request: Request,
     user_id: str,
     user_data: EmployeeProfileUpdate,
+    token_data: TokenData = Depends(require_any_permission([USER_UPDATE[0], USER_UPDATE_OWN[0], USER_MANAGE_ALL[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a user
+
+    Requires:
+    - users:update or users:update_own or users:manage_all
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing user
     query = select(EmployeeProfile).where(
@@ -588,6 +696,11 @@ async def update_user(
 
     # Update user
     update_data = user_data.model_dump(exclude_unset=True)
+
+    # Handle branch_id auto-population from branch_ids
+    if "branch_ids" in update_data and update_data["branch_ids"]:
+        if "branch_id" not in update_data or not update_data["branch_id"]:
+            update_data["branch_id"] = update_data["branch_ids"][0]
 
     # Verify role if updating
     if "role_id" in update_data:
@@ -643,29 +756,9 @@ async def update_user(
     await db.commit()
     await db.refresh(user)
 
-    # Get role data separately without loading relationships to avoid recursion
-    role_data = None
-    if user.role_id:
-        role_query = select(CompanyRole).where(CompanyRole.id == user.role_id)
-        role_result = await db.execute(role_query)
-        role_obj = role_result.scalar_one_or_none()
-
-        if role_obj:
-            role_data = {
-                'id': role_obj.id,
-                'tenant_id': role_obj.tenant_id,
-                'role_name': role_obj.role_name,
-                'display_name': role_obj.display_name,
-                'name': role_obj.display_name,
-                'description': role_obj.description,
-                'permissions': role_obj.permissions,
-                'is_active': role_obj.is_active if role_obj.is_active is not None else True,
-                'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
-                'created_at': role_obj.created_at,
-                'updated_at': role_obj.updated_at,
-                'employees': [],  # Empty to avoid recursion
-                'invitations': []  # Empty to avoid recursion
-            }
+    # Get role data from auth service
+    auth_token = extract_auth_token(request)
+    role_data = await get_role_from_auth_service(user.role_id, auth_token)
 
     # Get branch data separately
     branch_data = None
@@ -699,6 +792,7 @@ async def update_user(
         'user_id': user.user_id,
         'employee_code': user.employee_code,
         'role_id': user.role_id,
+        'role_name': role_data.get('role_name') or role_data.get('name'),  # Add role_name at top level
         'branch_id': user.branch_id,
         'first_name': user.first_name,
         'last_name': user.last_name,
@@ -738,14 +832,19 @@ async def update_user(
 
 @router.post("/invite", response_model=UserInvitationSchema, status_code=201)
 async def invite_user(
+    request: Request,
     invitation_data: UserInvitationCreate,
+    token_data: TokenData = Depends(require_permissions([USER_INVITE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Send user invitation
+
+    Requires:
+    - users:invite
     """
-    tenant_id = await get_current_tenant_id()
-    current_user_id = await get_current_user_id()
 
     # Check if there's already a pending invitation for this email
     existing_query = select(UserInvitation).where(
@@ -794,28 +893,9 @@ async def invite_user(
     # TODO: Send invitation email
     logger.info(f"User invitation sent to {invitation_data.email} with token {invitation.invitation_token}")
 
-    # Get role data separately without loading relationships
-    role_data = None
-    if invitation.role_id:
-        role_query = select(CompanyRole).where(CompanyRole.id == invitation.role_id)
-        role_result = await db.execute(role_query)
-        role_obj = role_result.scalar_one_or_none()
-
-        if role_obj:
-            role_data = {
-                'id': role_obj.id,
-                'tenant_id': role_obj.tenant_id,
-                'role_name': role_obj.role_name,
-                'display_name': role_obj.display_name,
-                'description': role_obj.description,
-                'permissions': role_obj.permissions,
-                'is_active': role_obj.is_active if role_obj.is_active is not None else True,
-                'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
-                'created_at': role_obj.created_at,
-                'updated_at': role_obj.updated_at,
-                'employees': [],  # Empty to avoid recursion
-                'invitations': []  # Empty to avoid recursion
-            }
+    # Get role data from auth service
+    auth_token = extract_auth_token(request)
+    role_data = await get_role_from_auth_service(invitation.role_id, auth_token)
 
     # Get branch data separately
     branch_data = None
@@ -869,12 +949,16 @@ async def invite_user(
 @router.post("/{user_id}/activate", response_model=UserManagementResponse)
 async def activate_user(
     user_id: str,
+    token_data: TokenData = Depends(require_permissions([USER_ACTIVATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Activate a user
+
+    Requires:
+    - users:activate
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get user
     query = select(EmployeeProfile).where(
@@ -902,12 +986,16 @@ async def activate_user(
 @router.post("/{user_id}/deactivate", response_model=UserManagementResponse)
 async def deactivate_user(
     user_id: str,
+    token_data: TokenData = Depends(require_permissions([USER_ACTIVATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Deactivate a user
+
+    Requires:
+    - users:activate
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get user
     query = select(EmployeeProfile).where(
@@ -934,15 +1022,20 @@ async def deactivate_user(
 
 @router.get("/invitations/", response_model=PaginatedResponse)
 async def list_invitations(
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None),
+    token_data: TokenData = Depends(require_permissions([USER_READ_ALL[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List all user invitations for the current tenant
+
+    Requires:
+    - users:read_all
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(UserInvitation).where(UserInvitation.tenant_id == tenant_id)
@@ -969,29 +1062,10 @@ async def list_invitations(
 
     # Process each invitation to get relationship data
     processed_invitations = []
+    auth_token = extract_auth_token(request)
     for invitation in invitations:
-        # Get role data separately
-        role_data = None
-        if invitation.role_id:
-            role_query = select(CompanyRole).where(CompanyRole.id == invitation.role_id)
-            role_result = await db.execute(role_query)
-            role_obj = role_result.scalar_one_or_none()
-
-            if role_obj:
-                role_data = {
-                    'id': role_obj.id,
-                    'tenant_id': role_obj.tenant_id,
-                    'role_name': role_obj.role_name,
-                    'display_name': role_obj.display_name,
-                    'description': role_obj.description,
-                    'permissions': role_obj.permissions,
-                    'is_active': role_obj.is_active if role_obj.is_active is not None else True,
-                    'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
-                    'created_at': role_obj.created_at,
-                    'updated_at': role_obj.updated_at,
-                    'employees': [],  # Empty to avoid recursion
-                    'invitations': []  # Empty to avoid recursion
-                }
+        # Get role data from auth service
+        role_data = await get_role_from_auth_service(invitation.role_id, auth_token)
 
         # Get branch data separately
         branch_data = None
@@ -1054,12 +1128,16 @@ async def list_invitations(
 async def update_invitation(
     invitation_id: str,
     invitation_data: UserInvitationUpdate,
+    token_data: TokenData = Depends(require_permissions([USER_UPDATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a user invitation
+
+    Requires:
+    - users:update
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing invitation
     query = select(UserInvitation).where(
@@ -1101,28 +1179,9 @@ async def update_invitation(
     await db.commit()
     await db.refresh(invitation)
 
-    # Get role data separately without loading relationships
-    role_data = None
-    if invitation.role_id:
-        role_query = select(CompanyRole).where(CompanyRole.id == invitation.role_id)
-        role_result = await db.execute(role_query)
-        role_obj = role_result.scalar_one_or_none()
-
-        if role_obj:
-            role_data = {
-                'id': role_obj.id,
-                'tenant_id': role_obj.tenant_id,
-                'role_name': role_obj.role_name,
-                'display_name': role_obj.display_name,
-                'description': role_obj.description,
-                'permissions': role_obj.permissions,
-                'is_active': role_obj.is_active if role_obj.is_active is not None else True,
-                'is_system_role': role_obj.is_system_role if role_obj.is_system_role is not None else False,
-                'created_at': role_obj.created_at,
-                'updated_at': role_obj.updated_at,
-                'employees': [],  # Empty to avoid recursion
-                'invitations': []  # Empty to avoid recursion
-            }
+    # Get role data from auth service
+    auth_token = extract_auth_token(request)
+    role_data = await get_role_from_auth_service(invitation.role_id, auth_token)
 
     # Get branch data separately
     branch_data = None
@@ -1171,3 +1230,119 @@ async def update_invitation(
     }
 
     return UserInvitationSchema.model_validate(invitation_dict)
+
+@router.post("/bulk-update", response_model=List[EmployeeProfileSchema])
+async def bulk_update_users(
+    request: Request,
+    updates: List[dict],
+    token_data: TokenData = Depends(require_permissions([USER_UPDATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Bulk update multiple users
+
+    Requires:
+    - users:update
+
+    Body:
+    - updates: List of dicts with 'id' and fields to update
+    """
+    from src.database import Branch
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+
+    results = []
+
+    for update_data in updates:
+        user_id = update_data.get('id')
+        if not user_id:
+            continue
+
+        # Get existing user
+        query = select(EmployeeProfile).where(
+            EmployeeProfile.id == user_id,
+            EmployeeProfile.tenant_id == tenant_id
+        )
+        result = await db.execute(query)
+        user = result.scalar_one_or_none()
+
+        if not user:
+            continue
+
+        # Update user fields (exclude 'id' from update_data)
+        update_fields = {k: v for k, v in update_data.items() if k != 'id'}
+        for field, value in update_fields.items():
+            if hasattr(user, field):
+                setattr(user, field, value)
+
+        results.append(user)
+
+    # Commit all changes
+    await db.commit()
+
+    # Get auth token for role fetching
+    auth_token = extract_auth_token(request)
+
+    # Refresh all users and build response
+    response_users = []
+    for user in results:
+        await db.refresh(user)
+
+        # Convert to dict manually to avoid relationship issues
+        user_dict = {
+            'id': user.id,
+            'tenant_id': user.tenant_id,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'phone_number': user.phone_number,
+            'employee_code': user.employee_code,
+            'profile_type': user.profile_type,
+            'role_id': user.role_id,
+            'branch_id': user.branch_id,
+            'branch_ids': user.branch_ids or [],
+            'is_active': user.is_active,
+            'is_superuser': user.is_superuser,
+            'last_login': user.last_login,
+            'created_at': user.created_at,
+            'updated_at': user.updated_at,
+            'role': None,
+            'branch': None,
+            'branches': [],
+            'profile': None,
+            'documents': []
+        }
+
+        # Get role data from auth service
+        role_data = await get_role_from_auth_service(user.role_id, auth_token)
+        if role_data:
+            user_dict['role'] = role_data
+
+        # Get branch data if exists
+        if user.branch_id:
+            branch_query = select(Branch).where(Branch.id == user.branch_id)
+            branch_result = await db.execute(branch_query)
+            branch_obj = branch_result.scalar_one_or_none()
+            if branch_obj:
+                user_dict['branch'] = {
+                    'id': branch_obj.id,
+                    'tenant_id': branch_obj.tenant_id,
+                    'code': branch_obj.code,
+                    'name': branch_obj.name,
+                    'address': branch_obj.address,
+                    'city': branch_obj.city,
+                    'state': branch_obj.state,
+                    'postal_code': branch_obj.postal_code,
+                    'phone': branch_obj.phone,
+                    'email': branch_obj.email,
+                    'manager_id': branch_obj.manager_id,
+                    'is_active': branch_obj.is_active,
+                    'created_at': branch_obj.created_at,
+                    'updated_at': branch_obj.updated_at
+                }
+
+        response_users.append(EmployeeProfileSchema.model_validate(user_dict))
+
+    return response_users

@@ -67,13 +67,13 @@ export default function DriverProfileForm({
     if (profile) {
       setFormData({
         license_number: profile.license_number || '',
-        license_types: profile.license_types || [],
+        license_types: profile.license_type ? [profile.license_type] : [], // Map license_type string to array
         license_issue_date: profile.license_issue_date || '',
-        license_expiry_date: profile.license_expiry_date || '',
+        license_expiry_date: profile.license_expiry || '', // Map license_expiry to license_expiry_date
         license_issuing_authority: profile.license_issuing_authority || '',
         badge_number: profile.badge_number || '',
-        badge_expiry_date: profile.badge_expiry_date || '',
-        vehicle_preferences: profile.vehicle_preferences || [],
+        badge_expiry_date: profile.badge_expiry || '', // Map badge_expiry to badge_expiry_date
+        vehicle_preferences: profile.preferred_vehicle_types || [], // Map preferred_vehicle_types to vehicle_preferences
         preferred_routes: profile.preferred_routes || [],
         experience_years: profile.experience_years || 0
       })
@@ -125,11 +125,26 @@ export default function DriverProfileForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Map frontend form data to backend schema
+    // Backend expects: license_type (string), license_expiry (datetime), badge_expiry, preferred_vehicle_types
+    const submitData = {
+      employee_profile_id: user.id,
+      license_number: formData.license_number,
+      license_type: formData.license_types[0] || 'Light Motor Vehicle (LMV)', // Take first license type
+      license_expiry: formData.license_expiry_date, // Map license_expiry_date to license_expiry
+      license_issuing_authority: formData.license_issuing_authority,
+      badge_number: formData.badge_number,
+      badge_expiry: formData.badge_expiry_date, // Map badge_expiry_date to badge_expiry
+      preferred_vehicle_types: formData.vehicle_preferences, // Map vehicle_preferences to preferred_vehicle_types
+      experience_years: formData.experience_years
+    }
+
     try {
       if (profile) {
-        await updateProfile({ driverId: user.id, profile: formData }).unwrap()
+        await updateProfile({ driverId: user.id, profile: submitData }).unwrap()
       } else {
-        await createProfile({ userId: user.id, profile: formData }).unwrap()
+        await createProfile({ userId: user.id, profile: submitData }).unwrap()
       }
       onSave()
     } catch (error) {
@@ -184,17 +199,19 @@ export default function DriverProfileForm({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-                <p className="text-gray-900">{profile.license_expiry_date || '-'}</p>
+                <p className="text-gray-900">{profile.license_expiry || '-'}</p>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">License Types</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">License Type</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {profile.license_types?.map((type, index) => (
-                  <span key={index} className="px-2 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">
-                    {type}
+                {profile.license_type ? (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">
+                    {profile.license_type}
                   </span>
-                )) || <span className="text-gray-600">No license types specified</span>}
+                ) : (
+                  <span className="text-gray-600">No license type specified</span>
+                )}
               </div>
             </div>
           </CardContent>
@@ -213,7 +230,7 @@ export default function DriverProfileForm({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Badge Expiry Date</label>
-                <p className="text-gray-900">{profile.badge_expiry_date || '-'}</p>
+                <p className="text-gray-900">{profile.badge_expiry || '-'}</p>
               </div>
             </div>
           </CardContent>
@@ -228,21 +245,11 @@ export default function DriverProfileForm({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Preferences</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {profile.vehicle_preferences?.map((vehicle, index) => (
+                {profile.preferred_vehicle_types?.map((vehicle, index) => (
                   <span key={index} className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
                     {vehicle}
                   </span>
                 )) || <span className="text-gray-600">No vehicle preferences specified</span>}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Routes</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {profile.preferred_routes?.map((route, index) => (
-                  <span key={index} className="px-2 py-1 bg-purple-100 text-purple-700 text-sm rounded-full">
-                    {route}
-                  </span>
-                )) || <span className="text-gray-600">No preferred routes specified</span>}
               </div>
             </div>
             <div>
@@ -256,7 +263,7 @@ export default function DriverProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       {/* License Information */}
       <Card>
         <CardHeader>
@@ -415,27 +422,6 @@ export default function DriverProfileForm({
           </div>
         </CardContent>
       </Card>
-
-      {/* Form Actions */}
-      <div className="flex justify-end gap-3 pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={isCreating || isUpdating}
-        >
-          <X className="w-4 h-4 mr-2" />
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={isCreating || isUpdating}
-          className="flex items-center gap-2"
-        >
-          <Save className="w-4 h-4" />
-          {isCreating || isUpdating ? 'Saving...' : (profile ? 'Update Profile' : 'Create Profile')}
-        </Button>
-      </div>
     </form>
   )
 }

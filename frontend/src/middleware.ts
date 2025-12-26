@@ -74,16 +74,20 @@ export function middleware(request: NextRequest) {
   }
 
   // Continue with the request
+  // Clone the request headers so we can modify them
+  const requestHeaders = new Headers(request.headers);
+
+  // Forward the authorization token to the next handler if it exists
+  // This ensures API routes receive the token for forwarding to backend services
+  if (token && !requestHeaders.get("authorization")) {
+    requestHeaders.set("authorization", `Bearer ${token}`);
+  }
+
   const response = NextResponse.next({
     request: {
-      headers: request.headers,
+      headers: requestHeaders,
     },
   });
-
-  // Forward the token to the next handler if it exists
-  if (token && !request.headers.get("authorization")) {
-    response.headers.set("authorization", `Bearer ${token}`);
-  }
 
   return response;
 }

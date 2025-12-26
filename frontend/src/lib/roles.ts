@@ -121,13 +121,32 @@ export function hasMinimumRole(
 
 /**
  * Normalize role name to match our role constants
- * Handles variations like "Company Admin" -> "company_admin"
+ * Handles variations like "Admin" -> "company_admin", "Branch Manager" -> "branch_manager"
  */
 function normalizeRoleName(roleName: string | undefined): Role | undefined {
   if (!roleName) return undefined;
 
+  // Direct mapping from auth service role names to frontend role constants
+  const roleMapping: Record<string, Role> = {
+    "super_admin": ROLES.SUPER_ADMIN,
+    "admin": ROLES.COMPANY_ADMIN,
+    "branch manager": ROLES.BRANCH_MANAGER,
+    "branch_manager": ROLES.BRANCH_MANAGER,
+    "finance manager": ROLES.FINANCE_MANAGER,
+    "finance_manager": ROLES.FINANCE_MANAGER,
+    "logistics manager": ROLES.LOGISTICS_MANAGER,
+    "logistics_manager": ROLES.LOGISTICS_MANAGER,
+    "driver": ROLES.DRIVER,
+    "user": ROLES.USER,
+  };
+
   // Convert to lowercase and replace spaces/underscores
   const normalized = roleName.toLowerCase().replace(/[\s_-]+/g, "_");
+
+  // Check direct mapping first
+  if (roleMapping[normalized]) {
+    return roleMapping[normalized];
+  }
 
   // Check if it matches any of our role constants
   const roleValues = Object.values(ROLES);
@@ -205,23 +224,33 @@ export function getRoleFromId(roleId: number | undefined): Role | undefined {
 }
 
 /**
- * Get user role from API response (prioritizes role_id over role name)
+ * Get user role from API response (prioritizes role_name over role_id)
+ * role_name is consistent across tenants while role_id is tenant-specific
  */
 export function getUserRole(user: {
-  role_id?: number;
+  role_id?: number | string;
+  role_name?: string;
   role?: { name?: string } | string;
 }): Role | undefined {
-  // First try to get role from role_id
-  if (user.role_id) {
-    const roleFromId = getRoleFromId(user.role_id);
-    if (roleFromId) return roleFromId;
+  // First try to get role from role_name (consistent across tenants)
+  if (user.role_name) {
+    const normalizedRole = normalizeRoleName(user.role_name);
+    if (normalizedRole) return normalizedRole;
   }
 
-  // Fallback to role name
+  // Fallback to role object name
   if (typeof user.role === "string") {
     return normalizeRoleName(user.role);
   } else if (user.role?.name) {
     return normalizeRoleName(user.role.name);
+  }
+
+  // Last resort: try role_id (only for legacy/superadmin where IDs are consistent)
+  // Note: This will NOT work for tenant-specific roles
+  if (user.role_id) {
+    const roleId = typeof user.role_id === "string" ? parseInt(user.role_id) : user.role_id;
+    const roleFromId = getRoleFromId(roleId);
+    if (roleFromId) return roleFromId;
   }
 
   return undefined;
