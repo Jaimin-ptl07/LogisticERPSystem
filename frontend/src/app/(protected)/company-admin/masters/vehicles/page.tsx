@@ -29,6 +29,7 @@ import {
   Settings,
   Calendar,
   Wrench,
+  ArrowLeft,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -181,11 +182,24 @@ export default function VehiclesPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Vehicle Management
-            </h1>
-            <p className="text-gray-500 mt-2">Manage your fleet of vehicles</p>
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.back()}
+              className="flex items-center"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Vehicle Management
+              </h1>
+              <p className="text-gray-500 mt-2">
+                Manage your fleet of vehicles
+              </p>
+            </div>
           </div>
           <Button
             onClick={() => router.push("/company-admin/masters/vehicles/new")}

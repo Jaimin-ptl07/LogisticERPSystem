@@ -20,6 +20,8 @@ import {
   Building,
   Phone,
   Users,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
@@ -48,6 +50,7 @@ type UserCreateFormData = z.infer<typeof userCreateSchema>;
 export default function NewUserPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Fetch branches and roles
   const { data: branchesData } = useGetBranchesQuery({
@@ -143,7 +146,7 @@ export default function NewUserPage() {
       await createUser(profileData).unwrap();
 
       toast.success("User created successfully");
-      router.push("/masters/users");
+      router.push("/company-admin/masters/users");
     } catch (error: any) {
       console.error("User creation error:", error);
 
@@ -283,7 +286,7 @@ export default function NewUserPage() {
                   id="profile_type"
                   {...register("profile_type")}
                   onChange={(e) => handleProfileTypeChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
                 >
                   <option value="staff">Staff</option>
                   <option value="driver">Driver</option>
@@ -301,7 +304,7 @@ export default function NewUserPage() {
                 <select
                   id="role_id"
                   {...register("role_id")}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black ${
                     errors.role_id ? "border-red-500" : "border-gray-300"
                   }`}
                 >
@@ -323,7 +326,7 @@ export default function NewUserPage() {
               <select
                 id="branch_id"
                 {...register("branch_id")}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
               >
                 <option value="">Select Branch (Optional)</option>
                 {branches.map((branch) => (
@@ -355,13 +358,26 @@ export default function NewUserPage() {
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="password">Password *</Label>
-              <Input
-                id="password"
-                type="password"
-                {...register("password")}
-                placeholder="Enter password"
-                className={errors.password ? "border-red-500" : ""}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  {...register("password")}
+                  placeholder="Enter password"
+                  className={`pr-10 ${errors.password ? "border-red-500" : ""}`}
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-gray-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
+              </div>
               {errors.password && (
                 <p className="text-sm text-red-600 mt-1">
                   {errors.password.message}
