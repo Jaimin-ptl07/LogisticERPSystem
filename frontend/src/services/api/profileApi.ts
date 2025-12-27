@@ -324,7 +324,7 @@ export const profileApi = createApi({
 
     // Branch Manager Profile endpoints
     getBranchManagerProfile: builder.query<BranchManagerProfileExtended, string>({
-      query: (userId) => `company/profiles/branch-manager/${userId}`,
+      query: (userId) => `company/profiles/branch-managers/${userId}`,
       providesTags: ['BranchManagerProfile'],
     }),
     getBranchManagerProfileByUser: builder.query<BranchManagerProfileExtended, string>({
@@ -333,7 +333,7 @@ export const profileApi = createApi({
     }),
     createBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { userId: string; profile: BranchManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/branch-manager`,
+        url: `company/profiles/branch-managers`,
         method: 'POST',
         body: { employee_profile_id: userId, ...profile },
       }),
@@ -341,7 +341,7 @@ export const profileApi = createApi({
     }),
     updateBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { userId: string; profile: Partial<BranchManagerProfileForm> }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/branch-manager/${userId}`,
+        url: `company/profiles/branch-managers/${userId}`,
         method: 'PUT',
         body: profile,
       }),
@@ -349,7 +349,7 @@ export const profileApi = createApi({
     }),
     deleteBranchManagerProfile: builder.mutation<void, string>({
       query: (userId) => ({
-        url: `company/profiles/branch-manager/${userId}`,
+        url: `company/profiles/branch-managers/${userId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
@@ -357,7 +357,7 @@ export const profileApi = createApi({
 
     // Finance Manager Profile endpoints
     getFinanceManagerProfile: builder.query<FinanceManagerProfile, string>({
-      query: (userId) => `company/profiles/finance-manager/${userId}`,
+      query: (userId) => `company/profiles/finance-managers/${userId}`,
       providesTags: ['FinanceManagerProfile'],
     }),
     getFinanceManagerProfileByUser: builder.query<FinanceManagerProfile, string>({
@@ -366,7 +366,7 @@ export const profileApi = createApi({
     }),
     createFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { userId: string; profile: FinanceManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/finance-manager`,
+        url: `company/profiles/finance-managers`,
         method: 'POST',
         body: { employee_profile_id: userId, ...profile },
       }),
@@ -374,7 +374,7 @@ export const profileApi = createApi({
     }),
     updateFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { userId: string; profile: Partial<FinanceManagerProfileForm> }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/finance-manager/${userId}`,
+        url: `company/profiles/finance-managers/${userId}`,
         method: 'PUT',
         body: profile,
       }),
@@ -382,7 +382,7 @@ export const profileApi = createApi({
     }),
     deleteFinanceManagerProfile: builder.mutation<void, string>({
       query: (userId) => ({
-        url: `company/profiles/finance-manager/${userId}`,
+        url: `company/profiles/finance-managers/${userId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
@@ -390,7 +390,7 @@ export const profileApi = createApi({
 
     // Logistics Manager Profile endpoints
     getLogisticsManagerProfile: builder.query<LogisticsManagerProfile, string>({
-      query: (userId) => `company/profiles/logistics-manager/${userId}`,
+      query: (userId) => `company/profiles/logistics-managers/${userId}`,
       providesTags: ['LogisticsManagerProfile'],
     }),
     getLogisticsManagerProfileByUser: builder.query<LogisticsManagerProfile, string>({
@@ -399,7 +399,7 @@ export const profileApi = createApi({
     }),
     createLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { userId: string; profile: LogisticsManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/logistics-manager`,
+        url: `company/profiles/logistics-managers`,
         method: 'POST',
         body: { employee_profile_id: userId, ...profile },
       }),
@@ -407,7 +407,7 @@ export const profileApi = createApi({
     }),
     updateLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { userId: string; profile: Partial<LogisticsManagerProfileForm> }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/logistics-manager/${userId}`,
+        url: `company/profiles/logistics-managers/${userId}`,
         method: 'PUT',
         body: profile,
       }),
@@ -415,7 +415,7 @@ export const profileApi = createApi({
     }),
     deleteLogisticsManagerProfile: builder.mutation<void, string>({
       query: (userId) => ({
-        url: `company/profiles/logistics-manager/${userId}`,
+        url: `company/profiles/logistics-managers/${userId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
