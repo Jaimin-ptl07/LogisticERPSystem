@@ -2,111 +2,36 @@
  * Proxy API route for individual user operations
  * Forwards requests to the company service
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
+import { proxyRequest } from '@/utils/apiProxy'
 
+// Get the company service URL from environment variables
 const COMPANY_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002'
 
+// Create the API route handler - dynamically handles the user ID in the path
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: userId } = await params
-    console.log('GET user ID:', userId)
-    console.log('Request URL:', request.url)
-
-    const response = await fetch(`${COMPANY_API_URL}/api/company/users/${userId}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.text()
-      console.error('Backend API error:', errorData)
-      return NextResponse.json(
-        { error: 'Failed to fetch user', details: errorData },
-        { status: response.status }
-      )
-    }
-
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error('Error in user API route:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
+  const resolvedParams = await params
+  const { id } = resolvedParams
+  return proxyRequest(request, COMPANY_API_URL, `users/${id}`)
 }
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: userId } = await params
-    const body = await request.json()
-
-    const response = await fetch(`${COMPANY_API_URL}/api/company/users/${userId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.text()
-      console.error('Backend API error:', errorData)
-      return NextResponse.json(
-        { error: 'Failed to update user', details: errorData },
-        { status: response.status }
-      )
-    }
-
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error('Error in user API route:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
+  const resolvedParams = await params
+  const { id } = resolvedParams
+  return proxyRequest(request, COMPANY_API_URL, `users/${id}`)
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: userId } = await params
-
-    const response = await fetch(`${COMPANY_API_URL}/api/company/users/${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = await response.text()
-      console.error('Backend API error:', errorData)
-      return NextResponse.json(
-        { error: 'Failed to delete user', details: errorData },
-        { status: response.status }
-      )
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Error in user API route:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
+  const resolvedParams = await params
+  const { id } = resolvedParams
+  return proxyRequest(request, COMPANY_API_URL, `users/${id}`)
 }

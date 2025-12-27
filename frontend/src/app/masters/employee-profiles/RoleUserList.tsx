@@ -3,13 +3,12 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { User } from '@/services/api/companyApi'
 import { RoleData, UserWithProfile } from '@/services/api/profileApi'
 import { ChevronDown, ChevronUp, UserPlus, CheckCircle, Clock, AlertCircle } from 'lucide-react'
 
 interface RoleUserListProps {
   roleData: RoleData
-  onUserClick: (user: User) => void
+  onUserClick: (userId: string) => void
   filterStatus: 'all' | 'completed' | 'pending'
 }
 
@@ -36,9 +35,8 @@ export default function RoleUserList({ roleData, onUserClick, filterStatus }: Ro
     }
   }
 
-  const getStatusText = (user: User) => {
-    const hasProfile = user.profile !== null && user.profile !== undefined
-    return hasProfile ? 'Profile Complete' : 'Profile Pending'
+  const getStatusText = (user: UserWithProfile) => {
+    return user.profile_completion?.is_complete === true ? 'Profile Complete' : 'Profile Pending'
   }
 
   return (
@@ -107,7 +105,7 @@ export default function RoleUserList({ roleData, onUserClick, filterStatus }: Ro
                 <div
                   key={user.id}
                   className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => onUserClick(user)}
+                  onClick={() => onUserClick(user.id)}
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
@@ -144,7 +142,7 @@ export default function RoleUserList({ roleData, onUserClick, filterStatus }: Ro
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onUserClick(user)
+                        onUserClick(user.id)
                       }}
                     >
                       {user.profile ? 'Edit' : 'Create Profile'}

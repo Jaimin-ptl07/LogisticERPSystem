@@ -13,7 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/Table";
-import { AppLayout } from "@/components/layout/AppLayout";
 import {
   Search,
   Plus,
@@ -30,6 +29,7 @@ import {
   UserCheck,
   UserX,
   UserPlus,
+  Eye,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -117,7 +117,11 @@ export default function UsersPage() {
   const branches = branchesData?.items || [];
 
   const handleEdit = (id: string) => {
-    router.push(`/masters/users/${id}/edit`);
+    router.push(`/company-admin/masters/users/${id}/edit`);
+  };
+
+  const handleViewProfile = (user: User) => {
+    router.push(`/company-admin/masters/employee-profiles/${user.id}`);
   };
 
   const handleBulkSelect = (userId: string, checked: boolean) => {
@@ -591,6 +595,12 @@ export default function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleViewProfile(user)}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View Profile
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleEdit(user.id)}
                             >

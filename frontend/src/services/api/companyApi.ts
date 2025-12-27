@@ -27,13 +27,16 @@ export interface Branch {
 export interface User {
   id: string
   tenant_id: string
+  user_id?: string
   email: string
   first_name: string
   last_name: string
   phone_number?: string
+  phone?: string
   profile_type: 'staff' | 'driver' | 'admin'
-  role_id: number
-  branch_id?: string
+  role_id: number | string
+  branch_id?: string // Deprecated: Use branch_ids for multiple branches
+  branch_ids?: string[] // New: Multiple branch assignments
   is_active: boolean
   is_superuser: boolean
   last_login?: string
@@ -41,13 +44,52 @@ export interface User {
   updated_at?: string
   role?: Role
   branch?: Branch
+  branches?: Branch[] // New: All assigned branches
   profile?: UserProfile
   documents?: UserDocument[]
+
+  // Employee profile fields (from backend EmployeeProfile)
+  employee_code?: string
+  employee_id?: string
+  date_of_birth?: string
+  gender?: 'male' | 'female' | 'other'
+  blood_group?: string
+  emergency_contact_name?: string
+  emergency_contact_phone?: string
+  emergency_contact_number?: string
+  address?: string
+  city?: string
+  state?: string
+  postal_code?: string
+  country?: string
+  hire_date?: string
+  date_of_joining?: string
+  employment_type?: string
+  department?: string
+  designation?: string
+  reports_to?: string
+  salary?: number
+  bank_account_number?: string
+  bank_name?: string
+  bank_ifsc?: string
+  pan_number?: string
+  aadhaar_number?: string
+  aadhar_number?: string
+  passport_number?: string
+  marital_status?: 'single' | 'married' | 'divorced' | 'widowed'
+  nationality?: string
+  reporting_manager_id?: string
+  // Nested address objects
+  current_address?: Address
+  permanent_address?: Address
+  // Nested bank details
+  bank_details?: BankDetails
 }
 
 export interface Role {
   id: number
   name: string
+  role_name?: string  // Alternative field name from auth service
   description?: string
   tenant_id: string
   permissions: Permission[]
@@ -340,7 +382,8 @@ export interface UserCreate {
   phone?: string
   profile_type?: 'staff' | 'driver' | 'admin'
   role_id?: string
-  branch_id?: string
+  branch_id?: string // Deprecated: Use branch_ids for multiple branches
+  branch_ids?: string[] // New: Multiple branch assignments
   is_active?: boolean
   send_invitation?: boolean
 }
@@ -374,6 +417,17 @@ export interface RoleUpdate {
   name?: string
   description?: string
   permission_ids?: number[]
+}
+
+// Auth service Role type (from roles table in auth database)
+export interface AuthRole {
+  id: number
+  name: string
+  description?: string
+  is_system: boolean
+  tenant_id: string
+  created_at: string
+  updated_at?: string
 }
 
 export interface UserProfileCreate {
@@ -783,10 +837,36 @@ export const companyApi = createApi({
       invalidatesTags: ['User', 'UserProfile'],
     }),
     deleteUser: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `company/users/${id}`,
-        method: 'DELETE',
-      }),
+      queryFn: async (id, _queryApi, _extraOptions, baseQuery) => {
+        // First, get the user from company service to find the auth user_id
+        const userResponse = await baseQuery({
+          url: `company/users/${id}`,
+          method: 'GET',
+        })
+
+        if (userResponse.error) {
+          return { error: userResponse.error }
+        }
+
+        const user = userResponse.data as User
+        const authUserId = user.user_id
+
+        if (!authUserId) {
+          return { error: { status: 400, data: { message: 'User does not have an associated auth account' } } }
+        }
+
+        // Delete from auth service (this will cascade to company service)
+        const deleteResponse = await baseQuery({
+          url: `auth/users/${authUserId}`,
+          method: 'DELETE',
+        })
+
+        if (deleteResponse.error) {
+          return { error: deleteResponse.error }
+        }
+
+        return { data: undefined }
+      },
       invalidatesTags: ['User'],
     }),
     inviteUser: builder.mutation<void, UserInvitation>({
@@ -819,7 +899,7 @@ export const companyApi = createApi({
       }),
     }),
     bulkUpdateUsers: builder.mutation<User[], { updates: Array<{ id: string; [key: string]: any }> }>({
-      query: (updates) => ({
+      query: ({ updates }) => ({
         url: 'company/users/bulk-update',
         method: 'POST',
         body: updates,
@@ -851,9 +931,8 @@ export const companyApi = createApi({
     // Role Management endpoints
     getRoles: builder.query<getRoleAPIResponse, { include_permissions?: boolean }>({
       query: ({ include_permissions = true }) => {
-        const params = new URLSearchParams()
-        params.append('include_permissions', include_permissions.toString())
-        return `company/roles?${params}`
+        // Now uses auth service roles via company service proxy
+        return 'company/roles/auth-roles'
       },
       providesTags: ['Role'],
     }),
@@ -886,6 +965,12 @@ export const companyApi = createApi({
     }),
     getPermissions: builder.query<Permission[], void>({
       query: () => 'company/roles/permissions',
+      providesTags: ['Role'],
+    }),
+
+    // Get roles from auth service (via company service proxy)
+    getAuthRoles: builder.query<AuthRole[], void>({
+      query: () => 'company/roles/auth-roles',
       providesTags: ['Role'],
     }),
 
@@ -1047,6 +1132,7 @@ export const {
   useCreateRoleMutation,
   useUpdateRoleMutation,
   useDeleteRoleMutation,
+  useGetAuthRolesQuery,  // Get roles from auth service via company service
   useGetPermissionsQuery,
   // User Profile hooks
   useGetUserProfileQuery,

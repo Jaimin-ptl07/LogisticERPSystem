@@ -28,13 +28,15 @@ export default function LogisticsManagerProfileForm({
   onCancel
 }: LogisticsManagerProfileFormProps) {
   const [formData, setFormData] = useState({
-    managed_branches: [] as string[],
+    managed_zones: [] as string[],
+    can_assign_drivers: false,
+    can_approve_overtime: false,
     can_plan_routes: false,
-    can_dispatch_vehicles: false,
-    can_manage_drivers: false,
-    can_track_shipments: false,
-    can_handle_emergency_dispatch: false,
-    fleet_management_permissions: {
+    vehicle_management_permissions: {
+      can_dispatch_vehicles: false,
+      can_manage_drivers: false,
+      can_track_shipments: false,
+      can_handle_emergency_dispatch: false,
       can_maintain_vehicles: false,
       can_purchase_vehicles: false,
       can_sell_vehicles: false,
@@ -49,17 +51,19 @@ export default function LogisticsManagerProfileForm({
   useEffect(() => {
     if (profile) {
       setFormData({
-        managed_branches: profile.managed_branches || [],
+        managed_zones: profile.managed_zones || [],
+        can_assign_drivers: profile.can_assign_drivers || false,
+        can_approve_overtime: profile.can_approve_overtime || false,
         can_plan_routes: profile.can_plan_routes || false,
-        can_dispatch_vehicles: profile.can_dispatch_vehicles || false,
-        can_manage_drivers: profile.can_manage_drivers || false,
-        can_track_shipments: profile.can_track_shipments || false,
-        can_handle_emergency_dispatch: profile.can_handle_emergency_dispatch || false,
-        fleet_management_permissions: {
-          can_maintain_vehicles: profile.fleet_management_permissions?.can_maintain_vehicles || false,
-          can_purchase_vehicles: profile.fleet_management_permissions?.can_purchase_vehicles || false,
-          can_sell_vehicles: profile.fleet_management_permissions?.can_sell_vehicles || false,
-          can_monitor_fuel: profile.fleet_management_permissions?.can_monitor_fuel || false
+        vehicle_management_permissions: {
+          can_dispatch_vehicles: profile.vehicle_management_permissions?.can_dispatch_vehicles || false,
+          can_manage_drivers: profile.vehicle_management_permissions?.can_manage_drivers || false,
+          can_track_shipments: profile.vehicle_management_permissions?.can_track_shipments || false,
+          can_handle_emergency_dispatch: profile.vehicle_management_permissions?.can_handle_emergency_dispatch || false,
+          can_maintain_vehicles: profile.vehicle_management_permissions?.can_maintain_vehicles || false,
+          can_purchase_vehicles: profile.vehicle_management_permissions?.can_purchase_vehicles || false,
+          can_sell_vehicles: profile.vehicle_management_permissions?.can_sell_vehicles || false,
+          can_monitor_fuel: profile.vehicle_management_permissions?.can_monitor_fuel || false
         }
       })
     }
@@ -83,12 +87,12 @@ export default function LogisticsManagerProfileForm({
     }
   }
 
-  const handleManagedBranchToggle = (branchId: string) => {
+  const handleManagedZonesToggle = (zone: string) => {
     setFormData(prev => ({
       ...prev,
-      managed_branches: prev.managed_branches.includes(branchId)
-        ? prev.managed_branches.filter(id => id !== branchId)
-        : [...prev.managed_branches, branchId]
+      managed_zones: prev.managed_zones.includes(zone)
+        ? prev.managed_zones.filter(z => z !== zone)
+        : [...prev.managed_zones, zone]
     }))
   }
 
@@ -96,7 +100,7 @@ export default function LogisticsManagerProfileForm({
     e.preventDefault()
     try {
       if (profile) {
-        await updateProfile({ userId: user.id, profile: formData }).unwrap()
+        await updateProfile({ profileId: profile.id!, profile: formData }).unwrap()
       } else {
         await createProfile({ userId: user.id, profile: formData }).unwrap()
       }
@@ -135,16 +139,13 @@ export default function LogisticsManagerProfileForm({
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Managed Branches</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Managed Zones</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {profile.managed_branches?.map((branchId) => {
-                  const branch = branches?.items.find(b => b.id === branchId)
-                  return branch ? (
-                    <span key={branchId} className="px-2 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">
-                      {branch.name}
-                    </span>
-                  ) : null
-                }) || <span className="text-gray-600">No branches assigned</span>}
+                {profile.managed_zones?.map((zone, index) => (
+                  <span key={index} className="px-2 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">
+                    {zone}
+                  </span>
+                )) || <span className="text-gray-600">No zones assigned</span>}
               </div>
             </div>
 
@@ -152,45 +153,53 @@ export default function LogisticsManagerProfileForm({
               <h4 className="font-medium text-gray-900">Logistics Permissions</h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-4 h-4 ${profile.can_assign_drivers ? 'text-green-600' : 'text-gray-400'}`} />
+                  <span className="text-sm">Assign Drivers</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-4 h-4 ${profile.can_approve_overtime ? 'text-green-600' : 'text-gray-400'}`} />
+                  <span className="text-sm">Approve Overtime</span>
+                </div>
+                <div className="flex items-center gap-2">
                   <CheckCircle className={`w-4 h-4 ${profile.can_plan_routes ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Plan Routes</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_dispatch_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
-                  <span className="text-sm">Dispatch Vehicles</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_manage_drivers ? 'text-green-600' : 'text-gray-400'}`} />
-                  <span className="text-sm">Manage Drivers</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_track_shipments ? 'text-green-600' : 'text-gray-400'}`} />
-                  <span className="text-sm">Track Shipments</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_handle_emergency_dispatch ? 'text-green-600' : 'text-gray-400'}`} />
-                  <span className="text-sm">Emergency Dispatch</span>
                 </div>
               </div>
             </div>
 
             <div className="space-y-3">
-              <h4 className="font-medium text-gray-900 mt-4">Fleet Management Permissions</h4>
+              <h4 className="font-medium text-gray-900 mt-4">Vehicle Management Permissions</h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.fleet_management_permissions?.can_maintain_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_dispatch_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
+                  <span className="text-sm">Dispatch Vehicles</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_manage_drivers ? 'text-green-600' : 'text-gray-400'}`} />
+                  <span className="text-sm">Manage Drivers</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_track_shipments ? 'text-green-600' : 'text-gray-400'}`} />
+                  <span className="text-sm">Track Shipments</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_handle_emergency_dispatch ? 'text-green-600' : 'text-gray-400'}`} />
+                  <span className="text-sm">Emergency Dispatch</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_maintain_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Maintain Vehicles</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.fleet_management_permissions?.can_purchase_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_purchase_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Purchase Vehicles</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.fleet_management_permissions?.can_sell_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_sell_vehicles ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Sell Vehicles</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.fleet_management_permissions?.can_monitor_fuel ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.vehicle_management_permissions?.can_monitor_fuel ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Monitor Fuel</span>
                 </div>
               </div>
@@ -202,32 +211,48 @@ export default function LogisticsManagerProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Logistics Manager Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Managed Branches</label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {branches?.items.map((branch) => (
-                <label key={branch.id} className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.managed_branches.includes(branch.id)}
-                    onChange={() => handleManagedBranchToggle(branch.id)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700">{branch.name}</span>
-                </label>
-              ))}
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Managed Zones</label>
+            <Input
+              type="text"
+              placeholder="Enter zones separated by commas (e.g., North Zone, South Zone)"
+              value={formData.managed_zones.join(', ')}
+              onChange={(e) => {
+                const zones = e.target.value.split(',').map(z => z.trim()).filter(z => z.length > 0)
+                handleInputChange('managed_zones', zones)
+              }}
+              className="w-full"
+            />
+            <p className="text-xs text-gray-500 mt-1">Enter multiple zones separated by commas</p>
           </div>
 
           <div className="space-y-3">
             <h4 className="font-medium text-gray-900">Logistics Permissions</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.can_assign_drivers}
+                  onChange={(e) => handleInputChange('can_assign_drivers', e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm">Assign Drivers</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.can_approve_overtime}
+                  onChange={(e) => handleInputChange('can_approve_overtime', e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm">Approve Overtime</span>
+              </label>
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -237,11 +262,15 @@ export default function LogisticsManagerProfileForm({
                 />
                 <span className="text-sm">Plan Routes</span>
               </label>
+            </div>
+
+            <h4 className="font-medium text-gray-900 mt-4">Vehicle Management Permissions</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_dispatch_vehicles}
-                  onChange={(e) => handleInputChange('can_dispatch_vehicles', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_dispatch_vehicles}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_dispatch_vehicles', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Dispatch Vehicles</span>
@@ -249,8 +278,8 @@ export default function LogisticsManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_manage_drivers}
-                  onChange={(e) => handleInputChange('can_manage_drivers', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_manage_drivers}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_manage_drivers', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Manage Drivers</span>
@@ -258,8 +287,8 @@ export default function LogisticsManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_track_shipments}
-                  onChange={(e) => handleInputChange('can_track_shipments', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_track_shipments}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_track_shipments', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Track Shipments</span>
@@ -267,21 +296,17 @@ export default function LogisticsManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_handle_emergency_dispatch}
-                  onChange={(e) => handleInputChange('can_handle_emergency_dispatch', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_handle_emergency_dispatch}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_handle_emergency_dispatch', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Emergency Dispatch</span>
               </label>
-            </div>
-
-            <h4 className="font-medium text-gray-900 mt-4">Fleet Management Permissions</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.fleet_management_permissions.can_maintain_vehicles}
-                  onChange={(e) => handleInputChange('fleet_management_permissions.can_maintain_vehicles', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_maintain_vehicles}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_maintain_vehicles', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Maintain Vehicles</span>
@@ -289,8 +314,8 @@ export default function LogisticsManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.fleet_management_permissions.can_purchase_vehicles}
-                  onChange={(e) => handleInputChange('fleet_management_permissions.can_purchase_vehicles', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_purchase_vehicles}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_purchase_vehicles', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Purchase Vehicles</span>
@@ -298,8 +323,8 @@ export default function LogisticsManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.fleet_management_permissions.can_sell_vehicles}
-                  onChange={(e) => handleInputChange('fleet_management_permissions.can_sell_vehicles', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_sell_vehicles}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_sell_vehicles', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Sell Vehicles</span>
@@ -307,8 +332,8 @@ export default function LogisticsManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.fleet_management_permissions.can_monitor_fuel}
-                  onChange={(e) => handleInputChange('fleet_management_permissions.can_monitor_fuel', e.target.checked)}
+                  checked={formData.vehicle_management_permissions.can_monitor_fuel}
+                  onChange={(e) => handleInputChange('vehicle_management_permissions.can_monitor_fuel', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Monitor Fuel</span>

@@ -202,7 +202,7 @@ export default function LogisticsManagerProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Logistics Manager Details</CardTitle>
@@ -317,26 +317,6 @@ export default function LogisticsManagerProfileForm({
           </div>
         </CardContent>
       </Card>
-
-      <div className="flex justify-end gap-3 pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={isCreating || isUpdating}
-        >
-          <X className="w-4 h-4 mr-2" />
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={isCreating || isUpdating}
-          className="flex items-center gap-2"
-        >
-          <Save className="w-4 h-4" />
-          {isCreating || isUpdating ? 'Saving...' : (profile ? 'Update Profile' : 'Create Profile')}
-        </Button>
-      </div>
     </form>
   )
 }

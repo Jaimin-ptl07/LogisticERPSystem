@@ -67,6 +67,7 @@ class TokenData:
         user_id: str = None,
         tenant_id: str = None,
         role_id: str = None,
+        role: str = None,
         permissions: list = None,
         exp: datetime = None,
         is_superuser: bool = False
@@ -74,6 +75,7 @@ class TokenData:
         self.user_id = user_id
         self.tenant_id = tenant_id
         self.role_id = role_id
+        self.role = role  # Role name from JWT
         self.permissions = permissions or []
         self.exp = exp
         self.is_superuser = is_superuser
@@ -117,10 +119,11 @@ def verify_token(token: str) -> TokenData:
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         role_id: str = payload.get("role_id")
+        role: str = payload.get("role")  # Extract role from JWT
         is_superuser: bool = payload.get("is_superuser", False)
         exp: Optional[datetime] = payload.get("exp")
 
-        logger.debug(f"Token payload - user_id: {user_id}, tenant_id: {tenant_id}, role_id: {role_id}")
+        logger.debug(f"Token payload - user_id: {user_id}, tenant_id: {tenant_id}, role_id: {role_id}, role: {role}")
 
         if user_id is None or role_id is None:
             logger.warning("Token missing required fields")
@@ -131,6 +134,7 @@ def verify_token(token: str) -> TokenData:
             user_id=user_id,
             tenant_id=tenant_id,
             role_id=role_id,
+            role=role,  # Include role in TokenData
             permissions=[],
             exp=exp,
             is_superuser=is_superuser

@@ -39,6 +39,7 @@ const userCreateSchema = z.object({
   profile_type: z.enum(["staff", "driver", "admin"]),
   role_id: z.string().min(1, "Role is required"),
   branch_id: z.string().optional(),
+  branch_ids: z.array(z.string()).optional(),
   is_active: z.boolean(),
   send_invitation: z.boolean(),
 });
@@ -79,6 +80,8 @@ export default function NewUserPage() {
       password: "",
       profile_type: "staff",
       role_id: "", // Will be set when roles are loaded
+      branch_id: "",
+      branch_ids: [],
       is_active: true,
       send_invitation: true,
     },
@@ -87,6 +90,19 @@ export default function NewUserPage() {
   const selectedProfileType = watch("profile_type");
   const selectedRoleId = watch("role_id");
   const selectedBranchId = watch("branch_id");
+  const selectedBranchIds = watch("branch_ids") || [];
+
+  // Handle multi-select for branches
+  const handleBranchChange = (branchId: string) => {
+    const currentIds = selectedBranchIds || [];
+    if (currentIds.includes(branchId)) {
+      // Remove branch if already selected
+      setValue("branch_ids", currentIds.filter((id) => id !== branchId));
+    } else {
+      // Add branch
+      setValue("branch_ids", [...currentIds, branchId]);
+    }
+  };
 
   // Debug: Log form validation state
   useEffect(() => {
@@ -136,6 +152,7 @@ export default function NewUserPage() {
         profile_type: data.profile_type,
         role_id: data.role_id,
         branch_id: data.branch_id || undefined,
+        branch_ids: data.branch_ids && data.branch_ids.length > 0 ? data.branch_ids : undefined,
         is_active: data.is_active,
         // The auth service handles the password
       };
@@ -322,26 +339,41 @@ export default function NewUserPage() {
               </div>
 
               <div>
-                <Label htmlFor="branch_id">Assigned Branch</Label>
-                <select
-                  id="branch_id"
-                  {...register("branch_id")}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Branch (Optional)</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.branch_id && (
-                  <p className="text-sm text-red-600 mt-1">
-                    {errors.branch_id.message}
+                <Label htmlFor="branch_id">Assigned Branches</Label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Optional: Select one or more branches for this user
+                </p>
+                <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                  {branches.map((branch) => {
+                    const isSelected = selectedBranchIds.includes(branch.id);
+                    return (
+                      <label
+                        key={branch.id}
+                        className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-colors ${
+                          isSelected
+                            ? "bg-blue-50 border border-blue-200"
+                            : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleBranchChange(branch.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="flex-1">{branch.name}</span>
+                        <span className="text-xs text-gray-500">{branch.code}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {selectedBranchIds.length > 0 && (
+                  <p className="text-sm text-gray-600 mt-2">
+                    {selectedBranchIds.length} branch{selectedBranchIds.length > 1 ? "es" : ""} selected
                   </p>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
-                  Optional: Assign this user to a branch
+                  Users can be assigned to multiple branches for cross-branch operations
                 </p>
               </div>
             </CardContent>

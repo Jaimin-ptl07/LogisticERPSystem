@@ -91,7 +91,7 @@ export default function EditUserPage() {
       first_name: user.first_name,
       last_name: user.last_name,
       phone_number: user.phone_number || "",
-      role_id: user.role_id || 0,
+      role_id: typeof user.role_id === 'number' ? user.role_id : (user.role_id ? parseInt(user.role_id) : 0),
       branch_id: user.branch_id || "",
       is_active: user.is_active,
     });

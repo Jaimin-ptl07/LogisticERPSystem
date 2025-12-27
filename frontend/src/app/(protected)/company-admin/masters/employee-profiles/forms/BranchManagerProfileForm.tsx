@@ -91,7 +91,7 @@ export default function BranchManagerProfileForm({
     e.preventDefault()
     try {
       if (profile) {
-        await updateProfile({ userId: user.id, profile: formData }).unwrap()
+        await updateProfile({ profileId: profile.id!, profile: formData }).unwrap()
       } else {
         await createProfile({ userId: user.id, profile: formData }).unwrap()
       }
@@ -198,7 +198,7 @@ export default function BranchManagerProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Branch Manager Details</CardTitle>
