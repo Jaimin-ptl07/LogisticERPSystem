@@ -10,6 +10,10 @@ import {
   useGetBranchManagerProfileByUserQuery,
   useGetFinanceManagerProfileByUserQuery,
   useGetLogisticsManagerProfileByUserQuery,
+  DriverProfile,
+  BranchManagerProfileExtended,
+  FinanceManagerProfile,
+  LogisticsManagerProfile,
 } from '@/services/api/profileApi'
 import { User } from '@/services/api/companyApi'
 import EmployeeProfileForm from '../forms/EmployeeProfileForm'
@@ -236,20 +240,20 @@ export default function EmployeeProfileDetailPage() {
   const employeeProfileComplete = hasEmployeeProfile(user || null)
 
   const hasRoleSpecificProfile = () => {
-    if (isDriverRole(user)) return !!driverProfile
-    if (isBranchManagerRole(user)) return !!branchManagerProfile
-    if (isFinanceManagerRole(user)) return !!financeManagerProfile
-    if (isLogisticsManagerRole(user)) return !!logisticsManagerProfile
+    if (isDriverRole(user || null)) return !!driverProfile
+    if (isBranchManagerRole(user || null)) return !!branchManagerProfile
+    if (isFinanceManagerRole(user || null)) return !!financeManagerProfile
+    if (isLogisticsManagerRole(user || null)) return !!logisticsManagerProfile
     return false
   }
 
-  const roleProfile = isDriverRole(user)
+  const roleProfile = isDriverRole(user || null)
     ? driverProfile
-    : isBranchManagerRole(user)
+    : isBranchManagerRole(user || null)
     ? branchManagerProfile
-    : isFinanceManagerRole(user)
+    : isFinanceManagerRole(user || null)
     ? financeManagerProfile
-    : isLogisticsManagerRole(user)
+    : isLogisticsManagerRole(user || null)
     ? logisticsManagerProfile
     : null
 
@@ -339,7 +343,7 @@ export default function EmployeeProfileDetailPage() {
       return (
         <DriverProfileForm
           user={user}
-          profile={roleProfile}
+          profile={roleProfile as DriverProfile | null}
           isEditing={isEditing}
           onEdit={handleEdit}
           onSave={handleSave}
@@ -350,7 +354,7 @@ export default function EmployeeProfileDetailPage() {
       return (
         <BranchManagerProfileForm
           user={user}
-          profile={roleProfile}
+          profile={roleProfile as BranchManagerProfileExtended | null}
           isEditing={isEditing}
           onEdit={handleEdit}
           onSave={handleSave}
@@ -361,7 +365,7 @@ export default function EmployeeProfileDetailPage() {
       return (
         <FinanceManagerProfileForm
           user={user}
-          profile={roleProfile}
+          profile={roleProfile as FinanceManagerProfile | null}
           isEditing={isEditing}
           onEdit={handleEdit}
           onSave={handleSave}
@@ -372,7 +376,7 @@ export default function EmployeeProfileDetailPage() {
       return (
         <LogisticsManagerProfileForm
           user={user}
-          profile={roleProfile}
+          profile={roleProfile as LogisticsManagerProfile | null}
           isEditing={isEditing}
           onEdit={handleEdit}
           onSave={handleSave}

@@ -1,7 +1,7 @@
 """
 User management endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.orm import joinedload
@@ -244,6 +244,7 @@ async def update_user(
 
 @router.delete("/{user_id}")
 async def delete_user(
+    request: Request,
     user_id: str,
     token_data: TokenData = Depends(get_current_user_token),
     perm_service: PermissionService = Depends(get_permission_service),
@@ -291,7 +292,11 @@ async def delete_user(
             detail="Cannot delete superuser accounts"
         )
 
-    success = await UserService.delete_user(db, user_id)
+    # Extract auth token from request
+    auth_header = request.headers.get("authorization")
+    auth_token = auth_header[7:] if auth_header and auth_header.startswith("Bearer ") else None
+
+    success = await UserService.delete_user(db, user_id, auth_token)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

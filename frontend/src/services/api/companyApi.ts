@@ -837,10 +837,36 @@ export const companyApi = createApi({
       invalidatesTags: ['User', 'UserProfile'],
     }),
     deleteUser: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `company/users/${id}`,
-        method: 'DELETE',
-      }),
+      queryFn: async (id, _queryApi, _extraOptions, baseQuery) => {
+        // First, get the user from company service to find the auth user_id
+        const userResponse = await baseQuery({
+          url: `company/users/${id}`,
+          method: 'GET',
+        })
+
+        if (userResponse.error) {
+          return { error: userResponse.error }
+        }
+
+        const user = userResponse.data as User
+        const authUserId = user.user_id
+
+        if (!authUserId) {
+          return { error: { status: 400, data: { message: 'User does not have an associated auth account' } } }
+        }
+
+        // Delete from auth service (this will cascade to company service)
+        const deleteResponse = await baseQuery({
+          url: `auth/users/${authUserId}`,
+          method: 'DELETE',
+        })
+
+        if (deleteResponse.error) {
+          return { error: deleteResponse.error }
+        }
+
+        return { data: undefined }
+      },
       invalidatesTags: ['User'],
     }),
     inviteUser: builder.mutation<void, UserInvitation>({

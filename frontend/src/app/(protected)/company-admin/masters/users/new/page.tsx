@@ -138,7 +138,7 @@ export default function NewUserPage() {
         password: data.password,
         first_name: data.first_name,
         last_name: data.last_name,
-        role_id: data.auth_role_id, // Pass role_id to auth service
+        role_id: String(data.auth_role_id), // Convert to string for auth service
       };
 
       console.log("Creating auth user with data:", authUserData);

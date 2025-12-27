@@ -51,15 +51,16 @@ export interface FinanceManagerProfile {
   employee_profile_id?: string
   can_approve_payments?: boolean
   max_approval_limit?: number
-  can_manage_payroll?: boolean
-  can_view_financial_reports?: boolean
-  can_create_invoices?: boolean
-  can_manage_expenses?: boolean
+  managed_branches?: string[]
   access_levels?: {
     can_view_all_branches?: boolean
     can_access_bank_accounts?: boolean
     can_handle_tax_compliance?: boolean
     can_audit_transactions?: boolean
+    can_manage_payroll?: boolean
+    can_view_financial_reports?: boolean
+    can_create_invoices?: boolean
+    can_manage_expenses?: boolean
   }
   created_at?: string
   updated_at?: string

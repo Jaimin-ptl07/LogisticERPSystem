@@ -22,8 +22,11 @@ from ..auth import (
 )
 from ..config_local import AuthSettings
 from .refresh_token_service import RefreshTokenService
+import httpx
+import logging
 
 settings = AuthSettings()
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -413,3 +416,105 @@ class UserService:
             permissions.append("superuser:access")
 
         return permissions
+
+    @staticmethod
+    async def delete_user(db: AsyncSession, user_id: str, auth_token: Optional[str] = None) -> bool:
+        """
+        Delete a user from auth database and notify company service
+
+        This is the source of truth for user deletion.
+        When a user is deleted from auth service, the company service
+        will also delete the corresponding employee profile.
+        """
+        # Get user first
+        user = await db.get(User, user_id)
+        if not user:
+            return False
+
+        # Delete all refresh tokens for this user first
+        from sqlalchemy import delete
+        await db.execute(
+            delete(RefreshToken).where(RefreshToken.user_id == user_id)
+        )
+        await db.commit()
+
+        # Delete the user
+        await db.delete(user)
+        await db.commit()
+
+        # Notify company service to delete employee profile
+        company_service_url = settings.COMPANY_SERVICE_URL
+        logger.info(f"Notifying company service at {company_service_url} to delete employee profile for user {user_id}")
+
+        if not auth_token:
+            logger.warning(f"No auth token available, cannot notify company service for user {user_id}")
+            return True
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # First, get the employee profile ID by querying company service
+                search_url = f"{company_service_url}/users/"
+                logger.info(f"Querying company service: {search_url} with user_id={user_id}")
+
+                search_response = await client.get(
+                    search_url,
+                    headers={
+                        "Authorization": f"Bearer {auth_token}",
+                        "Content-Type": "application/json"
+                    },
+                    params={"user_id": user_id}
+                )
+
+                logger.info(f"Company service response status: {search_response.status_code}")
+
+                if search_response.status_code == 200:
+                    users_data = search_response.json()
+                    logger.info(f"Company service returned data: {users_data}")
+
+                    # users_data might be a list or a dict with 'items' key
+                    if isinstance(users_data, dict) and 'items' in users_data:
+                        users_list = users_data['items']
+                    elif isinstance(users_data, list):
+                        users_list = users_data
+                    else:
+                        users_list = []
+
+                    logger.info(f"Users list length: {len(users_list)}")
+
+                    # Find the employee profile with matching user_id
+                    employee_profile_id = None
+                    for user_item in users_list:
+                        logger.info(f"Checking user_item: user_id={user_item.get('user_id')}, id={user_item.get('id')}")
+                        if user_item.get('user_id') == user_id:
+                            employee_profile_id = user_item.get('id')
+                            logger.info(f"Found matching employee_profile_id: {employee_profile_id}")
+                            break
+
+                    if employee_profile_id:
+                        # Delete from company service using employee profile ID
+                        delete_url = f"{company_service_url}/users/{employee_profile_id}"
+                        logger.info(f"Deleting from company service: {delete_url}")
+
+                        delete_response = await client.delete(
+                            delete_url,
+                            headers={
+                                "Authorization": f"Bearer {auth_token}",
+                                "Content-Type": "application/json"
+                            }
+                        )
+
+                        logger.info(f"Delete response status: {delete_response.status_code}, body: {delete_response.text}")
+
+                        if delete_response.status_code == 200:
+                            logger.info(f"Successfully deleted employee profile {employee_profile_id} from company service")
+                        else:
+                            logger.error(f"Failed to delete employee profile from company service: {delete_response.status_code} - {delete_response.text}")
+                    else:
+                        logger.warning(f"No employee profile found for user_id {user_id}")
+                else:
+                    logger.error(f"Failed to query company service for user {user_id}: {search_response.status_code} - {search_response.text}")
+        except Exception as e:
+            logger.error(f"Error notifying company service for user deletion: {e}", exc_info=True)
+            # Don't fail the auth deletion if company service notification fails
+
+        return True
