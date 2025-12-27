@@ -473,6 +473,8 @@ class EmployeeProfileBase(BaseSchema):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = Field(None, max_length=10)
     blood_group: Optional[str] = Field(None, max_length=5)
+    marital_status: Optional[str] = Field(None, max_length=20)  # single, married, divorced, widowed
+    nationality: Optional[str] = Field("India", max_length=50)
     emergency_contact_name: Optional[str] = Field(None, max_length=100)
     emergency_contact_phone: Optional[str] = Field(None, max_length=20)
     address: Optional[str] = Field(None, max_length=1000)
@@ -491,6 +493,7 @@ class EmployeeProfileBase(BaseSchema):
     bank_ifsc: Optional[str] = Field(None, max_length=20)
     pan_number: Optional[str] = Field(None, max_length=20)
     aadhar_number: Optional[str] = Field(None, max_length=20)
+    passport_number: Optional[str] = Field(None, max_length=20)
     is_active: bool = True
 
 
@@ -521,6 +524,8 @@ class EmployeeProfileUpdate(BaseSchema):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = Field(None, max_length=10)
     blood_group: Optional[str] = Field(None, max_length=5)
+    marital_status: Optional[str] = Field(None, max_length=20)  # single, married, divorced, widowed
+    nationality: Optional[str] = Field(None, max_length=50)
     emergency_contact_name: Optional[str] = Field(None, max_length=100)
     emergency_contact_phone: Optional[str] = Field(None, max_length=20)
     address: Optional[str] = Field(None, max_length=1000)
@@ -539,6 +544,7 @@ class EmployeeProfileUpdate(BaseSchema):
     bank_ifsc: Optional[str] = Field(None, max_length=20)
     pan_number: Optional[str] = Field(None, max_length=20)
     aadhar_number: Optional[str] = Field(None, max_length=20)
+    passport_number: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
 
 

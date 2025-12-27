@@ -112,7 +112,7 @@ export default function DriverProfileForm({
       }
 
       if (profile) {
-        await updateProfile({ driverId: user.id, profile: profileData }).unwrap()
+        await updateProfile({ driverId: profile.id!, profile: profileData }).unwrap()
       } else {
         await createProfile({ userId: user.id, profile: profileData }).unwrap()
       }

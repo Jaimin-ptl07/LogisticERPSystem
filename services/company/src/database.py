@@ -347,6 +347,8 @@ class EmployeeProfile(Base):
     date_of_birth = Column(DateTime(timezone=True))
     gender = Column(String(10))  # male, female, other
     blood_group = Column(String(5))
+    marital_status = Column(String(20))  # single, married, divorced, widowed
+    nationality = Column(String(50), default='India')
     emergency_contact_name = Column(String(100))
     emergency_contact_phone = Column(String(20))
     address = Column(Text)
@@ -365,6 +367,7 @@ class EmployeeProfile(Base):
     bank_ifsc = Column(String(20))
     pan_number = Column(String(20))
     aadhar_number = Column(String(20))
+    passport_number = Column(String(20))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

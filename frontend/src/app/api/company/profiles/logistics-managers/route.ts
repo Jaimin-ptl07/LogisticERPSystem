@@ -1,5 +1,5 @@
 /**
- * Proxy API route for getting branch manager profile by user ID
+ * Proxy API route for logistics manager profiles
  * Forwards requests to the company service
  */
 import { createApiRoute } from '@/utils/apiProxy'
@@ -7,5 +7,5 @@ import { createApiRoute } from '@/utils/apiProxy'
 // Get the company service URL from environment variables
 const COMPANY_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002'
 
-// Create the API route handler for GET
-export const GET = createApiRoute(COMPANY_API_URL, 'profiles/branch-managers/by-user/[userId]')
+// Create the API route handler for POST (create)
+export const POST = createApiRoute(COMPANY_API_URL, 'profiles/logistics-managers')

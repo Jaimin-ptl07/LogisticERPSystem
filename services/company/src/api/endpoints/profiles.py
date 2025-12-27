@@ -187,6 +187,8 @@ def employee_profile_to_dict(employee: EmployeeProfile) -> dict:
         "date_of_birth": employee.date_of_birth.isoformat() if employee.date_of_birth else None,
         "gender": employee.gender,
         "blood_group": employee.blood_group,
+        "marital_status": employee.marital_status,
+        "nationality": employee.nationality,
         "emergency_contact_name": employee.emergency_contact_name,
         "emergency_contact_phone": employee.emergency_contact_phone,
         "emergency_contact_number": employee.emergency_contact_phone,  # For frontend compatibility
@@ -223,6 +225,7 @@ def employee_profile_to_dict(employee: EmployeeProfile) -> dict:
         "pan_number": employee.pan_number,
         "aadhar_number": employee.aadhar_number,
         "aadhaar_number": employee.aadhar_number,  # For frontend compatibility
+        "passport_number": employee.passport_number,
         "is_active": employee.is_active,
         "created_at": employee.created_at.isoformat() if employee.created_at else None,
         "updated_at": employee.updated_at.isoformat() if employee.updated_at else None,

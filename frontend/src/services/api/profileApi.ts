@@ -50,7 +50,7 @@ export interface FinanceManagerProfile {
   user_id: string
   employee_profile_id?: string
   can_approve_payments?: boolean
-  max_approval_amount?: number
+  max_approval_limit?: number
   can_manage_payroll?: boolean
   can_view_financial_reports?: boolean
   can_create_invoices?: boolean
@@ -71,13 +71,15 @@ export interface LogisticsManagerProfile {
   id?: string
   user_id: string
   employee_profile_id?: string
-  managed_branches?: string[]
+  managed_zones?: string[]
+  can_assign_drivers?: boolean
+  can_approve_overtime?: boolean
   can_plan_routes?: boolean
-  can_dispatch_vehicles?: boolean
-  can_manage_drivers?: boolean
-  can_track_shipments?: boolean
-  can_handle_emergency_dispatch?: boolean
-  fleet_management_permissions?: {
+  vehicle_management_permissions?: {
+    can_dispatch_vehicles?: boolean
+    can_manage_drivers?: boolean
+    can_track_shipments?: boolean
+    can_handle_emergency_dispatch?: boolean
     can_maintain_vehicles?: boolean
     can_purchase_vehicles?: boolean
     can_sell_vehicles?: boolean
@@ -157,13 +159,15 @@ export interface FinanceManagerProfileForm {
 }
 
 export interface LogisticsManagerProfileForm {
-  managed_branches?: string[]
+  managed_zones?: string[]
+  can_assign_drivers?: boolean
+  can_approve_overtime?: boolean
   can_plan_routes?: boolean
-  can_dispatch_vehicles?: boolean
-  can_manage_drivers?: boolean
-  can_track_shipments?: boolean
-  can_handle_emergency_dispatch?: boolean
-  fleet_management_permissions?: {
+  vehicle_management_permissions?: {
+    can_dispatch_vehicles?: boolean
+    can_manage_drivers?: boolean
+    can_track_shipments?: boolean
+    can_handle_emergency_dispatch?: boolean
     can_maintain_vehicles?: boolean
     can_purchase_vehicles?: boolean
     can_sell_vehicles?: boolean
@@ -339,17 +343,17 @@ export const profileApi = createApi({
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
     }),
-    updateBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { userId: string; profile: Partial<BranchManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/branch-managers/${userId}`,
+    updateBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { profileId: string; profile: Partial<BranchManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/branch-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
     }),
     deleteBranchManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/branch-managers/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/branch-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
@@ -372,17 +376,17 @@ export const profileApi = createApi({
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
     }),
-    updateFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { userId: string; profile: Partial<FinanceManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/finance-managers/${userId}`,
+    updateFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { profileId: string; profile: Partial<FinanceManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/finance-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
     }),
     deleteFinanceManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/finance-managers/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/finance-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
@@ -405,17 +409,17 @@ export const profileApi = createApi({
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
     }),
-    updateLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { userId: string; profile: Partial<LogisticsManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/logistics-managers/${userId}`,
+    updateLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { profileId: string; profile: Partial<LogisticsManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/logistics-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
     }),
     deleteLogisticsManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/logistics-managers/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/logistics-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],

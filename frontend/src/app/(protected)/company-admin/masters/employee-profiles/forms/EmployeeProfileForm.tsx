@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { User as UserType, UserProfile } from '@/services/api/companyApi'
-import { useCreateEmployeeProfileMutation, useUpdateEmployeeProfileMutation } from '@/services/api/profileApi'
+import { User as UserType, UserProfile, useUpdateUserMutation } from '@/services/api/companyApi'
 import { CheckCircle, User, Pencil, X, Save } from 'lucide-react'
 
 interface EmployeeProfileFormProps {
@@ -50,8 +49,7 @@ export default function EmployeeProfileForm({
     bank_ifsc: '',
   })
 
-  const [createProfile, { isLoading: isCreating }] = useCreateEmployeeProfileMutation()
-  const [updateProfile, { isLoading: isUpdating }] = useUpdateEmployeeProfileMutation()
+  const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation()
 
   // Populate form data from user/profile
   useEffect(() => {
@@ -61,6 +59,7 @@ export default function EmployeeProfileForm({
     if (dataSource) {
       // Cast to any to handle additional API fields not in TypeScript interface
       const data = dataSource as any
+
       setFormData({
         employee_id: data.employee_id || data.employee_code || '',
         department: data.department || '',
@@ -106,10 +105,10 @@ export default function EmployeeProfileForm({
 
     try {
       const profileData: any = {
-        employee_id: formData.employee_id || undefined,
+        employee_code: formData.employee_id || undefined,
         department: formData.department || undefined,
         designation: formData.designation || undefined,
-        date_of_joining: formData.date_of_joining || undefined,
+        hire_date: formData.date_of_joining || undefined,
         emergency_contact_name: formData.emergency_contact_name || undefined,
         emergency_contact_phone: formData.emergency_contact_number || undefined,
         blood_group: formData.blood_group || undefined,
@@ -137,18 +136,16 @@ export default function EmployeeProfileForm({
         }
       })
 
-      if (profile) {
-        await updateProfile({ userId: user.id, profile: profileData }).unwrap()
-      } else {
-        await createProfile({ userId: user.id, profile: profileData }).unwrap()
-      }
+      // Use updateUser mutation which calls PUT /company/users/{id}
+      await updateUser({ id: user.id, user: profileData }).unwrap()
+
       onSave()
     } catch (error) {
       console.error('Error saving profile:', error)
     }
   }
 
-  const isLoading = isCreating || isUpdating
+  const isLoading = isUpdating
 
   // Always compute dataSource - used in both view and edit modes
   const dataSource = profile || user

@@ -393,6 +393,8 @@ async def get_user(
         'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
         'gender': user.gender,
         'blood_group': user.blood_group,
+        'marital_status': user.marital_status,
+        'nationality': user.nationality,
         'emergency_contact_name': user.emergency_contact_name,
         'emergency_contact_phone': user.emergency_contact_phone,
         # Frontend expected field name (mapped)
@@ -441,6 +443,7 @@ async def get_user(
             'account_type': 'savings'
         } if user.bank_name or user.bank_account_number else None,
         'pan_number': user.pan_number,
+        'passport_number': user.passport_number,
         'aadhaar_number': user.aadhar_number,
         'aadhar_number': user.aadhar_number,
         'is_active': user.is_active,

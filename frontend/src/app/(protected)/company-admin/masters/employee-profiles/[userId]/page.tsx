@@ -14,7 +14,10 @@ import {
 import { User } from '@/services/api/companyApi'
 import EmployeeProfileForm from '../forms/EmployeeProfileForm'
 import DriverProfileForm from '../forms/DriverProfileForm'
-import { ArrowLeft, User as UserIcon, Car, CheckCircle, Loader2, Pencil } from 'lucide-react'
+import BranchManagerProfileForm from '../forms/BranchManagerProfileForm'
+import FinanceManagerProfileForm from '../forms/FinanceManagerProfileForm'
+import LogisticsManagerProfileForm from '../forms/LogisticsManagerProfileForm'
+import { ArrowLeft, User as UserIcon, Car, Building2, DollarSign, Truck, CheckCircle, Loader2, Pencil, Save } from 'lucide-react'
 
 // ============================================================================
 // TYPES & UTILITIES
@@ -49,6 +52,24 @@ const isDriverRole = (user: User | null) => {
   return roleName.includes('driver')
 }
 
+const isBranchManagerRole = (user: User | null) => {
+  if (!user) return false
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
+  return roleName.includes('branch') && roleName.includes('manager')
+}
+
+const isFinanceManagerRole = (user: User | null) => {
+  if (!user) return false
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
+  return roleName.includes('finance') && roleName.includes('manager')
+}
+
+const isLogisticsManagerRole = (user: User | null) => {
+  if (!user) return false
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
+  return roleName.includes('logistics') && roleName.includes('manager')
+}
+
 const getProfileConfig = (user: User | null): ProfileConfig => {
   if (!user || !user.role) {
     return {
@@ -71,6 +92,39 @@ const getProfileConfig = (user: User | null): ProfileConfig => {
       label: 'Driver',
       tabId: 'license',
       tabLabel: 'License Info'
+    }
+  }
+
+  if (roleName.includes('branch') && roleName.includes('manager')) {
+    return {
+      icon: Building2,
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-100',
+      label: 'Branch Manager',
+      tabId: 'branch',
+      tabLabel: 'Branch Info'
+    }
+  }
+
+  if (roleName.includes('finance') && roleName.includes('manager')) {
+    return {
+      icon: DollarSign,
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-100',
+      label: 'Finance Manager',
+      tabId: 'finance',
+      tabLabel: 'Finance Info'
+    }
+  }
+
+  if (roleName.includes('logistics') && roleName.includes('manager')) {
+    return {
+      icon: Truck,
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-100',
+      label: 'Logistics Manager',
+      tabId: 'logistics',
+      tabLabel: 'Logistics Info'
     }
   }
 
@@ -145,6 +199,27 @@ export default function EmployeeProfileDetailPage() {
     { skip: skipDriverProfile }
   )
 
+  // Fetch branch manager profile if user is a branch manager
+  const skipBranchManagerProfile = !user || !user.id || !isBranchManagerRole(user)
+  const { data: branchManagerProfile } = useGetBranchManagerProfileByUserQuery(
+    user?.id || '',
+    { skip: skipBranchManagerProfile }
+  )
+
+  // Fetch finance manager profile if user is a finance manager
+  const skipFinanceManagerProfile = !user || !user.id || !isFinanceManagerRole(user)
+  const { data: financeManagerProfile } = useGetFinanceManagerProfileByUserQuery(
+    user?.id || '',
+    { skip: skipFinanceManagerProfile }
+  )
+
+  // Fetch logistics manager profile if user is a logistics manager
+  const skipLogisticsManagerProfile = !user || !user.id || !isLogisticsManagerRole(user)
+  const { data: logisticsManagerProfile } = useGetLogisticsManagerProfileByUserQuery(
+    user?.id || '',
+    { skip: skipLogisticsManagerProfile }
+  )
+
   // Redirect to list page if user not found
   useEffect(() => {
     if (error && !isLoading) {
@@ -162,10 +237,21 @@ export default function EmployeeProfileDetailPage() {
 
   const hasRoleSpecificProfile = () => {
     if (isDriverRole(user)) return !!driverProfile
+    if (isBranchManagerRole(user)) return !!branchManagerProfile
+    if (isFinanceManagerRole(user)) return !!financeManagerProfile
+    if (isLogisticsManagerRole(user)) return !!logisticsManagerProfile
     return false
   }
 
-  const roleProfile = isDriverRole(user) ? driverProfile : null
+  const roleProfile = isDriverRole(user)
+    ? driverProfile
+    : isBranchManagerRole(user)
+    ? branchManagerProfile
+    : isFinanceManagerRole(user)
+    ? financeManagerProfile
+    : isLogisticsManagerRole(user)
+    ? logisticsManagerProfile
+    : null
 
   // ============================================================================
   // EVENT HANDLERS
@@ -197,7 +283,7 @@ export default function EmployeeProfileDetailPage() {
       return
     }
     setActiveTab(tabId)
-    setIsEditing(false)
+    // Don't reset isEditing when switching tabs - keep edit state
   }
 
   const handleEdit = () => {
@@ -236,20 +322,63 @@ export default function EmployeeProfileDetailPage() {
   // ============================================================================
   // RENDER
   // ============================================================================
-  const formProps = {
-    user,
-    profile: roleProfile,
-    isEditing,
-    onEdit: handleEdit,
-    onSave: handleSave,
-    onCancel: handleCancel
-  }
-
   const renderForm = () => {
     if (activeTab === 'basic') {
-      return <EmployeeProfileForm {...formProps} />
+      // EmployeeProfileForm gets user data directly, not role-specific profile
+      return (
+        <EmployeeProfileForm
+          user={user}
+          profile={null}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
     } else if (activeTab === 'license') {
-      return <DriverProfileForm {...formProps} />
+      return (
+        <DriverProfileForm
+          user={user}
+          profile={roleProfile}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    } else if (activeTab === 'branch') {
+      return (
+        <BranchManagerProfileForm
+          user={user}
+          profile={roleProfile}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    } else if (activeTab === 'finance') {
+      return (
+        <FinanceManagerProfileForm
+          user={user}
+          profile={roleProfile}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    } else if (activeTab === 'logistics') {
+      return (
+        <LogisticsManagerProfileForm
+          user={user}
+          profile={roleProfile}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
     }
     return null
   }
@@ -295,15 +424,24 @@ export default function EmployeeProfileDetailPage() {
               </div>
             </div>
             <div className="flex gap-2">
-              {employeeProfileComplete && !isEditing && (
+              {!isEditing && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleEdit}
                   className="flex items-center gap-2"
                 >
-                  <Pencil className="w-4 h-4" />
-                  Edit
+                  {employeeProfileComplete ? (
+                    <>
+                      <Pencil className="w-4 h-4" />
+                      Edit
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Create Profile
+                    </>
+                  )}
                 </Button>
               )}
             </div>
