@@ -17,6 +17,8 @@ export interface User {
   id: string;
   email: string;
   role_id: number;
+  role_name?: string; // Consistent across tenants
+  is_system_role?: boolean; // Whether this is a system role
   tenant_id?: string | null; // Nullable for super admins
   first_name: string;
   last_name: string;
@@ -28,9 +30,10 @@ export interface User {
   login_attempts?: number;
   locked_until?: string;
   role?: {
-    id: number;
+    id: string; // Changed to string to match auth service UUID
     name: string;
     description?: string;
+    is_system?: boolean;
   };
   tenant?: {
     id: string;

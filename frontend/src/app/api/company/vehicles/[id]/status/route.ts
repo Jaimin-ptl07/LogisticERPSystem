@@ -8,4 +8,4 @@ import { createApiRoute } from '@/utils/apiProxy'
 const COMPANY_API_URL = process.env.NEXT_PUBLIC_COMPANY_API_URL || 'http://localhost:8002'
 
 // Create the API route handler
-export const PUT = createApiRoute(COMPANY_API_URL, 'vehicles/[id]/status')
+export const PUT = createApiRoute(COMPANY_API_URL, 'vehicles/[id]/status/')

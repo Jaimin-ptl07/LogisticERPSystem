@@ -9,7 +9,7 @@ import { ChevronDown, ChevronUp, UserPlus, CheckCircle, Clock, AlertCircle } fro
 
 interface RoleUserListProps {
   roleData: RoleData
-  onUserClick: (user: User) => void
+  onUserClick: (userId: string) => void
   filterStatus: 'all' | 'completed' | 'pending'
 }
 
@@ -103,11 +103,17 @@ export default function RoleUserList({ roleData, onUserClick, filterStatus }: Ro
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredUsers.map((user) => (
+              {filteredUsers.map((user) => {
+                // Ensure user.id is a string before using it
+                const userId = typeof user.id === 'string' ? user.id : String(user.id)
+                return (
                 <div
-                  key={user.id}
+                  key={userId}
                   className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => onUserClick(user)}
+                  onClick={() => {
+                    console.log('RoleUserList onClick - userId:', userId, 'type:', typeof userId)
+                    onUserClick(userId)
+                  }}
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
@@ -144,14 +150,16 @@ export default function RoleUserList({ roleData, onUserClick, filterStatus }: Ro
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onUserClick(user)
+                        console.log('RoleUserList Button onClick - userId:', userId, 'type:', typeof userId)
+                        onUserClick(userId)
                       }}
                     >
                       {user.profile ? 'Edit' : 'Create Profile'}
                     </Button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>

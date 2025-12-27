@@ -4,9 +4,8 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { User as UserType, UserProfile } from '@/services/api/companyApi'
-import { useCreateEmployeeProfileMutation, useUpdateEmployeeProfileMutation } from '@/services/api/profileApi'
-import { Save, X, CheckCircle, User } from 'lucide-react'
+import { User as UserType, UserProfile, useUpdateUserMutation } from '@/services/api/companyApi'
+import { CheckCircle, User, Pencil, X, Save } from 'lucide-react'
 
 interface EmployeeProfileFormProps {
   user: UserType
@@ -30,143 +29,132 @@ export default function EmployeeProfileForm({
     department: '',
     designation: '',
     date_of_joining: '',
-    reporting_manager_id: '',
     emergency_contact_name: '',
     emergency_contact_number: '',
     blood_group: '',
     date_of_birth: '',
-    gender: '' as 'male' | 'female' | 'other',
-    marital_status: '' as 'single' | 'married' | 'divorced' | 'widowed',
+    gender: '' as 'male' | 'female' | 'other' | '',
+    marital_status: '' as 'single' | 'married' | 'divorced' | 'widowed' | '',
     nationality: '',
     aadhar_number: '',
     pan_number: '',
     passport_number: '',
-    current_address: {
-      address_line1: '',
-      address_line2: '',
-      city: '',
-      state: '',
-      postal_code: '',
-      country: ''
-    },
-    permanent_address: {
-      address_line1: '',
-      address_line2: '',
-      city: '',
-      state: '',
-      postal_code: '',
-      country: ''
-    },
-    bank_details: {
-      bank_name: '',
-      account_number: '',
-      ifsc_code: '',
-      branch_name: '',
-      account_type: 'savings' as 'savings' | 'current'
-    }
+    address: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    country: '',
+    bank_name: '',
+    bank_account_number: '',
+    bank_ifsc: '',
   })
 
-  const [createProfile, { isLoading: isCreating }] = useCreateEmployeeProfileMutation()
-  const [updateProfile, { isLoading: isUpdating }] = useUpdateEmployeeProfileMutation()
+  const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation()
 
+  // Populate form data from user/profile
   useEffect(() => {
-    if (profile) {
+    // Use profile if available, otherwise fall back to user data
+    const dataSource = profile || user
+
+    if (dataSource) {
+      // Cast to any to handle additional API fields not in TypeScript interface
+      const data = dataSource as any
+
       setFormData({
-        employee_id: profile.employee_id || '',
-        department: profile.department || '',
-        designation: profile.designation || '',
-        date_of_joining: profile.date_of_joining || '',
-        reporting_manager_id: profile.reporting_manager_id || '',
-        emergency_contact_name: profile.emergency_contact_name || '',
-        emergency_contact_number: profile.emergency_contact_number || '',
-        blood_group: profile.blood_group || '',
-        date_of_birth: profile.date_of_birth || '',
-        gender: profile.gender || '',
-        marital_status: profile.marital_status || '',
-        nationality: profile.nationality || '',
-        aadhar_number: profile.aadhar_number || '',
-        pan_number: profile.pan_number || '',
-        passport_number: profile.passport_number || '',
-        current_address: profile.current_address || {
-          address_line1: '',
-          address_line2: '',
-          city: '',
-          state: '',
-          postal_code: '',
-          country: ''
-        },
-        permanent_address: profile.permanent_address || {
-          address_line1: '',
-          address_line2: '',
-          city: '',
-          state: '',
-          postal_code: '',
-          country: ''
-        },
-        bank_details: profile.bank_details || {
-          bank_name: '',
-          account_number: '',
-          ifsc_code: '',
-          branch_name: '',
-          account_type: 'savings'
-        }
+        employee_id: data.employee_id || data.employee_code || '',
+        department: data.department || '',
+        designation: data.designation || '',
+        date_of_joining: data.date_of_joining || data.hire_date
+          ? (data.date_of_joining || data.hire_date || '').split('T')[0]
+          : '',
+        emergency_contact_name: data.emergency_contact_name || '',
+        emergency_contact_number: data.emergency_contact_number || data.emergency_contact_phone || '',
+        blood_group: data.blood_group || '',
+        date_of_birth: data.date_of_birth ? data.date_of_birth.split('T')[0] : '',
+        gender: data.gender || '',
+        marital_status: data.marital_status || '',
+        nationality: data.nationality || '',
+        aadhar_number: data.aadhar_number || '',
+        pan_number: data.pan_number || '',
+        passport_number: data.passport_number || '',
+        address: data.address || data.current_address?.address_line1 || '',
+        city: data.city || data.current_address?.city || '',
+        state: data.state || data.current_address?.state || '',
+        postal_code: data.postal_code || data.current_address?.postal_code || '',
+        country: data.country || data.current_address?.country || '',
+        bank_name: data.bank_name || data.bank_details?.bank_name || '',
+        bank_account_number: data.bank_account_number || data.bank_details?.account_number || '',
+        bank_ifsc: data.bank_ifsc || data.bank_details?.ifsc_code || '',
       })
     }
-  }, [profile])
+  }, [profile, user])
 
   const handleInputChange = (field: string, value: any) => {
-    if (field.includes('.')) {
-      const [parent, child] = field.split('.')
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...(prev as any)[parent],
-          [child]: value
-        }
-      }))
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [field]: value
-      }))
-    }
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!isEditing) {
+      return
+    }
+
     try {
-      if (profile) {
-        await updateProfile({ userId: user.id, profile: formData }).unwrap()
-      } else {
-        await createProfile({ userId: user.id, profile: formData }).unwrap()
+      const profileData: any = {
+        employee_code: formData.employee_id || undefined,
+        department: formData.department || undefined,
+        designation: formData.designation || undefined,
+        hire_date: formData.date_of_joining || undefined,
+        emergency_contact_name: formData.emergency_contact_name || undefined,
+        emergency_contact_phone: formData.emergency_contact_number || undefined,
+        blood_group: formData.blood_group || undefined,
+        date_of_birth: formData.date_of_birth || undefined,
+        gender: formData.gender || undefined,
+        marital_status: formData.marital_status || undefined,
+        nationality: formData.nationality || undefined,
+        aadhar_number: formData.aadhar_number || undefined,
+        pan_number: formData.pan_number || undefined,
+        passport_number: formData.passport_number || undefined,
+        address: formData.address || undefined,
+        city: formData.city || undefined,
+        state: formData.state || undefined,
+        postal_code: formData.postal_code || undefined,
+        country: formData.country || undefined,
+        bank_name: formData.bank_name || undefined,
+        bank_account_number: formData.bank_account_number || undefined,
+        bank_ifsc: formData.bank_ifsc || undefined,
       }
+
+      // Remove undefined values
+      Object.keys(profileData).forEach(key => {
+        if (profileData[key] === undefined || profileData[key] === '') {
+          delete profileData[key]
+        }
+      })
+
+      // Use updateUser mutation which calls PUT /company/users/{id}
+      await updateUser({ id: user.id, user: profileData }).unwrap()
+
       onSave()
     } catch (error) {
       console.error('Error saving profile:', error)
     }
   }
 
-  if (!isEditing && !profile) {
-    return (
-      <Card>
-        <CardContent className="p-8 text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User className="w-8 h-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Employee Profile</h3>
-          <p className="text-gray-600 mb-4">
-            This employee doesn't have a profile yet. Click below to create one.
-          </p>
-          <Button onClick={onEdit} className="flex items-center gap-2">
-            <User className="w-4 h-4" />
-            Create Employee Profile
-          </Button>
-        </CardContent>
-      </Card>
-    )
-  }
+  const isLoading = isUpdating
 
-  if (!isEditing && profile) {
+  // Always compute dataSource - used in both view and edit modes
+  const dataSource = profile || user
+
+  // VIEW MODE - Display existing data
+  if (!isEditing) {
+    // Cast to any to handle additional API fields not in TypeScript interface
+    const data = dataSource as any
+
     return (
       <div className="space-y-6">
         {/* Personal Information */}
@@ -177,36 +165,42 @@ export default function EmployeeProfileForm({
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
-                <p className="text-gray-900">{profile.employee_id || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Employee ID</label>
+                <p className="text-gray-900 font-medium">{data?.employee_id || data?.employee_code || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                <p className="text-gray-900">{profile.department || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Department</label>
+                <p className="text-gray-900 font-medium">{data?.department || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
-                <p className="text-gray-900">{profile.designation || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Designation</label>
+                <p className="text-gray-900 font-medium">{data?.designation || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date of Joining</label>
-                <p className="text-gray-900">{profile.date_of_joining || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Date of Joining</label>
+                <p className="text-gray-900 font-medium">
+                  {data.date_of_joining || data.hire_date
+                    ? new Date(data.date_of_joining || data.hire_date).toLocaleDateString()
+                    : '-'}
+                </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-                <p className="text-gray-900">{profile.date_of_birth || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Date of Birth</label>
+                <p className="text-gray-900 font-medium">
+                  {data.date_of_birth ? new Date(data.date_of_birth).toLocaleDateString() : '-'}
+                </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-                <p className="text-gray-900 capitalize">{profile.gender || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Gender</label>
+                <p className="text-gray-900 font-medium capitalize">{data.gender || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Marital Status</label>
-                <p className="text-gray-900 capitalize">{profile.marital_status || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Marital Status</label>
+                <p className="text-gray-900 font-medium capitalize">{data.marital_status || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
-                <p className="text-gray-900">{profile.nationality || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Blood Group</label>
+                <p className="text-gray-900 font-medium">{data.blood_group || '-'}</p>
               </div>
             </div>
           </CardContent>
@@ -220,27 +214,23 @@ export default function EmployeeProfileForm({
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact Name</label>
-                <p className="text-gray-900">{profile.emergency_contact_name || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Emergency Contact Name</label>
+                <p className="text-gray-900 font-medium">{data.emergency_contact_name || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact Number</label>
-                <p className="text-gray-900">{profile.emergency_contact_number || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Emergency Contact Number</label>
+                <p className="text-gray-900 font-medium">
+                  {data.emergency_contact_number || data.emergency_contact_phone || '-'}
+                </p>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Current Address</label>
-              <p className="text-gray-900">
-                {profile.current_address ? (
-                  <>
-                    {profile.current_address.address_line1}
-                    {profile.current_address.address_line2 && `, ${profile.current_address.address_line2}`}
-                    <br />
-                    {profile.current_address.city}, {profile.current_address.state} {profile.current_address.postal_code}
-                    <br />
-                    {profile.current_address.country}
-                  </>
-                ) : '-'}
+              <label className="block text-sm font-medium text-gray-500 mb-1">Address</label>
+              <p className="text-gray-900 font-medium">
+                {data.address || data.current_address?.address_line1 || '-'}
+                {(data.city || data.current_address?.city) && `, ${data.city || data.current_address?.city}`}
+                {(data.state || data.current_address?.state) && `, ${data.state || data.current_address?.state}`}
+                {(data.postal_code || data.current_address?.postal_code) && ` - ${data.postal_code || data.current_address?.postal_code}`}
               </p>
             </div>
           </CardContent>
@@ -254,20 +244,20 @@ export default function EmployeeProfileForm({
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Number</label>
-                <p className="text-gray-900">{profile.aadhar_number || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Aadhar Number</label>
+                <p className="text-gray-900 font-medium">{data.aadhar_number || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
-                <p className="text-gray-900">{profile.pan_number || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">PAN Number</label>
+                <p className="text-gray-900 font-medium">{data.pan_number || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Passport Number</label>
-                <p className="text-gray-900">{profile.passport_number || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Passport Number</label>
+                <p className="text-gray-900 font-medium">{data.passport_number || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Blood Group</label>
-                <p className="text-gray-900">{profile.blood_group || '-'}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Nationality</label>
+                <p className="text-gray-900 font-medium">{data.nationality || '-'}</p>
               </div>
             </div>
           </CardContent>
@@ -279,23 +269,27 @@ export default function EmployeeProfileForm({
             <CardTitle className="text-lg">Bank Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profile.bank_details ? (
+            {data.bank_name || data.bank_details?.bank_name ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
-                  <p className="text-gray-900">{profile.bank_details.bank_name}</p>
+                  <label className="block text-sm font-medium text-gray-500 mb-1">Bank Name</label>
+                  <p className="text-gray-900 font-medium">
+                    {data.bank_name || data.bank_details?.bank_name}
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
-                  <p className="text-gray-900">{'****' + profile.bank_details.account_number.slice(-4)}</p>
+                  <label className="block text-sm font-medium text-gray-500 mb-1">Account Number</label>
+                  <p className="text-gray-900 font-medium">
+                    {data.bank_account_number || data.bank_details?.account_number
+                      ? '****' + (data.bank_account_number || data.bank_details?.account_number || '').slice(-4)
+                      : '-'}
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code</label>
-                  <p className="text-gray-900">{profile.bank_details.ifsc_code}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name</label>
-                  <p className="text-gray-900">{profile.bank_details.branch_name}</p>
+                  <label className="block text-sm font-medium text-gray-500 mb-1">IFSC Code</label>
+                  <p className="text-gray-900 font-medium">
+                    {data.bank_ifsc || data.bank_details?.ifsc_code || '-'}
+                  </p>
                 </div>
               </div>
             ) : (
@@ -307,8 +301,9 @@ export default function EmployeeProfileForm({
     )
   }
 
+  // EDIT MODE - Form inputs
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       {/* Personal Information */}
       <Card>
         <CardHeader>
@@ -424,34 +419,29 @@ export default function EmployeeProfileForm({
             <label className="block text-sm font-medium text-gray-700 mb-1">Current Address</label>
             <div className="space-y-2">
               <Input
-                value={formData.current_address.address_line1}
-                onChange={(e) => handleInputChange('current_address.address_line1', e.target.value)}
+                value={formData.address}
+                onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="Address line 1"
-              />
-              <Input
-                value={formData.current_address.address_line2}
-                onChange={(e) => handleInputChange('current_address.address_line2', e.target.value)}
-                placeholder="Address line 2 (optional)"
               />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <Input
-                  value={formData.current_address.city}
-                  onChange={(e) => handleInputChange('current_address.city', e.target.value)}
+                  value={formData.city}
+                  onChange={(e) => handleInputChange('city', e.target.value)}
                   placeholder="City"
                 />
                 <Input
-                  value={formData.current_address.state}
-                  onChange={(e) => handleInputChange('current_address.state', e.target.value)}
+                  value={formData.state}
+                  onChange={(e) => handleInputChange('state', e.target.value)}
                   placeholder="State"
                 />
                 <Input
-                  value={formData.current_address.postal_code}
-                  onChange={(e) => handleInputChange('current_address.postal_code', e.target.value)}
+                  value={formData.postal_code}
+                  onChange={(e) => handleInputChange('postal_code', e.target.value)}
                   placeholder="Postal code"
                 />
                 <Input
-                  value={formData.current_address.country}
-                  onChange={(e) => handleInputChange('current_address.country', e.target.value)}
+                  value={formData.country}
+                  onChange={(e) => handleInputChange('country', e.target.value)}
                   placeholder="Country"
                 />
               </div>
@@ -515,8 +505,8 @@ export default function EmployeeProfileForm({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
               <Input
-                value={formData.bank_details.bank_name}
-                onChange={(e) => handleInputChange('bank_details.bank_name', e.target.value)}
+                value={formData.bank_name}
+                onChange={(e) => handleInputChange('bank_name', e.target.value)}
                 placeholder="Enter bank name"
               />
             </div>
@@ -524,60 +514,51 @@ export default function EmployeeProfileForm({
               <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
               <Input
                 type="password"
-                value={formData.bank_details.account_number}
-                onChange={(e) => handleInputChange('bank_details.account_number', e.target.value)}
+                value={formData.bank_account_number}
+                onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
                 placeholder="Enter account number"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code</label>
               <Input
-                value={formData.bank_details.ifsc_code}
-                onChange={(e) => handleInputChange('bank_details.ifsc_code', e.target.value)}
+                value={formData.bank_ifsc}
+                onChange={(e) => handleInputChange('bank_ifsc', e.target.value)}
                 placeholder="Enter IFSC code"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name</label>
-              <Input
-                value={formData.bank_details.branch_name}
-                onChange={(e) => handleInputChange('bank_details.branch_name', e.target.value)}
-                placeholder="Enter branch name"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Type</label>
-              <select
-                value={formData.bank_details.account_type}
-                onChange={(e) => handleInputChange('bank_details.account_type', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="savings">Savings</option>
-                <option value="current">Current</option>
-              </select>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-3 pt-4">
+      <div className="flex justify-end gap-3 pt-4 border-t">
         <Button
           type="button"
           variant="outline"
           onClick={onCancel}
-          disabled={isCreating || isUpdating}
+          disabled={isLoading}
+          className="flex items-center gap-2"
         >
-          <X className="w-4 h-4 mr-2" />
+          <X className="w-4 h-4" />
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={isCreating || isUpdating}
+          disabled={isLoading}
           className="flex items-center gap-2"
         >
-          <Save className="w-4 h-4" />
-          {isCreating || isUpdating ? 'Saving...' : (profile ? 'Update Profile' : 'Create Profile')}
+          {isLoading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              Save Changes
+            </>
+          )}
         </Button>
       </div>
     </form>

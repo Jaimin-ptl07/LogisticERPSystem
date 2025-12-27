@@ -85,6 +85,12 @@ class ServiceType(enum.Enum):
     FREIGHT = "freight"
 
 
+class WeightType(str, enum.Enum):
+    """Weight type enum for products"""
+    FIXED = "fixed"
+    VARIABLE = "variable"
+
+
 # Models
 class Branch(Base):
     """Branch model"""
@@ -214,11 +220,28 @@ class Product(Base):
     description = Column(String(500))
     unit_price = Column(Float, nullable=False)
     special_price = Column(Float)  # For specific customers or promotions
-    weight = Column(Float)  # in kg
+
+    # Weight configuration - supports fixed and variable weight types
+    weight_type = Column(
+        SQLEnum(
+            WeightType,
+            name="weight_type",
+            native_enum=True,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls]
+        ),
+        default=WeightType.FIXED,
+        nullable=False
+    )
+    weight = Column(Float)  # Deprecated - use fixed_weight for fixed type products
+    fixed_weight = Column(Float)  # For FIXED weight type - standard weight
+    weight_unit = Column(String(20), default="kg")  # Weight unit (kg, lb, g, etc.)
+
+    # Dimensions
     length = Column(Float)  # in cm
     width = Column(Float)   # in cm
     height = Column(Float)  # in cm
     volume = Column(Float)  # in cubic meters (calculated)
+
     handling_requirements = Column(JSON)  # ["fragile", "hazardous", "refrigerated"]
     min_stock_level = Column(Integer, default=0)
     max_stock_level = Column(Integer)
@@ -300,8 +323,8 @@ class CompanyRole(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    employees = relationship("EmployeeProfile", back_populates="role")
-    invitations = relationship("UserInvitation", back_populates="role")
+    # employees relationship removed - employee_profiles now use auth service roles
+    # invitations relationship removed - invitations now use auth service roles
 
 
 class UserInvitation(Base):
@@ -312,7 +335,8 @@ class UserInvitation(Base):
     tenant_id = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False)
     invitation_token = Column(String(255), unique=True, nullable=False)
-    role_id = Column(String(36), ForeignKey("company_roles.id"), nullable=False)
+    # Now stores auth service role ID as string (no FK constraint)
+    role_id = Column(String(50), nullable=True)  # Changed from String(36) with FK to company_roles
     branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     invited_by = Column(String(255), nullable=False)  # User ID who sent the invitation
     invited_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -325,7 +349,7 @@ class UserInvitation(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    role = relationship("CompanyRole", back_populates="invitations")
+    # role relationship removed - now using auth service roles (role_id stores auth role ID as string)
     branch = relationship("Branch")
 
 
@@ -337,7 +361,7 @@ class EmployeeProfile(Base):
     tenant_id = Column(String(255), nullable=False)
     user_id = Column(String(255), unique=True, nullable=False)  # Reference to auth service users table
     employee_code = Column(String(20), unique=True)
-    role_id = Column(String(36), ForeignKey("company_roles.id"), nullable=False)
+    role_id = Column(String(50), nullable=True)  # Now nullable and stores auth service role ID as string
     branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     first_name = Column(String(100))
     last_name = Column(String(100))
@@ -346,6 +370,8 @@ class EmployeeProfile(Base):
     date_of_birth = Column(DateTime(timezone=True))
     gender = Column(String(10))  # male, female, other
     blood_group = Column(String(5))
+    marital_status = Column(String(20))  # single, married, divorced, widowed
+    nationality = Column(String(50), default='India')
     emergency_contact_name = Column(String(100))
     emergency_contact_phone = Column(String(20))
     address = Column(Text)
@@ -364,14 +390,16 @@ class EmployeeProfile(Base):
     bank_ifsc = Column(String(20))
     pan_number = Column(String(20))
     aadhar_number = Column(String(20))
+    passport_number = Column(String(20))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    role = relationship("CompanyRole", back_populates="employees")
+    # role relationship removed - now using auth service roles (role_id stores auth role ID as string)
     branch = relationship("Branch")
     documents = relationship("EmployeeDocument", back_populates="employee")
+    assigned_branches = relationship("EmployeeBranch", back_populates="employee", cascade="all, delete-orphan")
     driver_profile = relationship("DriverProfile", back_populates="employee", uselist=False)
     finance_manager_profile = relationship("FinanceManagerProfile", back_populates="employee", uselist=False)
     branch_manager_profile = relationship("BranchManagerProfile", back_populates="employee", uselist=False)
@@ -388,7 +416,7 @@ class DriverProfile(Base):
     employee_profile_id = Column(String(36), ForeignKey("employee_profiles.id", ondelete="CASCADE"), nullable=False)
     tenant_id = Column(String(255), nullable=False)
     license_number = Column(String(50), unique=True, nullable=False)
-    license_type = Column(String(20), nullable=False)  # light_motor, heavy_motor, transport, goods
+    license_type = Column(String(50), nullable=False)  # e.g., Light Motor Vehicle (LMV), Heavy Motor Vehicle (HMV)
     license_expiry = Column(DateTime(timezone=True), nullable=False)
     license_issuing_authority = Column(String(100))
     badge_number = Column(String(50))
@@ -501,3 +529,20 @@ class EmployeeDocument(Base):
 
     # Relationships
     employee = relationship("EmployeeProfile", back_populates="documents")
+
+
+class EmployeeBranch(Base):
+    """Employee-branch junction table for many-to-many relationship"""
+    __tablename__ = "employee_branches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(255), nullable=False)
+    employee_profile_id = Column(String(36), ForeignKey("employee_profiles.id", ondelete="CASCADE"), nullable=False)
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="CASCADE"), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
+    assigned_by = Column(String(255))  # User ID who made the assignment
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    employee = relationship("EmployeeProfile", back_populates="assigned_branches")
+    branch = relationship("Branch")

@@ -405,6 +405,7 @@ export default function ProductsPage() {
                     <TableHead>Product Code</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
+                    <TableHead>Weight</TableHead>
                     <TableHead>Branch</TableHead>
                     <TableHead>Unit Price</TableHead>
                     <TableHead>Stock Level</TableHead>
@@ -436,6 +437,22 @@ export default function ProductsPage() {
                           <span className="text-sm text-gray-900">
                             {product.category?.name || "Uncategorized"}
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <Badge
+                              variant={product.weight_type === "fixed" ? "success" : "warning"}
+                              className="w-fit mb-1"
+                            >
+                              {product.weight_type === "fixed" ? "Fixed" : "Variable"}
+                            </Badge>
+                            <span className="text-xs text-gray-600">
+                              {product.weight_type === "fixed"
+                                ? `${product.fixed_weight || product.weight || 0} ${product.weight_unit || "kg"}`
+                                : "Enter weight when creating order"
+                              }
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center text-sm text-gray-900">

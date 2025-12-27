@@ -245,6 +245,16 @@ VALUES
         'manage_all',
         'Full user management'
     ),
+    (
+        'users',
+        'invite',
+        'Invite new users'
+    ),
+    (
+        'users',
+        'activate',
+        'Activate or deactivate users'
+    ),
 
 -- Role management permissions
 (
@@ -924,6 +934,43 @@ VALUES
     'Delete product categories'
 ),
 
+-- Profile management permissions
+(
+    'profiles',
+    'read',
+    'View profile information'
+),
+(
+    'profiles',
+    'read_own',
+    'View own profile'
+),
+(
+    'profiles',
+    'create',
+    'Create profiles'
+),
+(
+    'profiles',
+    'update',
+    'Update profiles'
+),
+(
+    'profiles',
+    'update_own',
+    'Update own profile'
+),
+(
+    'profiles',
+    'delete',
+    'Delete profiles'
+),
+(
+    'profiles',
+    'upload_avatar',
+    'Upload profile avatar'
+),
+
 -- Company reports permissions
 (
     'company_reports',
@@ -1239,10 +1286,10 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers', 'shipping',
-                     'product_categories', 'dashboard', 'system', 'permissions', 'finance')
+                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles')
   AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'manage_all', 'manage_own',
                    'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own',
-                   'approve', 'approve_bulk', 'reports', 'export')
+                   'approve', 'approve_bulk', 'reports', 'export', 'invite', 'activate', 'upload_avatar')
   AND p.resource != 'orders'  -- Exclude orders as they are handled above
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 

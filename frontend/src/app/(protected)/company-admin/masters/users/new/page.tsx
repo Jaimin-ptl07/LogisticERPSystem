@@ -9,13 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
-import { AppLayout } from "@/components/layout/AppLayout";
 import {
   ArrowLeft,
   Save,
   X,
   User,
-  Mail,
   Shield,
   Building,
   Phone,
@@ -30,7 +28,6 @@ import {
   useGetRolesQuery,
 } from "@/services/api/companyApi";
 import { useCreateAuthUserMutation } from "@/services/api/authApi";
-import { UserCreate, Role, Branch } from "@/services/api/companyApi";
 
 const userCreateSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -39,8 +36,9 @@ const userCreateSchema = z.object({
   phone_number: z.string().optional(),
   password: z.string().min(6, "Password must be at least 6 characters"),
   profile_type: z.enum(["staff", "driver", "admin"]),
-  role_id: z.string().min(1, "Role is required"),
+  auth_role_id: z.number().min(1, "Role is required"), // Changed from role_id to auth_role_id, number type for auth service
   branch_id: z.string().optional(),
+  branch_ids: z.array(z.string()).optional(),
   is_active: z.boolean(),
   send_invitation: z.boolean(),
 });
@@ -52,7 +50,7 @@ export default function NewUserPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Fetch branches and roles
+  // Fetch branches from company service and roles from auth service (via company service proxy)
   const { data: branchesData } = useGetBranchesQuery({
     page: 1,
     per_page: 100,
@@ -64,6 +62,7 @@ export default function NewUserPage() {
   const [createAuthUser] = useCreateAuthUserMutation();
 
   const branches = branchesData?.items || [];
+  // Handle both array (from auth-roles) and paginated response formats
   const roles = Array.isArray(rolesData) ? rolesData : rolesData?.items || [];
 
   const {
@@ -81,66 +80,96 @@ export default function NewUserPage() {
       phone_number: "",
       password: "",
       profile_type: "staff",
-      role_id: "", // Will be set when roles are loaded
+      auth_role_id: 0, // Will be set when roles are loaded
+      branch_id: "",
+      branch_ids: [],
       is_active: true,
       send_invitation: true,
     },
   });
 
-  const selectedProfileType = watch("profile_type");
-  const selectedRoleId = watch("role_id");
-  const selectedBranchId = watch("branch_id");
+  const selectedAuthRoleId = watch("auth_role_id");
+  const selectedBranchIds = watch("branch_ids") || [];
+
+  // Handle multi-select for branches
+  const handleBranchChange = (branchId: string) => {
+    const currentIds = selectedBranchIds || [];
+    if (currentIds.includes(branchId)) {
+      // Remove branch if already selected
+      setValue(
+        "branch_ids",
+        currentIds.filter((id) => id !== branchId)
+      );
+    } else {
+      // Add branch
+      setValue("branch_ids", [...currentIds, branchId]);
+    }
+  };
 
   // Debug: Log form validation state
   useEffect(() => {
     console.log("Form errors:", errors);
     console.log("Form isValid:", isValid);
-    console.log("selectedRoleId:", selectedRoleId);
+    console.log("selectedAuthRoleId:", selectedAuthRoleId);
     console.log("Form values:", watch());
-  }, [errors, isValid, selectedRoleId, watch]);
+  }, [errors, isValid, selectedAuthRoleId, watch]);
 
-  // Auto-select first role when roles are loaded
+  // Auto-select first non-system role when roles are loaded
   useEffect(() => {
-    if (roles && !selectedRoleId && roles.length > 0) {
-      console.log("Auto-selecting first role:", roles[0]);
-      setValue("role_id", roles[0].id);
+    if (roles && !selectedAuthRoleId && roles.length > 0) {
+      // Find first non-system role, or use first role if all are system roles
+      // Note: roles can be either Role (is_system_role) or AuthRole (is_system)
+      const firstNonSystemRole =
+        roles.find((r: any) => !r.is_system && !r.is_system_role) || roles[0];
+      console.log("Auto-selecting first role:", firstNonSystemRole);
+      setValue("auth_role_id", firstNonSystemRole.id);
     }
-  }, [roles, selectedRoleId, setValue]);
+  }, [roles, selectedAuthRoleId, setValue]);
 
   // Handle profile type change
   const handleProfileTypeChange = (profileType: string) => {
     setValue("profile_type", profileType as any);
     console.log("Profile type changed to:", profileType);
-    // Role selection is now manual - user can choose any role regardless of profile type
   };
 
   const onSubmit = async (data: UserCreateFormData) => {
     setIsSubmitting(true);
     try {
-      // Step 1: Create auth user
+      // Validate role_id is selected
+      if (!data.auth_role_id || data.auth_role_id <= 0) {
+        toast.error("Please select a valid role");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Step 1: Create auth user with role_id from auth service
       const authUserData = {
         email: data.email,
         password: data.password,
         first_name: data.first_name,
         last_name: data.last_name,
-        // role_id will be set to default "User" role by the auth service
-        // tenant_id will be set by the auth service from the token
+        role_id: String(data.auth_role_id), // Convert to string for auth service
       };
 
+      console.log("Creating auth user with data:", authUserData);
       const authUser = await createAuthUser(authUserData).unwrap();
+      console.log("Auth user created successfully:", authUser);
 
       // Step 2: Create employee profile
       const profileData = {
-        user_id: authUser.id, // Use the auth user ID
+        user_id: authUser.id,
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
         phone: data.phone_number,
         profile_type: data.profile_type,
-        role_id: data.role_id,
+        role_id: String(data.auth_role_id), // Auth service role ID (stored as string)
         branch_id: data.branch_id || undefined,
+        branch_ids:
+          data.branch_ids && data.branch_ids.length > 0
+            ? data.branch_ids
+            : undefined,
         is_active: data.is_active,
-        // The auth service handles the password
       };
 
       await createUser(profileData).unwrap();
@@ -150,31 +179,25 @@ export default function NewUserPage() {
     } catch (error: any) {
       console.error("User creation error:", error);
 
-      // Handle validation errors
       if (error?.data?.detail) {
         if (Array.isArray(error.data.detail)) {
-          // Handle FastAPI validation errors
           const errorMessages = error.data.detail
             .map((err: any) => `${err.loc?.join(".")} ${err.msg}`)
             .join(", ");
           toast.error(`Validation error: ${errorMessages}`);
         } else if (typeof error.data.detail === "object") {
-          // Handle object error
           const errorMsg = JSON.stringify(error.data.detail);
           toast.error(`Validation error: ${errorMsg}`);
         } else {
-          // Handle string error
           toast.error(error.data.detail);
         }
       } else if (error?.status) {
-        // Handle HTTP status errors
         toast.error(
           `Error ${error.status}: ${
             error.statusText || "Failed to create user"
           }`
         );
       } else {
-        // Handle other errors
         const errorMessage =
           error?.error || error?.message || "Failed to create user";
         toast.error(errorMessage);
@@ -300,48 +323,67 @@ export default function NewUserPage() {
               </div>
 
               <div>
-                <Label htmlFor="role_id">Role *</Label>
+                <Label htmlFor="auth_role_id">Role *</Label>
                 <select
-                  id="role_id"
-                  {...register("role_id")}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black ${
-                    errors.role_id ? "border-red-500" : "border-gray-300"
+                  id="auth_role_id"
+                  {...register("auth_role_id", { valueAsNumber: true })}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    errors.auth_role_id ? "border-red-500" : "border-gray-300"
                   }`}
                 >
-                  <option value="">Select Role</option>
+                  <option value={0}>Select Role</option>
                   {roles?.map((role) => (
                     <option key={role.id} value={role.id}>
-                      {role.name || role.display_name || role.role_name}
+                      {role.name}
                     </option>
                   ))}
                 </select>
-                {errors.role_id && (
+                {errors.auth_role_id && (
                   <p className="text-sm text-red-600 mt-1">Role is required</p>
                 )}
               </div>
             </div>
 
             <div>
-              <Label htmlFor="branch_id">Assigned Branch</Label>
-              <select
-                id="branch_id"
-                {...register("branch_id")}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-              >
-                <option value="">Select Branch (Optional)</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-              {errors.branch_id && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.branch_id.message}
+              <Label htmlFor="branch_id">Assigned Branches</Label>
+              <p className="text-xs text-gray-500 mb-2">
+                Optional: Select one or more branches for this user
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                {branches.map((branch) => {
+                  const isSelected = selectedBranchIds.includes(branch.id);
+                  return (
+                    <label
+                      key={branch.id}
+                      className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-colors ${
+                        isSelected
+                          ? "bg-blue-50 border border-blue-200"
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleBranchChange(branch.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="flex-1">{branch.name}</span>
+                      <span className="text-xs text-gray-500">
+                        {branch.code}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {selectedBranchIds.length > 0 && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {selectedBranchIds.length} branch
+                  {selectedBranchIds.length > 1 ? "es" : ""} selected
                 </p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Optional: Assign this user to a branch
+                Users can be assigned to multiple branches for cross-branch
+                operations
               </p>
             </div>
           </CardContent>

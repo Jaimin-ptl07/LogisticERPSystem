@@ -74,17 +74,21 @@ interface RoleBadgeProps {
 export function RoleBadge({ role, showDescription = false }: RoleBadgeProps) {
   if (!role) return null;
 
-  const colors: Record<string, string> = {
-    'admin': 'destructive',
-    'manager': 'default',
-    'operator': 'secondary',
-    'staff': 'outline',
-    'driver': 'success'
+  // Get role name in lowercase for comparison
+  const roleName = role.name.toLowerCase();
+
+  // Map role names to badge variants with better color logic
+  const getBadgeVariant = (roleName: string): 'destructive' | 'default' | 'secondary' | 'outline' | 'success' => {
+    if (roleName.includes('admin') || roleName.includes('superuser')) return 'destructive';
+    if (roleName.includes('manager')) return 'default';
+    if (roleName.includes('driver')) return 'success';
+    if (roleName.includes('operator') || roleName.includes('staff')) return 'secondary';
+    return 'outline';
   };
 
   return (
     <div className="flex items-center gap-2">
-      <Badge variant={colors[role.name.toLowerCase()] as any || 'outline'}>
+      <Badge variant={getBadgeVariant(roleName)}>
         {role.name}
         {role.is_system_role && <Lock className="w-3 h-3 ml-1" />}
       </Badge>

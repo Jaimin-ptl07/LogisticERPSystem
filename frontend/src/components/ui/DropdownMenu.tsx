@@ -56,13 +56,24 @@ export function DropdownMenuTrigger({
     };
   }, [isOpen, setIsOpen]);
 
-  const trigger = React.cloneElement(children as React.ReactElement, {
-    onClick: () => setIsOpen(!isOpen),
-    "aria-expanded": isOpen,
-    "aria-haspopup": true,
-  });
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
+  };
 
-  return <div ref={menuRef}>{trigger}</div>;
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children, {
+      onClick: handleClick,
+      'aria-expanded': isOpen,
+      'aria-haspopup': true,
+    } as any);
+  }
+
+  return (
+    <div ref={menuRef} onClick={handleClick}>
+      {children}
+    </div>
+  );
 }
 
 interface DropdownMenuContentProps {
@@ -137,33 +148,17 @@ export function DropdownMenuItem({
   const { setIsOpen } = React.useContext(DropdownMenuContext);
 
   const handleClick = (e: React.MouseEvent) => {
-    console.log("DropdownMenuItem clicked - event triggered"); // Debug log
-    e.preventDefault();
-    e.stopPropagation();
+    if (disabled) return;
 
-    if (disabled) {
-      console.log("Item is disabled, ignoring click");
-      return;
-    }
-
-    if (onClick) {
-      console.log("Calling onClick handler"); // Debug log
-      try {
-        onClick();
-        console.log("onClick handler executed successfully");
-      } catch (error) {
-        console.error("Error in onClick handler:", error);
-      }
-    } else {
-      console.log("No onClick handler provided");
-    }
-
+    // Close the menu first
     setIsOpen(false);
-  };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    console.log("Mouse down on menu item"); // Debug log
-    // Don't prevent default - let the click event fire naturally
+    // Execute the onClick handler after a small delay to allow menu to close
+    if (onClick) {
+      setTimeout(() => {
+        onClick();
+      }, 0);
+    }
   };
 
   return (
@@ -176,23 +171,7 @@ export function DropdownMenuItem({
       } ${className}`}
       role="menuitem"
       onClick={handleClick}
-      onDoubleClick={(e) => {
-        console.log("Double click on menu item");
-        if (!disabled && onClick) {
-          console.log("Calling onClick from doubleClick");
-          try {
-            onClick();
-            setIsOpen(false);
-          } catch (error) {
-            console.error(
-              "Error in onClick handler (from doubleClick):",
-              error
-            );
-          }
-        }
-      }}
       disabled={disabled}
-      onMouseDown={handleMouseDown}
       style={{ pointerEvents: "auto" }}
     >
       {children}

@@ -9,14 +9,12 @@ import {
   useGetProfilesByRoleQuery,
   useGetProfileStatsQuery,
 } from "@/services/api/profileApi";
-import { User } from "@/services/api/companyApi";
 import {
   ProfilesByRoleResponse,
   ProfileStatsResponse,
   RoleData,
 } from "@/services/api/profileApi";
 import RoleUserList from "./RoleUserList";
-import ProfileDetailModal from "./ProfileDetailModal";
 import {
   Search,
   Filter,
@@ -31,8 +29,6 @@ export default function EmployeeProfilesPage() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<
     "all" | "completed" | "pending"
   >("all");
@@ -107,15 +103,25 @@ export default function EmployeeProfilesPage() {
 
   const filteredStats = calculateFilteredStats();
 
-  const handleUserClick = (user: User) => {
-    setSelectedUser(user);
-    setShowProfileModal(true);
-  };
+  const handleUserClick = (userId: string) => {
+    // Ensure userId is a string (defensive check)
+    const safeUserId = typeof userId === "string" ? userId : String(userId);
+    console.log(
+      "handleUserClick - userId:",
+      userId,
+      "safeUserId:",
+      safeUserId,
+      "type:",
+      typeof userId
+    );
 
-  const handleCloseModal = () => {
-    setSelectedUser(null);
-    setShowProfileModal(false);
-    refetchProfiles();
+    // Don't navigate if it's an invalid userId that became "[object Object]"
+    if (safeUserId === "[object Object]" || !safeUserId) {
+      console.error("Invalid userId, cannot navigate:", userId);
+      return;
+    }
+
+    router.push(`/company-admin/masters/employee-profiles/${safeUserId}`);
   };
 
   return (
@@ -313,15 +319,6 @@ export default function EmployeeProfilesPage() {
           ))
         )}
       </div>
-
-      {/* Profile Detail Modal */}
-      {showProfileModal && selectedUser && (
-        <ProfileDetailModal
-          user={selectedUser}
-          isOpen={showProfileModal}
-          onClose={handleCloseModal}
-        />
-      )}
     </div>
   );
 }

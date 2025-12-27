@@ -1395,51 +1395,7 @@ export default function Trips() {
                                         )
                                       </span>
                                     )}
-                                    <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                                      #{order.sequence_number !== undefined ? order.sequence_number + 1 : index + 1}
-                                    </span>
-                                    <span className="font-medium text-gray-900">{order.order_id || order.id}</span>
-                                    <span className="text-gray-900">{order.customer}</span>
-                                    <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
-                                      {order.priority.toUpperCase()}
-                                    </Badge>
-                                    {trip.status === 'on-route' && order.delivery_status && (
-                                      <Badge
-                                        variant={getDeliveryStatusVariant(order.delivery_status)}
-                                        className="text-xs"
-                                      >
-                                        <Plus className="w-4 h-4 mr-1" />
-                                        Add Order
-                                      </Button>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-4 text-sm">
-                                    <span className="text-gray-900">{order.items} items</span>
-                                    <span className="font-medium text-gray-900">{order.weight}kg</span>
-                                    {!isTripLocked(trip.status) && (
-                                      <div className="flex gap-1">
-                                        <Button size="sm" variant="outline">Edit</Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            // Handle remove from trip
-                                            if (confirm(`Remove order ${order.order_id || order.id} from this trip?`)) {
-                                              try {
-                                                await tmsAPI.removeOrderFromTrip(trip.id, order.order_id || order.id);
-                                                fetchTrips();
-                                              } catch (err) {
-                                                alert(err instanceof Error ? err.message : 'Failed to remove order');
-                                              }
-                                            }
-                                          }}
-                                        >
-                                          Remove
-                                        </Button>
-                                      </div>
-                                    )}
-                                  </div>
+                                  </h4>
                                 </div>
                                 {trip.orders.length > 0 && (
                                   <div

@@ -44,7 +44,9 @@ export default function NewProductPage() {
     description: "",
     unit_price: 1, // Default positive value
     special_price: 0,
-    weight: 0,
+    weight_type: "fixed", // Default to fixed weight
+    weight_unit: "kg", // Default unit
+    fixed_weight: 0,
     length: 0,
     width: 0,
     height: 0,
@@ -80,6 +82,15 @@ export default function NewProductPage() {
     ) {
       newErrors.special_price = "Special price must be positive";
     }
+
+    // Weight type validation
+    if (formData.weight_type === "fixed") {
+      if (!formData.fixed_weight || formData.fixed_weight <= 0) {
+        newErrors.fixed_weight = "Fixed weight is required for FIXED type";
+      }
+    }
+    // No validation needed for variable weight - user enters actual weight when creating orders
+
     if (
       formData.min_stock_level !== undefined &&
       formData.min_stock_level < 0
@@ -127,6 +138,8 @@ export default function NewProductPage() {
         current_stock: formData.current_stock,
         is_active: formData.is_active,
         available_for_all_branches: isAvailableForAllBranches,
+        weight_type: formData.weight_type || "fixed",
+        weight_unit: formData.weight_unit || "kg",
         // Only include optional fields if they have meaningful values
         ...(!isAvailableForAllBranches &&
           selectedBranches.length > 0 && { branch_ids: selectedBranches }),
@@ -136,8 +149,11 @@ export default function NewProductPage() {
           formData.special_price > 0 && {
             special_price: formData.special_price,
           }),
-        ...(formData.weight &&
-          formData.weight > 0 && { weight: formData.weight }),
+        // Weight configuration based on weight_type
+        ...(formData.weight_type === "fixed" && formData.fixed_weight && formData.fixed_weight > 0 && {
+          fixed_weight: formData.fixed_weight,
+        }),
+        // Variable weight type doesn't need min/max - actual weight entered when creating orders
         ...(formData.length &&
           formData.length > 0 && { length: formData.length }),
         ...(formData.width && formData.width > 0 && { width: formData.width }),
@@ -491,26 +507,94 @@ export default function NewProductPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="weight">Weight (kg)</Label>
-                  <Input
-                    id="weight"
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={formData.weight ?? ""}
-                    onChange={(e) => {
-                      if (e.target.value === "") {
-                        handleInputChange("weight", undefined as any);
-                      } else {
-                        const value = parseFloat(e.target.value);
-                        handleInputChange("weight", isNaN(value) ? 0 : value);
-                      }
-                    }}
-                    placeholder="e.g., 5.5"
-                  />
+              {/* Weight Type Selection */}
+              <div>
+                <Label htmlFor="weight_type" className="text-sm font-medium text-gray-700 mb-3 block">
+                  Weight Type *
+                </Label>
+                <div className="flex gap-4">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="weight_type"
+                      id="weight_type_fixed"
+                      value="fixed"
+                      checked={formData.weight_type === "fixed"}
+                      onChange={(e) => handleInputChange("weight_type", e.target.value)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-900">Fixed Weight</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="weight_type"
+                      id="weight_type_variable"
+                      value="variable"
+                      checked={formData.weight_type === "variable"}
+                      onChange={(e) => handleInputChange("weight_type", e.target.value)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-900">Variable Weight</span>
+                  </label>
                 </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {formData.weight_type === "fixed"
+                    ? "Fixed weight products have a standard weight that is pre-determined and auto-filled in orders."
+                    : "Variable weight products require the actual weight to be entered when creating orders."}
+                </p>
+              </div>
+
+              {/* Weight Configuration - Fixed */}
+              {formData.weight_type === "fixed" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="fixed_weight">Fixed Weight ({formData.weight_unit}) *</Label>
+                    <Input
+                      id="fixed_weight"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={formData.fixed_weight ?? ""}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange("fixed_weight", isNaN(value) ? 0 : value);
+                      }}
+                      placeholder="e.g., 5.5"
+                      className={errors.fixed_weight ? "border-red-500" : ""}
+                    />
+                    {errors.fixed_weight && (
+                      <p className="text-sm text-red-600 mt-1">{errors.fixed_weight}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="weight_unit">Weight Unit</Label>
+                    <select
+                      id="weight_unit"
+                      value={formData.weight_unit || "kg"}
+                      onChange={(e) => handleInputChange("weight_unit", e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="kg">Kilograms (kg)</option>
+                      <option value="g">Grams (g)</option>
+                      <option value="lb">Pounds (lb)</option>
+                      <option value="oz">Ounces (oz)</option>
+                      <option value="ton">Metric Tons (ton)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Weight Configuration - Variable - No inputs needed */}
+              {formData.weight_type === "variable" && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Variable Weight:</strong> When creating orders for this product, you will be prompted to enter the actual weight for each item.
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="volume">Volume (m³)</Label>
                   <Input
