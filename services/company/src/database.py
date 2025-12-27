@@ -85,6 +85,12 @@ class ServiceType(enum.Enum):
     FREIGHT = "freight"
 
 
+class WeightType(str, enum.Enum):
+    """Weight type enum for products"""
+    FIXED = "fixed"
+    VARIABLE = "variable"
+
+
 # Models
 class Branch(Base):
     """Branch model"""
@@ -214,11 +220,28 @@ class Product(Base):
     description = Column(String(500))
     unit_price = Column(Float, nullable=False)
     special_price = Column(Float)  # For specific customers or promotions
-    weight = Column(Float)  # in kg
+
+    # Weight configuration - supports fixed and variable weight types
+    weight_type = Column(
+        SQLEnum(
+            WeightType,
+            name="weight_type",
+            native_enum=True,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls]
+        ),
+        default=WeightType.FIXED,
+        nullable=False
+    )
+    weight = Column(Float)  # Deprecated - use fixed_weight for fixed type products
+    fixed_weight = Column(Float)  # For FIXED weight type - standard weight
+    weight_unit = Column(String(20), default="kg")  # Weight unit (kg, lb, g, etc.)
+
+    # Dimensions
     length = Column(Float)  # in cm
     width = Column(Float)   # in cm
     height = Column(Float)  # in cm
     volume = Column(Float)  # in cubic meters (calculated)
+
     handling_requirements = Column(JSON)  # ["fragile", "hazardous", "refrigerated"]
     min_stock_level = Column(Integer, default=0)
     max_stock_level = Column(Integer)

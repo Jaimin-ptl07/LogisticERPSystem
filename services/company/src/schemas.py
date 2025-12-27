@@ -3,9 +3,9 @@ Pydantic schemas for Company Service
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_serializer
 from uuid import UUID
-from .database import BusinessType, VehicleType, VehicleStatus, ServiceType
+from .database import BusinessType, VehicleType, VehicleStatus, ServiceType, WeightType
 
 
 # Base schemas
@@ -210,16 +210,43 @@ class ProductBase(BaseSchema):
     description: Optional[str] = Field(None, max_length=500)
     unit_price: float = Field(..., gt=0)
     special_price: Optional[float] = Field(None, ge=0)
-    weight: Optional[float] = Field(None, ge=0)  # in kg
+
+    # Weight configuration - supports fixed and variable weight types
+    weight_type: WeightType = Field(default=WeightType.FIXED, description="Type of weight: fixed or variable")
+    weight: Optional[float] = Field(None, ge=0, description="Deprecated - use fixed_weight")  # in kg
+    fixed_weight: Optional[float] = Field(None, ge=0, description="Fixed weight in kg for FIXED type products")
+    weight_unit: str = Field(default="kg", max_length=20, description="Weight unit (kg, lb, g, etc.)")
+
+    @field_serializer('weight_type')
+    def serialize_weight_type(self, value: WeightType) -> str:
+        """Serialize WeightType enum to its string value"""
+        if value is None:
+            return WeightType.FIXED.value
+        return value.value if isinstance(value, WeightType) else str(value)
+
+    # Dimensions
     length: Optional[float] = Field(None, ge=0)  # in cm
     width: Optional[float] = Field(None, ge=0)   # in cm
     height: Optional[float] = Field(None, ge=0)  # in cm
     volume: Optional[float] = Field(None, ge=0)  # in cubic meters
+
     handling_requirements: Optional[List[str]] = Field(default_factory=list)
     min_stock_level: int = Field(default=0, ge=0)
     max_stock_level: Optional[int] = Field(None, ge=0)
     current_stock: int = Field(default=0, ge=0)
     is_active: bool = True
+
+    @model_validator(mode='after')
+    def validate_weight_fields(self):
+        """Validate weight fields based on weight_type"""
+        if self.weight_type == WeightType.FIXED:
+            if self.fixed_weight is None and self.weight is None:
+                raise ValueError("fixed_weight is required for FIXED weight type")
+            # If weight is provided (legacy), use it as fixed_weight
+            if self.weight is not None and self.fixed_weight is None:
+                self.fixed_weight = self.weight
+        # VARIABLE type doesn't require any weight fields - actual weight entered when creating orders
+        return self
 
 
 class ProductCreate(ProductBase):
@@ -237,7 +264,13 @@ class ProductUpdate(BaseSchema):
     description: Optional[str] = Field(None, max_length=500)
     unit_price: Optional[float] = Field(None, gt=0)
     special_price: Optional[float] = Field(None, ge=0)
+
+    # Weight configuration
+    weight_type: Optional[WeightType] = None
     weight: Optional[float] = Field(None, ge=0)
+    fixed_weight: Optional[float] = Field(None, ge=0)
+    weight_unit: Optional[str] = None
+
     length: Optional[float] = Field(None, ge=0)
     width: Optional[float] = Field(None, ge=0)
     height: Optional[float] = Field(None, ge=0)

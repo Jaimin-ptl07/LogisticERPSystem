@@ -256,7 +256,11 @@ export interface Product {
   description?: string
   unit_price: number
   special_price?: number
-  weight?: number
+  // Weight configuration - supports fixed and variable weight types
+  weight_type?: 'fixed' | 'variable'
+  weight?: number  // Deprecated - use fixed_weight
+  fixed_weight?: number  // For FIXED weight type
+  weight_unit?: string  // Weight unit (kg, lb, g, etc.)
   length?: number
   width?: number
   height?: number
@@ -341,7 +345,11 @@ export interface ProductCreate {
   description?: string
   unit_price: number
   special_price?: number
-  weight?: number
+  // Weight configuration - supports fixed and variable weight types
+  weight_type?: 'fixed' | 'variable'
+  weight?: number  // Deprecated - use fixed_weight
+  fixed_weight?: number  // For FIXED weight type
+  weight_unit?: string  // Weight unit (kg, lb, g, etc.)
   length?: number
   width?: number
   height?: number
