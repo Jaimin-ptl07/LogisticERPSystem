@@ -5,7 +5,8 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_serializer
 from uuid import UUID
-from .database import BusinessType, VehicleType, VehicleStatus, ServiceType, WeightType
+from .database import BusinessType, VehicleStatus, ServiceType, WeightType
+# Note: VehicleType enum is now deprecated, use VehicleTypeModel instead
 
 
 # Base schemas
@@ -60,6 +61,74 @@ class Branch(BranchInDB):
     pass
 
 
+# BusinessType schemas
+class BusinessTypeBase(BaseSchema):
+    """Base business type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class BusinessTypeCreate(BusinessTypeBase):
+    """Schema for creating a business type"""
+    pass
+
+
+class BusinessTypeUpdate(BaseSchema):
+    """Schema for updating a business type"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class BusinessTypeInDB(BusinessTypeBase):
+    """Schema for business type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class BusinessTypeModel(BusinessTypeInDB):
+    """Schema for business type response"""
+    pass
+
+
+# VehicleType schemas
+class VehicleTypeBase(BaseSchema):
+    """Base vehicle type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class VehicleTypeCreate(VehicleTypeBase):
+    """Schema for creating a vehicle type"""
+    pass
+
+
+class VehicleTypeUpdate(BaseSchema):
+    """Schema for updating a vehicle type"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class VehicleTypeInDB(VehicleTypeBase):
+    """Schema for vehicle type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class VehicleTypeModel(VehicleTypeInDB):
+    """Schema for vehicle type response"""
+    pass
+
+
 # Customer schemas
 class CustomerBase(BaseSchema):
     """Base customer schema"""
@@ -72,10 +141,22 @@ class CustomerBase(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
+    # Support both old enum and new foreign key
     business_type: Optional[BusinessType] = None
+    business_type_id: Optional[UUID] = None
     credit_limit: float = Field(default=0, ge=0)
     pricing_tier: str = Field(default="standard", max_length=20)
     is_active: bool = True
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_empty_business_type_to_none(cls, data):
+        """Convert empty string for business_type to None to avoid enum validation errors"""
+        if isinstance(data, dict):
+            business_type_value = data.get('business_type')
+            if business_type_value == '':
+                data['business_type'] = None
+        return data
 
 
 class CustomerCreate(CustomerBase):
@@ -93,7 +174,9 @@ class CustomerUpdate(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
+    # Support both old enum and new foreign key
     business_type: Optional[BusinessType] = None
+    business_type_id: Optional[UUID] = None
     credit_limit: Optional[float] = Field(None, ge=0)
     pricing_tier: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
@@ -110,6 +193,7 @@ class CustomerInDB(CustomerBase):
 class Customer(CustomerInDB):
     """Schema for customer response"""
     home_branch: Optional[Branch] = None
+    business_type_relation: Optional[BusinessTypeModel] = None
 
 
 # Vehicle schemas
@@ -120,13 +204,25 @@ class VehicleBase(BaseSchema):
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
-    vehicle_type: Optional[VehicleType] = None
+    # Support both old enum (as string) and new foreign key
+    vehicle_type: Optional[str] = None  # Deprecated: use vehicle_type_id instead
+    vehicle_type_id: Optional[UUID] = None
     capacity_weight: Optional[float] = Field(None, ge=0)  # in kg
     capacity_volume: Optional[float] = Field(None, ge=0)  # in cubic meters
     status: VehicleStatus = VehicleStatus.AVAILABLE
     last_maintenance: Optional[datetime] = None
     next_maintenance: Optional[datetime] = None
     is_active: bool = True
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_empty_vehicle_type_to_none(cls, data):
+        """Convert empty string for vehicle_type to None to avoid enum validation errors"""
+        if isinstance(data, dict):
+            vehicle_type_value = data.get('vehicle_type')
+            if vehicle_type_value == '':
+                data['vehicle_type'] = None
+        return data
 
 
 class VehicleCreate(VehicleBase):
@@ -140,7 +236,9 @@ class VehicleUpdate(BaseSchema):
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
-    vehicle_type: Optional[VehicleType] = None
+    # Support both old enum (as string) and new foreign key
+    vehicle_type: Optional[str] = None
+    vehicle_type_id: Optional[UUID] = None
     capacity_weight: Optional[float] = Field(None, ge=0)
     capacity_volume: Optional[float] = Field(None, ge=0)
     status: Optional[VehicleStatus] = None
@@ -160,6 +258,7 @@ class VehicleInDB(VehicleBase):
 class Vehicle(VehicleInDB):
     """Schema for vehicle response"""
     branch: Optional[Branch] = None
+    vehicle_type_relation: Optional[VehicleTypeModel] = None
 
 
 # Product Category schemas

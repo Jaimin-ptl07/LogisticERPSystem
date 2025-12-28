@@ -79,7 +79,12 @@ export default function CustomerDetailsPage() {
     </Badge>
   );
 
-  const getBusinessTypeBadge = (businessType: string) => {
+  const getBusinessTypeBadge = (customer: any) => {
+    // Use business_type_relation (new) if available, fallback to business_type (old enum)
+    const businessTypeName = customer.business_type_relation?.name ||
+      customer.business_type?.replace("_", " ") ||
+      "N/A";
+
     const colors: Record<
       string,
       "default" | "success" | "warning" | "danger" | "info"
@@ -89,9 +94,19 @@ export default function CustomerDetailsPage() {
       corporate: "success",
       government: "warning",
     };
+
+    // Determine badge color based on business type code (for dynamic types)
+    let badgeColor: "default" | "success" | "warning" | "danger" | "info" = "default";
+
+    if (customer.business_type_relation?.code) {
+      badgeColor = colors[customer.business_type_relation.code] || "info";
+    } else if (customer.business_type) {
+      badgeColor = colors[customer.business_type] || "default";
+    }
+
     return (
-      <Badge variant={colors[businessType] || "default"}>
-        {businessType?.replace("_", " ") || "N/A"}
+      <Badge variant={badgeColor}>
+        {businessTypeName}
       </Badge>
     );
   };
@@ -151,7 +166,7 @@ export default function CustomerDetailsPage() {
                 Business Type
               </label>
               <div className="mt-1">
-                {getBusinessTypeBadge(customer.business_type || "")}
+                {getBusinessTypeBadge(customer)}
               </div>
             </div>
             <div>
@@ -267,7 +282,7 @@ export default function CustomerDetailsPage() {
       </div>
 
       {/* Customer Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -316,10 +331,10 @@ export default function CustomerDetailsPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </div> */}
 
       {/* Detailed Tabs */}
-      <Tabs defaultValue="overview" className="w-full">
+      {/* <Tabs defaultValue="overview" className="w-full">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="orders">Recent Orders</TabsTrigger>
@@ -582,7 +597,7 @@ export default function CustomerDetailsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+      </Tabs> */}
     </div>
   );
 }

@@ -25,29 +25,27 @@ import {
   Users,
   Building,
   Download,
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
   Briefcase,
+  Power,
+  PowerOff,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useGetCustomersQuery,
   useDeleteCustomerMutation,
-  useGetBusinessTypesQuery,
+  useUpdateCustomerMutation,
+  useGetAllBusinessTypesQuery,
 } from "@/services/api/companyApi";
+import { BusinessTypeModel } from "@/services/api/companyApi";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/Dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu";
 import { toast } from "react-hot-toast";
 
 export default function CustomersPage() {
@@ -61,7 +59,12 @@ export default function CustomersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
 
-  const { data: businessTypes } = useGetBusinessTypesQuery();
+  const { data: businessTypesData } = useGetAllBusinessTypesQuery({ is_active: true });
+
+  // Handle both array and paginated response formats
+  const businessTypes: BusinessTypeModel[] = Array.isArray(businessTypesData)
+    ? businessTypesData
+    : businessTypesData?.items || [];
 
   const {
     data: customersData,
@@ -79,6 +82,8 @@ export default function CustomersPage() {
   const [deleteCustomer, { isLoading: isDeleting }] =
     useDeleteCustomerMutation();
 
+  const [updateCustomer] = useUpdateCustomerMutation();
+
   // Extract customers items from paginated response
   const customers = customersData?.items || [];
   const totalCustomers = customersData?.total || 0;
@@ -90,6 +95,18 @@ export default function CustomersPage() {
 
   const handleView = (id: string) => {
     router.push(`/company-admin/masters/customers/${id}`);
+  };
+
+  const handleToggleActive = async (customer: any) => {
+    try {
+      await updateCustomer({
+        id: customer.id,
+        customer: { is_active: !customer.is_active }
+      }).unwrap();
+      toast.success(customer.is_active ? "Customer deactivated successfully" : "Customer activated successfully");
+    } catch (error: any) {
+      toast.error(error?.data?.message || "Failed to update customer status");
+    }
   };
 
   const handleDelete = async () => {
@@ -118,7 +135,12 @@ export default function CustomersPage() {
     );
   };
 
-  const getBusinessTypeBadge = (businessType: string) => {
+  const getBusinessTypeBadge = (customer: any) => {
+    // Use business_type_relation (new) if available, fallback to business_type (old enum)
+    const businessTypeName = customer.business_type_relation?.name ||
+      customer.business_type?.replace("_", " ") ||
+      "N/A";
+
     const colors: Record<
       string,
       "default" | "success" | "warning" | "danger" | "info"
@@ -128,9 +150,21 @@ export default function CustomersPage() {
       corporate: "success",
       government: "warning",
     };
+
+    // Determine badge color based on business type name (for dynamic types)
+    let badgeColor: "default" | "success" | "warning" | "danger" | "info" = "default";
+
+    if (customer.business_type_relation?.code) {
+      badgeColor = colors[customer.business_type_relation.code] || "info";
+    } else if (customer.business_type) {
+      badgeColor = colors[customer.business_type] || "default";
+    } else {
+      badgeColor = "default";
+    }
+
     return (
-      <Badge variant={colors[businessType] || "default"}>
-        {businessType?.replace("_", " ") || "N/A"}
+      <Badge variant={badgeColor}>
+        {businessTypeName}
       </Badge>
     );
   };
@@ -160,13 +194,23 @@ export default function CustomersPage() {
             Manage your customer database and relationships
           </p>
         </div>
-        <Button
-          onClick={() => router.push("/company-admin/masters/customers/new")}
-          className="flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          New Customer
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => router.push("/company-admin/masters/business-types")}
+            className="flex items-center gap-2"
+          >
+            <Briefcase className="w-4 h-4" />
+            Manage Business Types
+          </Button>
+          <Button
+            onClick={() => router.push("/company-admin/masters/customers/new")}
+            className="flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            New Customer
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -206,8 +250,10 @@ export default function CustomersPage() {
                 <p className="text-sm text-gray-600">Corporate</p>
                 <p className="text-2xl font-bold text-purple-600">
                   {
-                    customers.filter((c) => c.business_type === "corporate")
-                      .length
+                    customers.filter((c) =>
+                      c.business_type_relation?.code === "corporate" ||
+                      c.business_type === "corporate"
+                    ).length
                   }
                 </p>
               </div>
@@ -279,9 +325,9 @@ export default function CustomersPage() {
               <option className="text-black" value="all">
                 All Business Types
               </option>
-              {businessTypes?.map((type) => (
-                <option className="text-black" key={type} value={type}>
-                  {type.replace("_", " ")}
+              {businessTypes.map((type) => (
+                <option className="text-black" key={type.id} value={type.code}>
+                  {type.name}
                 </option>
               ))}
             </select>
@@ -351,9 +397,19 @@ export default function CustomersPage() {
                 </TableHeader>
                 <TableBody>
                   {customers.map((customer) => (
-                    <TableRow key={customer.id} className="hover:bg-gray-50">
+                    <TableRow
+                      key={customer.id}
+                      className={`hover:bg-gray-50 ${!customer.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                    >
                       <TableCell className="font-medium">
-                        {customer.code}
+                        <div className="flex items-center gap-2">
+                          {customer.code}
+                          {!customer.is_active && (
+                            <Badge variant="default" className="text-xs bg-gray-400">
+                              Inactive
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div>
@@ -387,7 +443,7 @@ export default function CustomersPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {getBusinessTypeBadge(customer.business_type || "")}
+                        {getBusinessTypeBadge(customer)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center text-sm text-gray-900">
@@ -404,34 +460,46 @@ export default function CustomersPage() {
                         {getStatusBadge(customer.is_active)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleView(customer.id)}
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleEdit(customer.id)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => confirmDelete(customer.id)}
-                              className="text-red-600"
-                              disabled={!customer.is_active}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleView(customer.id)}
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(customer.id)}
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant={customer.is_active ? "ghost" : "outline"}
+                            size="sm"
+                            onClick={() => handleToggleActive(customer)}
+                            title={customer.is_active ? "Deactivate" : "Activate"}
+                            className={customer.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                          >
+                            {customer.is_active ? (
+                              <Power className="w-4 h-4" />
+                            ) : (
+                              <PowerOff className="w-4 h-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => confirmDelete(customer.id)}
+                            title="Delete"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
