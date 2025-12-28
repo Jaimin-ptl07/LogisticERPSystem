@@ -596,10 +596,6 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['Customer'],
     }),
-    getBusinessTypes: builder.query<string[], void>({
-      query: () => 'company/customers/business-types/',
-      providesTags: ['Customer'],
-    }),
 
     // Vehicle endpoints
     getVehicles: builder.query<{ items: Vehicle[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; vehicle_type?: string; status?: string; branch_id?: string; is_active?: boolean }>({
