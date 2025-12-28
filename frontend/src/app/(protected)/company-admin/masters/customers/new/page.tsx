@@ -88,9 +88,9 @@ export default function NewCustomerPage() {
       newErrors.credit_limit = "Credit limit must be positive";
     }
 
-    // Only validate business_type if business types are loaded
-    if (businessTypes && businessTypes.length > 0 && !formData.business_type) {
-      newErrors.business_type = "Please select a business type";
+    // Only validate business_type_id if business types are loaded
+    if (businessTypes && businessTypes.length > 0 && !formData.business_type_id) {
+      newErrors.business_type_id = "Please select a business type";
     }
 
     setErrors(newErrors);
@@ -264,7 +264,7 @@ export default function NewCustomerPage() {
                     handleInputChange("business_type_id", e.target.value)
                   }
                   className={`w-full px-3 py-2 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.business_type ? "border-red-500" : "border-gray-300"
+                    errors.business_type_id ? "border-red-500" : "border-gray-300"
                   }`}
                 >
                   <option value="">Select Business Type</option>
@@ -279,9 +279,9 @@ export default function NewCustomerPage() {
                     </option>
                   )}
                 </select>
-                {errors.business_type && (
+                {errors.business_type_id && (
                   <p className="text-sm text-red-600 mt-1">
-                    {errors.business_type}
+                    {errors.business_type_id}
                   </p>
                 )}
                 {businessTypes.length === 0 && (

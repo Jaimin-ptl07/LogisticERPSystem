@@ -130,7 +130,8 @@ async def get_customer(
         Customer.id == customer_id,
         Customer.tenant_id == tenant_id
     ).options(
-        selectinload(Customer.home_branch)
+        selectinload(Customer.home_branch),
+        selectinload(Customer.business_type_relation)
     )
 
     result = await db.execute(query)
@@ -189,8 +190,8 @@ async def create_customer(
     await db.commit()
     await db.refresh(customer)
 
-    # Load the branch relationship for response
-    await db.refresh(customer, ["home_branch"])
+    # Load the branch and business_type relationships for response
+    await db.refresh(customer, ["home_branch", "business_type_relation"])
 
     return CustomerSchema.model_validate(customer)
 
@@ -211,10 +212,13 @@ async def update_customer(
     - customers:update_own (to update own assigned customers)
     """
 
-    # Get existing customer
+    # Get existing customer with relationships
     query = select(Customer).where(
         Customer.id == customer_id,
         Customer.tenant_id == tenant_id
+    ).options(
+        selectinload(Customer.home_branch),
+        selectinload(Customer.business_type_relation)
     )
     result = await db.execute(query)
     customer = result.scalar_one_or_none()
@@ -240,8 +244,8 @@ async def update_customer(
     await db.commit()
     await db.refresh(customer)
 
-    # Load the branch relationship for response
-    await db.refresh(customer, ["home_branch"])
+    # Load the branch and business_type relationships for response
+    await db.refresh(customer, ["home_branch", "business_type_relation"])
 
     return CustomerSchema.model_validate(customer)
 
@@ -254,7 +258,7 @@ async def delete_customer(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete (deactivate) a customer
+    Delete (hard delete) a customer
 
     Requires:
     - customers:delete
@@ -271,9 +275,11 @@ async def delete_customer(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    # Soft delete - deactivate customer
-    customer.is_active = False
+    # Hard delete - remove customer from database
+    await db.delete(customer)
     await db.commit()
+
+    return None
 
 
 @router.get("/business-types")

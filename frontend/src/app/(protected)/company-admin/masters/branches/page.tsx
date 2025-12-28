@@ -26,14 +26,17 @@ import {
   Users,
   Filter,
   Download,
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
+  Power,
+  PowerOff,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useGetBranchesQuery,
   useDeleteBranchMutation,
+  useUpdateBranchMutation,
 } from "@/services/api/companyApi";
 import {
   Dialog,
@@ -41,12 +44,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/Dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu";
 import { toast } from "react-hot-toast";
 
 export default function BranchesPage() {
@@ -71,6 +68,7 @@ export default function BranchesPage() {
   });
 
   const [deleteBranch, { isLoading: isDeleting }] = useDeleteBranchMutation();
+  const [updateBranch] = useUpdateBranchMutation();
 
   const branches = branchesData?.items || [];
 
@@ -96,6 +94,18 @@ export default function BranchesPage() {
 
   const handleView = (id: string) => {
     router.push(`/company-admin/masters/branches/${id}`);
+  };
+
+  const handleToggleActive = async (branch: any) => {
+    try {
+      await updateBranch({
+        id: branch.id,
+        branch: { is_active: !branch.is_active }
+      }).unwrap();
+      toast.success(branch.is_active ? "Branch deactivated successfully" : "Branch activated successfully");
+    } catch (error: any) {
+      toast.error(error?.data?.message || "Failed to update branch status");
+    }
   };
 
   const handleDelete = async () => {
@@ -319,9 +329,19 @@ export default function BranchesPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredBranches.map((branch) => (
-                    <TableRow key={branch.id} className="hover:bg-gray-50">
+                    <TableRow
+                      key={branch.id}
+                      className={`hover:bg-gray-50 ${!branch.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                    >
                       <TableCell className="font-medium">
-                        {branch.code}
+                        <div className="flex items-center gap-2">
+                          {branch.code}
+                          {!branch.is_active && (
+                            <Badge variant="default" className="text-xs bg-gray-400">
+                              Inactive
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div>
@@ -373,34 +393,48 @@ export default function BranchesPage() {
                       </TableCell>
                       <TableCell>{getStatusBadge(branch.is_active)}</TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleView(branch.id)}
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleEdit(branch.id)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => confirmDelete(branch.id)}
-                              className="text-red-600"
-                              disabled={!branch.is_active}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleView(branch.id)}
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(branch.id)}
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant={branch.is_active ? "ghost" : "outline"}
+                            size="sm"
+                            onClick={() => handleToggleActive(branch)}
+                            title={branch.is_active ? "Deactivate" : "Activate"}
+                            className={branch.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                          >
+                            {branch.is_active ? (
+                              <Power className="w-4 h-4" />
+                            ) : (
+                              <PowerOff className="w-4 h-4" />
+                            )}
+                          </Button>
+                          {/* Delete button - commented out as per request
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => confirmDelete(branch.id)}
+                            title="Delete"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                          */}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

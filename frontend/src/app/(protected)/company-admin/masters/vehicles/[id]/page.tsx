@@ -72,18 +72,11 @@ export default function VehicleDetailsPage() {
     </Badge>
   );
 
-  const getTypeBadge = (type: string) => {
-    const colors: Record<string, 'default' | 'success' | 'info' | 'warning' | 'danger'> = {
-      'motorcycle': 'info',
-      'van': 'success',
-      'truck_small': 'warning',
-      'truck_medium': 'default',
-      'truck_large': 'danger',
-      'trailer': 'info'
-    };
+  const getTypeBadge = (vehicle: any) => {
+    const typeName = vehicle.vehicle_type_relation?.name || vehicle.vehicle_type?.replace('_', ' ') || 'N/A';
     return (
-      <Badge variant={(colors[type] || 'default') as 'default' | 'success' | 'info' | 'warning' | 'danger'}>
-        {type?.replace('_', ' ') || 'N/A'}
+      <Badge variant="default">
+        {typeName}
       </Badge>
     );
   };
@@ -178,7 +171,7 @@ export default function VehicleDetailsPage() {
             <CardContent className="space-y-3">
               <div>
                 <label className="text-sm font-medium text-gray-500">Vehicle Type</label>
-                <div className="mt-1">{getTypeBadge(vehicle.vehicle_type || '')}</div>
+                <div className="mt-1">{getTypeBadge(vehicle)}</div>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Weight Capacity</label>
@@ -260,7 +253,7 @@ export default function VehicleDetailsPage() {
         </div>
 
         {/* Vehicle Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -307,10 +300,10 @@ export default function VehicleDetailsPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </div> */}
 
         {/* Detailed Tabs */}
-        <Tabs defaultValue="overview" className="w-full">
+        {/* <Tabs defaultValue="overview" className="w-full">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="trips">Trip History</TabsTrigger>
@@ -554,7 +547,7 @@ export default function VehicleDetailsPage() {
               </CardContent>
             </Card>
           </TabsContent>
-        </Tabs>
+        </Tabs> */}
       </div>
     </div>
   );

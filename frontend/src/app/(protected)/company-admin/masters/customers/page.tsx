@@ -25,15 +25,18 @@ import {
   Users,
   Building,
   Download,
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
   Briefcase,
+  Power,
+  PowerOff,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useGetCustomersQuery,
   useDeleteCustomerMutation,
+  useUpdateCustomerMutation,
   useGetAllBusinessTypesQuery,
 } from "@/services/api/companyApi";
 import { BusinessTypeModel } from "@/services/api/companyApi";
@@ -43,12 +46,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/Dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu";
 import { toast } from "react-hot-toast";
 
 export default function CustomersPage() {
@@ -85,6 +82,8 @@ export default function CustomersPage() {
   const [deleteCustomer, { isLoading: isDeleting }] =
     useDeleteCustomerMutation();
 
+  const [updateCustomer] = useUpdateCustomerMutation();
+
   // Extract customers items from paginated response
   const customers = customersData?.items || [];
   const totalCustomers = customersData?.total || 0;
@@ -96,6 +95,18 @@ export default function CustomersPage() {
 
   const handleView = (id: string) => {
     router.push(`/company-admin/masters/customers/${id}`);
+  };
+
+  const handleToggleActive = async (customer: any) => {
+    try {
+      await updateCustomer({
+        id: customer.id,
+        customer: { is_active: !customer.is_active }
+      }).unwrap();
+      toast.success(customer.is_active ? "Customer deactivated successfully" : "Customer activated successfully");
+    } catch (error: any) {
+      toast.error(error?.data?.message || "Failed to update customer status");
+    }
   };
 
   const handleDelete = async () => {
@@ -386,9 +397,19 @@ export default function CustomersPage() {
                 </TableHeader>
                 <TableBody>
                   {customers.map((customer) => (
-                    <TableRow key={customer.id} className="hover:bg-gray-50">
+                    <TableRow
+                      key={customer.id}
+                      className={`hover:bg-gray-50 ${!customer.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                    >
                       <TableCell className="font-medium">
-                        {customer.code}
+                        <div className="flex items-center gap-2">
+                          {customer.code}
+                          {!customer.is_active && (
+                            <Badge variant="default" className="text-xs bg-gray-400">
+                              Inactive
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div>
@@ -439,34 +460,46 @@ export default function CustomersPage() {
                         {getStatusBadge(customer.is_active)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleView(customer.id)}
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleEdit(customer.id)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => confirmDelete(customer.id)}
-                              className="text-red-600"
-                              disabled={!customer.is_active}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleView(customer.id)}
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(customer.id)}
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant={customer.is_active ? "ghost" : "outline"}
+                            size="sm"
+                            onClick={() => handleToggleActive(customer)}
+                            title={customer.is_active ? "Deactivate" : "Activate"}
+                            className={customer.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                          >
+                            {customer.is_active ? (
+                              <Power className="w-4 h-4" />
+                            ) : (
+                              <PowerOff className="w-4 h-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => confirmDelete(customer.id)}
+                            title="Delete"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
