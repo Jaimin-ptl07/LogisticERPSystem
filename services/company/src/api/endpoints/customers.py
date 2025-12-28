@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Customer, Branch, BusinessType
+from src.database import get_db, Customer, Branch, BusinessType, BusinessTypeModel
 from src.helpers import validate_branch_exists
 from src.schemas import (
     Customer as CustomerSchema,
@@ -38,7 +38,8 @@ async def list_customers(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
-    business_type: Optional[BusinessType] = Query(None),
+    business_type: Optional[BusinessType] = Query(None),  # Deprecated - old enum filter
+    business_type_id: Optional[UUID] = Query(None),  # New - dynamic business type filter
     home_branch_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
     token_data: TokenData = Depends(require_any_permission(["customers:read_all", "customers:read"])),
@@ -53,7 +54,7 @@ async def list_customers(
     - customers:read (to view basic customer info)
     """
 
-    
+
     # Build query
     query = select(Customer).where(Customer.tenant_id == tenant_id)
 
@@ -66,7 +67,10 @@ async def list_customers(
             Customer.phone.ilike(f"%{search}%")
         )
 
-    if business_type:
+    # Support both old enum filter and new foreign key filter
+    if business_type_id:
+        query = query.where(Customer.business_type_id == business_type_id)
+    elif business_type:
         query = query.where(Customer.business_type == business_type)
 
     if home_branch_id:
@@ -84,8 +88,11 @@ async def list_customers(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Customer.name)
 
-    # Include branch relationship
-    query = query.options(selectinload(Customer.home_branch))
+    # Include branch and business type relationships
+    query = query.options(
+        selectinload(Customer.home_branch),
+        selectinload(Customer.business_type_relation)
+    )
 
     # Execute query
     result = await db.execute(query)

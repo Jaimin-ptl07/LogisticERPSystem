@@ -34,8 +34,9 @@ import { useRouter } from "next/navigation";
 import {
   useGetCustomersQuery,
   useDeleteCustomerMutation,
-  useGetBusinessTypesQuery,
+  useGetAllBusinessTypesQuery,
 } from "@/services/api/companyApi";
+import { BusinessTypeModel } from "@/services/api/companyApi";
 import {
   Dialog,
   DialogContent,
@@ -61,7 +62,12 @@ export default function CustomersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
 
-  const { data: businessTypes } = useGetBusinessTypesQuery();
+  const { data: businessTypesData } = useGetAllBusinessTypesQuery({ is_active: true });
+
+  // Handle both array and paginated response formats
+  const businessTypes: BusinessTypeModel[] = Array.isArray(businessTypesData)
+    ? businessTypesData
+    : businessTypesData?.items || [];
 
   const {
     data: customersData,
@@ -118,7 +124,12 @@ export default function CustomersPage() {
     );
   };
 
-  const getBusinessTypeBadge = (businessType: string) => {
+  const getBusinessTypeBadge = (customer: any) => {
+    // Use business_type_relation (new) if available, fallback to business_type (old enum)
+    const businessTypeName = customer.business_type_relation?.name ||
+      customer.business_type?.replace("_", " ") ||
+      "N/A";
+
     const colors: Record<
       string,
       "default" | "success" | "warning" | "danger" | "info"
@@ -128,9 +139,21 @@ export default function CustomersPage() {
       corporate: "success",
       government: "warning",
     };
+
+    // Determine badge color based on business type name (for dynamic types)
+    let badgeColor: "default" | "success" | "warning" | "danger" | "info" = "default";
+
+    if (customer.business_type_relation?.code) {
+      badgeColor = colors[customer.business_type_relation.code] || "info";
+    } else if (customer.business_type) {
+      badgeColor = colors[customer.business_type] || "default";
+    } else {
+      badgeColor = "default";
+    }
+
     return (
-      <Badge variant={colors[businessType] || "default"}>
-        {businessType?.replace("_", " ") || "N/A"}
+      <Badge variant={badgeColor}>
+        {businessTypeName}
       </Badge>
     );
   };
@@ -160,13 +183,23 @@ export default function CustomersPage() {
             Manage your customer database and relationships
           </p>
         </div>
-        <Button
-          onClick={() => router.push("/company-admin/masters/customers/new")}
-          className="flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          New Customer
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => router.push("/company-admin/masters/business-types")}
+            className="flex items-center gap-2"
+          >
+            <Briefcase className="w-4 h-4" />
+            Manage Business Types
+          </Button>
+          <Button
+            onClick={() => router.push("/company-admin/masters/customers/new")}
+            className="flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            New Customer
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -206,8 +239,10 @@ export default function CustomersPage() {
                 <p className="text-sm text-gray-600">Corporate</p>
                 <p className="text-2xl font-bold text-purple-600">
                   {
-                    customers.filter((c) => c.business_type === "corporate")
-                      .length
+                    customers.filter((c) =>
+                      c.business_type_relation?.code === "corporate" ||
+                      c.business_type === "corporate"
+                    ).length
                   }
                 </p>
               </div>
@@ -279,9 +314,9 @@ export default function CustomersPage() {
               <option className="text-black" value="all">
                 All Business Types
               </option>
-              {businessTypes?.map((type) => (
-                <option className="text-black" key={type} value={type}>
-                  {type.replace("_", " ")}
+              {businessTypes.map((type) => (
+                <option className="text-black" key={type.id} value={type.code}>
+                  {type.name}
                 </option>
               ))}
             </select>
@@ -387,7 +422,7 @@ export default function CustomersPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {getBusinessTypeBadge(customer.business_type || "")}
+                        {getBusinessTypeBadge(customer)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center text-sm text-gray-900">

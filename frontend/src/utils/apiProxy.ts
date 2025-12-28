@@ -54,6 +54,14 @@ export async function proxyRequest(
       body,
     })
 
+    // Handle 204 No Content responses (must be before JSON parsing)
+    if (response.status === 204) {
+      return new NextResponse(null, {
+        status: 204,
+        statusText: response.statusText,
+      })
+    }
+
     // Handle non-JSON responses
     const responseContentType = response.headers.get('content-type')
     if (!responseContentType || !responseContentType.includes('application/json')) {

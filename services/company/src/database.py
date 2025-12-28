@@ -117,6 +117,23 @@ class Branch(Base):
     vehicles = relationship("Vehicle", back_populates="branch")
 
 
+class BusinessTypeModel(Base):
+    """Business Type model - dynamic business types per tenant"""
+    __tablename__ = "business_types"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
+    name = Column(String(100), nullable=False)
+    code = Column(String(50), nullable=False)
+    description = Column(String(500))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    customers = relationship("Customer", back_populates="business_type_relation")
+
+
 class Customer(Base):
     """Customer model"""
     __tablename__ = "customers"
@@ -132,6 +149,9 @@ class Customer(Base):
     city = Column(String(100))
     state = Column(String(100))
     postal_code = Column(String(20))
+    # New foreign key to business_types table
+    business_type_id = Column(UUID(as_uuid=True), ForeignKey("business_types.id", ondelete="SET NULL"))
+    # Keep old enum for backward compatibility during migration
     business_type = Column(
         SQLEnum(
             BusinessType,
@@ -148,6 +168,7 @@ class Customer(Base):
 
     # Relationships
     home_branch = relationship("Branch", back_populates="customers")
+    business_type_relation = relationship("BusinessTypeModel", back_populates="customers")
 
 
 class Vehicle(Base):

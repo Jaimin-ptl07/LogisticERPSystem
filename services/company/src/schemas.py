@@ -60,6 +60,40 @@ class Branch(BranchInDB):
     pass
 
 
+# BusinessType schemas
+class BusinessTypeBase(BaseSchema):
+    """Base business type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class BusinessTypeCreate(BusinessTypeBase):
+    """Schema for creating a business type"""
+    pass
+
+
+class BusinessTypeUpdate(BaseSchema):
+    """Schema for updating a business type"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class BusinessTypeInDB(BusinessTypeBase):
+    """Schema for business type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class BusinessTypeModel(BusinessTypeInDB):
+    """Schema for business type response"""
+    pass
+
+
 # Customer schemas
 class CustomerBase(BaseSchema):
     """Base customer schema"""
@@ -72,7 +106,9 @@ class CustomerBase(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
+    # Support both old enum and new foreign key
     business_type: Optional[BusinessType] = None
+    business_type_id: Optional[UUID] = None
     credit_limit: float = Field(default=0, ge=0)
     pricing_tier: str = Field(default="standard", max_length=20)
     is_active: bool = True
@@ -93,7 +129,9 @@ class CustomerUpdate(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
+    # Support both old enum and new foreign key
     business_type: Optional[BusinessType] = None
+    business_type_id: Optional[UUID] = None
     credit_limit: Optional[float] = Field(None, ge=0)
     pricing_tier: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
@@ -110,6 +148,7 @@ class CustomerInDB(CustomerBase):
 class Customer(CustomerInDB):
     """Schema for customer response"""
     home_branch: Optional[Branch] = None
+    business_type_relation: Optional[BusinessTypeModel] = None
 
 
 # Vehicle schemas

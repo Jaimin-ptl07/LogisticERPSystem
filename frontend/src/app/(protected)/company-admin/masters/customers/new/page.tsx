@@ -23,9 +23,9 @@ import {
 import {
   useCreateCustomerMutation,
   useGetBranchesQuery,
-  useGetBusinessTypesQuery,
+  useGetAllBusinessTypesQuery,
 } from "@/services/api/companyApi";
-import { CustomerCreate } from "@/services/api/companyApi";
+import { CustomerCreate, BusinessTypeModel } from "@/services/api/companyApi";
 import { toast } from "react-hot-toast";
 
 export default function NewCustomerPage() {
@@ -34,7 +34,13 @@ export default function NewCustomerPage() {
 
   // Extract branches from paginated response
   const branches = branchesData?.items || [];
-  const { data: businessTypes } = useGetBusinessTypesQuery();
+  const { data: businessTypesData } = useGetAllBusinessTypesQuery({ is_active: true });
+
+  // Handle both array and paginated response formats
+  const businessTypes: BusinessTypeModel[] = Array.isArray(businessTypesData)
+    ? businessTypesData
+    : businessTypesData?.items || [];
+
   const [createCustomer, { isLoading: isCreating }] =
     useCreateCustomerMutation();
 
@@ -48,7 +54,8 @@ export default function NewCustomerPage() {
     city: "",
     state: "",
     postal_code: "",
-    business_type: "",
+    business_type: "",  // Deprecated - old enum
+    business_type_id: "",  // New - foreign key
     credit_limit: 0,
     pricing_tier: "standard",
     is_active: true,
@@ -109,21 +116,21 @@ export default function NewCustomerPage() {
         city: formData.city || undefined,
         state: formData.state || undefined,
         postal_code: formData.postal_code || undefined,
-        // For business_type, don't send undefined - let backend handle default or omit entirely
-        ...(formData.business_type
-          ? { business_type: formData.business_type }
+        // Use business_type_id instead of business_type
+        ...(formData.business_type_id
+          ? { business_type_id: formData.business_type_id }
           : {}),
         credit_limit: formData.credit_limit || 0,
         pricing_tier: formData.pricing_tier || "standard",
       };
 
-      // Remove business_type from payload if it's null/empty to avoid enum casting issues
+      // Remove business_type_id from payload if it's null/empty
       if (
-        submitData.business_type === null ||
-        submitData.business_type === undefined ||
-        submitData.business_type === ""
+        submitData.business_type_id === null ||
+        submitData.business_type_id === undefined ||
+        submitData.business_type_id === ""
       ) {
-        delete submitData.business_type;
+        delete submitData.business_type_id;
       }
 
       console.log("Submitting customer data:", submitData);
@@ -249,29 +256,24 @@ export default function NewCustomerPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="business_type">Business Type</Label>
+                <Label htmlFor="business_type_id">Business Type</Label>
                 <select
-                  id="business_type"
-                  value={formData.business_type}
+                  id="business_type_id"
+                  value={formData.business_type_id}
                   onChange={(e) =>
-                    handleInputChange("business_type", e.target.value)
+                    handleInputChange("business_type_id", e.target.value)
                   }
                   className={`w-full px-3 py-2 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.business_type ? "border-red-500" : "border-gray-300"
                   }`}
                 >
                   <option value="">Select Business Type</option>
-                  {businessTypes?.map((type) => (
-                    <option key={type} value={type}>
-                      {type.replace("_", " ")}
+                  {businessTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
                     </option>
                   ))}
-                  {!businessTypes && (
-                    <option value="" disabled>
-                      Loading business types...
-                    </option>
-                  )}
-                  {businessTypes && businessTypes.length === 0 && (
+                  {businessTypes.length === 0 && (
                     <option value="" disabled>
                       No business types available
                     </option>
@@ -282,10 +284,12 @@ export default function NewCustomerPage() {
                     {errors.business_type}
                   </p>
                 )}
-                {businessTypes && businessTypes.length === 0 && (
+                {businessTypes.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Business types could not be loaded. You can proceed without
-                    selecting one.
+                    <a href="/company-admin/masters/business-types" className="text-blue-600 hover:underline">
+                      Create business types
+                    </a>
+                    {" "}to categorize your customers.
                   </p>
                 )}
               </div>
