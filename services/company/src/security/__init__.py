@@ -58,6 +58,13 @@ from .dependencies import (
     VEHICLE_UPDATE,
     VEHICLE_DELETE,
     VEHICLE_ASSIGN,
+    # Driver permissions
+    DRIVER_READ_ALL,
+    DRIVER_READ,
+    DRIVER_UPDATE,
+    # Generic resource permissions
+    RESOURCES_READ,
+    RESOURCES_READ_ALL,
     # Product permissions
     PRODUCT_READ_ALL,
     PRODUCT_READ,
@@ -162,6 +169,13 @@ __all__ = [
     "VEHICLE_UPDATE",
     "VEHICLE_DELETE",
     "VEHICLE_ASSIGN",
+    # Driver permissions
+    "DRIVER_READ_ALL",
+    "DRIVER_READ",
+    "DRIVER_UPDATE",
+    # Generic resource permissions
+    "RESOURCES_READ",
+    "RESOURCES_READ_ALL",
     # Product permissions
     "PRODUCT_READ_ALL",
     "PRODUCT_READ",

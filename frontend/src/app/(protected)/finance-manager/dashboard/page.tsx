@@ -25,7 +25,25 @@ import {
   Check,
   X,
   FileText,
+  X as XIcon,
+  Package,
 } from "lucide-react";
+
+// Define types for order items
+interface OrderItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  product_code?: string;
+  description?: string;
+  quantity: number;
+  unit: string;
+  unit_price?: number;
+  total_price?: number;
+  weight?: number;
+  total_weight?: number;
+  volume?: number;
+}
 
 // Define types for finance data
 interface FinanceOrder {
@@ -49,6 +67,8 @@ interface FinanceOrder {
   finance_approved_by?: string;
   approval_action_id?: string;
   approval_reason?: string;
+  items?: OrderItem[];
+  items_count?: number;
 }
 
 interface DashboardStats {
@@ -73,6 +93,9 @@ export default function FinanceManager() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"list" | "cards">("cards");
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<FinanceOrder | null>(null);
+  const [showOrderDetails, setShowOrderDetails] = useState(false);
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState(false);
 
   // Mock data for demonstration - replace with actual API calls
   useEffect(() => {
@@ -124,6 +147,31 @@ export default function FinanceManager() {
       console.error("Error fetching stats:", error);
       // Use mock data for now
       setStats(getMockStats());
+    }
+  };
+
+  const fetchOrderDetails = async (orderId: string) => {
+    setLoadingOrderDetails(true);
+    try {
+      const response = await fetch(`/api/finance/orders/${orderId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedOrder(data);
+        setShowOrderDetails(true);
+      } else {
+        throw new Error("Failed to fetch order details");
+      }
+    } catch (error) {
+      console.error("Error fetching order details:", error);
+      toast.error("Failed to load order details");
+    } finally {
+      setLoadingOrderDetails(false);
     }
   };
 
@@ -705,6 +753,16 @@ export default function FinanceManager() {
                     <div className="mt-6 flex gap-2">
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => fetchOrderDetails(order.id)}
+                        disabled={loadingOrderDetails}
+                        className="flex-1"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View Details
+                      </Button>
+                      <Button
+                        size="sm"
                         onClick={() => handleApprove(order.id)}
                         disabled={loading}
                         className="flex-1"
@@ -728,6 +786,22 @@ export default function FinanceManager() {
                       >
                         <X className="w-4 h-4 mr-1" />
                         Reject
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Show View Details button for non-submitted orders too */}
+                  {order.status !== "submitted" && (
+                    <div className="mt-6">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fetchOrderDetails(order.id)}
+                        disabled={loadingOrderDetails}
+                        className="w-full"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View Details
                       </Button>
                     </div>
                   )}
@@ -871,51 +945,42 @@ export default function FinanceManager() {
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        {order.status === "submitted" ? (
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleApprove(order.id)}
-                              disabled={loading}
-                            >
-                              <Check className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const reason = prompt(
-                                  "Please provide reason for rejection:"
-                                );
-                                if (reason) {
-                                  handleReject(order.id, reason);
-                                }
-                              }}
-                              disabled={loading}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ) : (
+                        <div className="flex gap-2">
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              alert(
-                                order.approval_status === "approved"
-                                  ? `Approved on ${new Date(
-                                      order.finance_approved_at || ""
-                                    ).toLocaleDateString()}`
-                                  : `Rejected: ${
-                                      order.approval_reason ||
-                                      "No reason provided"
-                                    }`
-                              );
-                            }}
+                            onClick={() => fetchOrderDetails(order.id)}
+                            disabled={loadingOrderDetails}
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
-                        )}
+                          {order.status === "submitted" && (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleApprove(order.id)}
+                                disabled={loading}
+                              >
+                                <Check className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const reason = prompt(
+                                    "Please provide reason for rejection:"
+                                  );
+                                  if (reason) {
+                                    handleReject(order.id, reason);
+                                  }
+                                }}
+                                disabled={loading}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -925,6 +990,198 @@ export default function FinanceManager() {
           )}
         </CardContent>
       </Card>
+
+      {/* Order Details Modal */}
+      {showOrderDetails && selectedOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>
+                <p className="text-sm text-gray-600 mt-1">{selectedOrder.order_number}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowOrderDetails(false);
+                  setSelectedOrder(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              {loadingOrderDetails ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-500">Loading order details...</span>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Order Information */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-sm font-medium text-black mb-2">Customer Information</h3>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="font-medium text-black">{selectedOrder.customer?.name || "N/A"}</p>
+                        <p className="text-sm text-black mt-1">{selectedOrder.customer?.phone || "N/A"}</p>
+                        <p className="text-sm text-black">{selectedOrder.customer?.email || "N/A"}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-medium text-black mb-2">Order Information</h3>
+                      <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-black">Status:</span>
+                          <Badge variant={getStatusVariant(selectedOrder.status)}>
+                            {getStatusDisplay(selectedOrder.status)}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-black">Priority:</span>
+                          <span className="text-sm font-medium text-black">
+                            {selectedOrder.priority?.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-black">Payment Type:</span>
+                          <span className="text-sm font-medium text-black">{selectedOrder.payment_type?.toUpperCase()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-black">Created:</span>
+                          <span className="text-sm text-black">{new Date(selectedOrder.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Order Items */}
+                  <div>
+                    <h3 className="text-lg font-medium text-black mb-4 flex items-center gap-2">
+                      <Package className="w-5 h-5" />
+                      Order Items ({selectedOrder.items_count || selectedOrder.items?.length || 0})
+                    </h3>
+
+                    {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="text-left py-3 px-4 font-medium text-black">Product</th>
+                              <th className="text-left py-3 px-4 font-medium text-black">Code</th>
+                              <th className="text-center py-3 px-4 font-medium text-black">Quantity</th>
+                              <th className="text-right py-3 px-4 font-medium text-black">Unit Price</th>
+                              <th className="text-right py-3 px-4 font-medium text-black">Total Price</th>
+                              <th className="text-right py-3 px-4 font-medium text-black">Weight</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {selectedOrder.items.map((item) => (
+                              <tr key={item.id} className="hover:bg-gray-50">
+                                <td className="py-3 px-4">
+                                  <div>
+                                    <p className="font-medium text-black">{item.product_name}</p>
+                                    {item.description && (
+                                      <p className="text-sm text-black mt-1">{item.description}</p>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4 text-sm text-black">{item.product_code || "N/A"}</td>
+                                <td className="py-3 px-4 text-center">
+                                  <span className="font-medium text-black">{item.quantity}</span>
+                                  <span className="text-sm text-black ml-1">{item.unit}</span>
+                                </td>
+                                <td className="py-3 px-4 text-right text-black">
+                                  {item.unit_price ? `₹${item.unit_price.toFixed(2)}` : "N/A"}
+                                </td>
+                                <td className="py-3 px-4 text-right font-medium text-black">
+                                  {item.total_price ? `₹${item.total_price.toFixed(2)}` : "N/A"}
+                                </td>
+                                <td className="py-3 px-4 text-right text-sm text-black">
+                                  {item.total_weight ? `${item.total_weight.toFixed(2)} kg` : "N/A"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-gray-50 border-t">
+                            <tr>
+                              <td colSpan={4} className="py-3 px-4 text-right font-medium text-black">
+                                Total Amount:
+                              </td>
+                              <td className="py-3 px-4 text-right font-bold text-lg text-black">
+                                ₹{selectedOrder.total_amount?.toLocaleString() || "0"}
+                              </td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-gray-50 rounded-lg">
+                        <Package className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-black">No items found for this order</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Approval Actions for submitted orders */}
+                  {selectedOrder.status === "submitted" && (
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button
+                        onClick={() => {
+                          handleApprove(selectedOrder.id);
+                          setShowOrderDetails(false);
+                        }}
+                        disabled={loading}
+                        className="flex-1"
+                      >
+                        <Check className="w-4 h-4 mr-2" />
+                        Approve Order
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const reason = prompt("Please provide reason for rejection:");
+                          if (reason) {
+                            handleReject(selectedOrder.id, reason);
+                            setShowOrderDetails(false);
+                          }
+                        }}
+                        disabled={loading}
+                        className="flex-1"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Reject Order
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Approval Status */}
+                  {selectedOrder.approval_status === "approved" && (
+                    <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                      <p className="text-sm text-green-800">
+                        <strong>Approved</strong> on {new Date(selectedOrder.finance_approved_at || "").toLocaleDateString()}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedOrder.approval_status === "rejected" && (
+                    <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                      <p className="text-sm text-red-800">
+                        <strong>Rejected:</strong> {selectedOrder.approval_reason || "No reason provided"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

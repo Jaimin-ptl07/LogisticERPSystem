@@ -507,7 +507,7 @@ async function fetchWithError(url: string, options?: RequestInit) {
 export interface TripCreateData {
   user_id?: string;  // Optional since backend will extract from JWT
   company_id?: string;  // Optional since backend will extract from JWT
-  branch: string;
+  branch: string;  // Contains branch UUID
   truck_plate: string;
   truck_model: string;
   truck_capacity: number;

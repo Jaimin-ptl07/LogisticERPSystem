@@ -409,6 +409,15 @@ VEHICLE_UPDATE = ["vehicles:update"]
 VEHICLE_DELETE = ["vehicles:delete"]
 VEHICLE_ASSIGN = ["vehicles:assign"]
 
+# Driver management permissions
+DRIVER_READ_ALL = ["drivers:read_all", "drivers:read"]
+DRIVER_READ = ["drivers:read"]
+DRIVER_UPDATE = ["drivers:update"]
+
+# Generic resource permissions (for cross-service access)
+RESOURCES_READ = ["resources:read"]
+RESOURCES_READ_ALL = ["resources:read_all"]
+
 PRODUCT_READ_ALL = ["products:read_all"]
 PRODUCT_READ = ["products:read"]
 PRODUCT_CREATE = ["products:create"]

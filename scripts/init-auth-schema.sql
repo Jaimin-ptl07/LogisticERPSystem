@@ -590,6 +590,48 @@ VALUES
     'Adjust inventory levels'
 ),
 
+-- Branch management permissions
+(
+    'branches',
+    'create',
+    'Create new branches'
+),
+(
+    'branches',
+    'read',
+    'View branch information'
+),
+(
+    'branches',
+    'read_own',
+    'View own branch information'
+),
+(
+    'branches',
+    'read_all',
+    'View all branches'
+),
+(
+    'branches',
+    'update',
+    'Update branch information'
+),
+(
+    'branches',
+    'delete',
+    'Delete branches'
+),
+(
+    'branches',
+    'manage_all',
+    'Full branch management'
+),
+(
+    'branches',
+    'manage_own',
+    'Manage own branch'
+),
+
 -- Transportation management permissions (TMS)
 -- Trip specific permissions
 (
@@ -1662,6 +1704,26 @@ VALUES
                 resource = 'products'
                 AND action = 'read_all'
         )
+    ),
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'read'
+        )
+    ),
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'read_all'
+        )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Assign finance manager permissions (ID = 4)
@@ -1951,6 +2013,48 @@ VALUES
             WHERE
                 resource = 'finance'
                 AND action = 'export'
+        )
+    ),
+    -- Customer permissions for Finance Manager
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'read'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'read_all'
+        )
+    ),
+    -- Branch permissions for Finance Manager (needed for role-based order filtering)
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'read'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'read_all'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -2492,6 +2596,46 @@ VALUES
             FROM permissions
             WHERE
                 resource = 'branches'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'drivers'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'drivers'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'users'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'users'
                 AND action = 'read_all'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;

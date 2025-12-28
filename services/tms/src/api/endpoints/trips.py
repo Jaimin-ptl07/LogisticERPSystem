@@ -90,14 +90,13 @@ async def get_trips(
 
                 if branches_response.status_code == 200:
                     branches_data = branches_response.json()
-                    # Get branch names since Trip.branch stores the branch name as a string
-                    assigned_branch_names = [branch["name"] for branch in branches_data.get("items", [])]
+                    # Get branch IDs for filtering - Trip.branch contains the branch UUID
                     assigned_branch_ids = [branch["id"] for branch in branches_data.get("items", [])]
 
-                    if assigned_branch_names:
-                        # Filter trips by assigned branch names
-                        query = query.where(Trip.branch.in_(assigned_branch_names))
-                        logger.info(f"Filtering trips by assigned branch names: {assigned_branch_names} (IDs: {assigned_branch_ids})")
+                    if assigned_branch_ids:
+                        # Filter trips by assigned branch IDs (Trip.branch contains UUID)
+                        query = query.where(Trip.branch.in_(assigned_branch_ids))
+                        logger.info(f"Filtering trips by assigned branch IDs: {assigned_branch_ids}")
                     else:
                         # No assigned branches - return empty result
                         logger.warning(f"No assigned branches found for user {token_data.user_id}")
@@ -354,7 +353,7 @@ async def create_trip(
     trip = Trip(
         user_id=user_id,
         company_id=tenant_id,
-        branch=trip_data.branch,
+        branch=trip_data.branch,  # Contains branch UUID
         truck_plate=trip_data.truck_plate,
         truck_model=trip_data.truck_model,
         truck_capacity=trip_data.truck_capacity,
