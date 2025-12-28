@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BusinessTypeModel, BusinessTypesListResponse } from "@/services/api/companyApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -40,7 +41,6 @@ import {
   useUpdateCustomerMutation,
   useGetAllBusinessTypesQuery,
 } from "@/services/api/companyApi";
-import { BusinessTypeModel } from "@/services/api/companyApi";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +48,13 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { toast } from "react-hot-toast";
+
+// Type guard function to check if response is paginated
+function isPaginatedBusinessTypesResponse(
+  data: BusinessTypesListResponse | undefined
+): data is { items: BusinessTypeModel[]; total: number; page: number; per_page: number; pages: number } {
+  return data !== undefined && !Array.isArray(data) && 'items' in data;
+}
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -64,10 +71,10 @@ export default function CustomersPage() {
     is_active: true,
   });
 
-  // Handle both array and paginated response formats
-  const businessTypes: BusinessTypeModel[] = Array.isArray(businessTypesData)
-    ? businessTypesData
-    : businessTypesData?.items || [];
+  // Handle both array and paginated response formats using type guard
+  const businessTypes: BusinessTypeModel[] = isPaginatedBusinessTypesResponse(businessTypesData)
+    ? businessTypesData.items
+    : (businessTypesData || []);
 
   const {
     data: customersData,
