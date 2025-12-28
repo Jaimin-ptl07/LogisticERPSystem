@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { BusinessTypeModel, BusinessTypesListResponse } from "@/services/api/companyApi";
+import { useState, useRef } from "react";
+import {
+  BusinessTypeModel,
+  BusinessTypesListResponse,
+} from "@/services/api/companyApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -15,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
 import {
   Search,
   Plus,
@@ -33,6 +37,9 @@ import {
   Power,
   PowerOff,
   Trash2,
+  Filter,
+  X,
+  ChevronDown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -52,8 +59,14 @@ import { toast } from "react-hot-toast";
 // Type guard function to check if response is paginated
 function isPaginatedBusinessTypesResponse(
   data: BusinessTypesListResponse | undefined
-): data is { items: BusinessTypeModel[]; total: number; page: number; per_page: number; pages: number } {
-  return data !== undefined && !Array.isArray(data) && 'items' in data;
+): data is {
+  items: BusinessTypeModel[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+} {
+  return data !== undefined && !Array.isArray(data) && "items" in data;
 }
 
 export default function CustomersPage() {
@@ -66,15 +79,26 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(filterRef, () => {
+    if (filterDropdownOpen) {
+      setFilterDropdownOpen(false);
+    }
+  });
 
   const { data: businessTypesData } = useGetAllBusinessTypesQuery({
     is_active: true,
   });
 
   // Handle both array and paginated response formats using type guard
-  const businessTypes: BusinessTypeModel[] = isPaginatedBusinessTypesResponse(businessTypesData)
+  const businessTypes: BusinessTypeModel[] = isPaginatedBusinessTypesResponse(
+    businessTypesData
+  )
     ? businessTypesData.items
-    : (businessTypesData || []);
+    : businessTypesData || [];
 
   const {
     data: customersData,
@@ -212,9 +236,6 @@ export default function CustomersPage() {
             <h1 className="text-3xl font-bold text-gray-900">
               Customer Management
             </h1>
-            <p className="text-gray-500 mt-2">
-              Manage your customer database and relationships
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -228,149 +249,237 @@ export default function CustomersPage() {
           </Button>
           <Button
             onClick={() => router.push("/company-admin/masters/customers/new")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
           >
             <Plus className="w-4 h-4" />
-            New Customer
+            <span className="text-sm md:text-base font-semibold hover:font-bold">
+              New Customer
+            </span>
           </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Customers</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {totalCustomers}
-                </p>
-              </div>
-              <Users className="w-8 h-8 text-blue-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Total Customers Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#edf0f7] border-2 border-[#c4cde9]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Customers
+            </p>
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Users className="w-5 h-5 md:w-6 md:h-6 text-blue-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {customers.filter((c) => c.is_active).length}
-                </p>
-              </div>
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <div className="w-4 h-4 bg-green-600 rounded-full" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Corporate</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {
-                    customers.filter(
-                      (c) =>
-                        c.business_type_relation?.code === "corporate" ||
-                        c.business_type === "corporate"
-                    ).length
-                  }
-                </p>
-              </div>
-              <Briefcase className="w-8 h-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Credit Limit</p>
-                <p className="text-2xl font-bold text-orange-600">
-                  $
-                  {customers
-                    .reduce((sum, c) => sum + (c.credit_limit || 0), 0)
-                    .toLocaleString()}
-                </p>
-              </div>
-              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <span className="text-lg font-bold text-orange-600">$</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search customers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={statusFilter === "all" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("all")}
-              >
-                All
-              </Button>
-              <Button
-                variant={statusFilter === "active" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("active")}
-              >
-                Active
-              </Button>
-              <Button
-                variant={statusFilter === "inactive" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("inactive")}
-              >
-                Inactive
-              </Button>
-            </div>
-            <select
-              value={businessTypeFilter}
-              onChange={(e) => setBusinessTypeFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option className="text-black" value="all">
-                All Business Types
-              </option>
-              {businessTypes.map((type) => (
-                <option className="text-black" key={type.id} value={type.code}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </Button>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading ? "..." : totalCustomers}
+            </p>
+          </div>
+        </div>
+
+        {/* Active Customers Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7f0] border-2 border-[#c5edd6]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Active Customers
+            </p>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <div className="w-5 h-5 md:w-6 md:h-6 bg-emerald-500 rounded-full" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading ? "..." : customers.filter((c) => c.is_active).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Corporate Customers Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7fa] border-2 border-[#c0e5f7]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Corporate
+            </p>
+            <div className="p-2 bg-sky-100 rounded-lg">
+              <Briefcase className="w-5 h-5 md:w-6 md:h-6 text-sky-500" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading
+                ? "..."
+                : customers.filter(
+                    (c) =>
+                      c.business_type_relation?.code === "corporate" ||
+                      c.business_type === "corporate"
+                  ).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Total Credit Limit Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Credit Limit
+            </p>
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <div className="w-5 h-5 md:w-6 md:h-6 bg-amber-500 rounded-full flex items-center justify-center">
+                <span className="text-xs font-bold text-white">$</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading
+                ? "..."
+                : `$${customers
+                    .reduce((sum, c) => sum + (c.credit_limit || 0), 0)
+                    .toLocaleString()}`}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Customers Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Customers</CardTitle>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle>Customers</CardTitle>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {/* Search */}
+              <div className="relative flex-1 sm:flex-none">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search customers..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 py-2 w-full sm:w-64"
+                />
+              </div>
+
+              {/* Filter Button with Dropdown */}
+              <div className="relative" ref={filterRef}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                  className="flex items-center gap-2"
+                >
+                  <Filter className="w-4 h-4" />
+                  Filter
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+
+                {/* Filter Dropdown */}
+                {filterDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setStatusFilter("all");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>All Customers</span>
+                        {statusFilter === "all" && (
+                          <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("active");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>Active</span>
+                        {statusFilter === "active" && (
+                          <span className="w-2 h-2 bg-green-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("inactive");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>Inactive</span>
+                        {statusFilter === "inactive" && (
+                          <span className="w-2 h-2 bg-gray-600 rounded-full" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Business Type Filter */}
+              <select
+                value={businessTypeFilter}
+                onChange={(e) => setBusinessTypeFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option className="text-black" value="all">
+                  All Types
+                </option>
+                {businessTypes.map((type) => (
+                  <option
+                    className="text-black"
+                    key={type.id}
+                    value={type.code}
+                  >
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Export Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export
+              </Button>
+            </div>
+          </div>
+
+          {/* Active Filter Chips */}
+          {statusFilter !== "all" && (
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <span className="text-sm text-gray-600">Active filters:</span>
+              <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                {statusFilter === "active" ? "Active" : "Inactive"}
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Business Type Filter Chip */}
+          {businessTypeFilter !== "all" && (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <div className="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
+                {businessTypes.find((bt) => bt.code === businessTypeFilter)
+                  ?.name || businessTypeFilter}
+                <button
+                  onClick={() => setBusinessTypeFilter("all")}
+                  className="ml-1 hover:bg-purple-200 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -408,15 +517,29 @@ export default function CustomersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Customer Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Business Type</TableHead>
-                    <TableHead>Home Branch</TableHead>
-                    <TableHead>Credit Limit</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="w-35 whitespace-nowrap">
+                      Customer Code
+                    </TableHead>
+                    <TableHead className="w-50 whitespace-nowrap">
+                      Name
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap">Contact</TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      Location
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      Business Type
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      Home Branch
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      Credit Limit
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="text-right w-20 whitespace-nowrap">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -553,18 +676,14 @@ export default function CustomersPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="w-4 h-4" />
-                      Previous
                     </Button>
-                    <span className="text-sm text-gray-600 px-2">
-                      Page {page}
-                    </span>
+                    <span className="text-sm text-gray-600 px-2">{page}</span>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setPage(page + 1)}
                       disabled={page >= totalPages}
                     >
-                      Next
                       <ChevronRight className="w-4 h-4" />
                     </Button>
                   </div>

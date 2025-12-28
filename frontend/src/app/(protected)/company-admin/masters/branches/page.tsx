@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
 import {
   Search,
   Plus,
@@ -59,6 +60,14 @@ export default function BranchesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<string | null>(null);
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(filterRef, () => {
+    if (filterDropdownOpen) {
+      setFilterDropdownOpen(false);
+    }
+  });
 
   const {
     data: branchesData,
@@ -173,9 +182,6 @@ export default function BranchesPage() {
             <h1 className="text-3xl font-bold text-gray-900">
               Branch Management
             </h1>
-            <p className="text-gray-500 mt-2">
-              Manage your company branches and locations
-            </p>
           </div>
         </div>
         <Button
@@ -287,7 +293,7 @@ export default function BranchesPage() {
               </div>
 
               {/* Filter Button with Dropdown */}
-              <div className="relative">
+              <div className="relative" ref={filterRef}>
                 <Button
                   variant="outline"
                   size="sm"
@@ -308,7 +314,7 @@ export default function BranchesPage() {
                           setStatusFilter("all");
                           setFilterDropdownOpen(false);
                         }}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
                       >
                         <span>All Branches</span>
                         {statusFilter === "all" && (
@@ -320,7 +326,7 @@ export default function BranchesPage() {
                           setStatusFilter("active");
                           setFilterDropdownOpen(false);
                         }}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
                       >
                         <span>Active</span>
                         {statusFilter === "active" && (
@@ -332,7 +338,7 @@ export default function BranchesPage() {
                           setStatusFilter("inactive");
                           setFilterDropdownOpen(false);
                         }}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
                       >
                         <span>Inactive</span>
                         {statusFilter === "inactive" && (
@@ -404,15 +410,15 @@ export default function BranchesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[120px]">Branch Code</TableHead>
-                    <TableHead className="w-[200px]">Name</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Customers</TableHead>
-                    <TableHead>Vehicles</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right w-[80px]">
+                    <TableHead className="w-[120px] whitespace-nowrap">Branch Code</TableHead>
+                    <TableHead className="w-[200px] whitespace-nowrap">Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Location</TableHead>
+                    <TableHead className="whitespace-nowrap">Contact</TableHead>
+                    <TableHead className="whitespace-nowrap">Manager</TableHead>
+                    <TableHead className="whitespace-nowrap">Customers</TableHead>
+                    <TableHead className="whitespace-nowrap">Vehicles</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="text-right w-[80px] whitespace-nowrap">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -560,10 +566,9 @@ export default function BranchesPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="w-4 h-4" />
-                      Previous
                     </Button>
                     <span className="text-sm text-gray-600 px-2">
-                      Page {page}
+                      {page}
                     </span>
                     <Button
                       variant="outline"
@@ -571,7 +576,6 @@ export default function BranchesPage() {
                       onClick={() => setPage(page + 1)}
                       disabled={filteredBranches.length < 20}
                     >
-                      Next
                       <ChevronRight className="w-4 h-4" />
                     </Button>
                   </div>
