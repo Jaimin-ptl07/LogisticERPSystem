@@ -11,7 +11,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Vehicle, Branch, VehicleType, VehicleStatus
+from src.database import get_db, Vehicle, Branch, VehicleTypeModel, VehicleType, VehicleStatus
 from src.helpers import validate_branch_exists
 from src.schemas import (
     Vehicle as VehicleSchema,
@@ -52,7 +52,7 @@ async def list_vehicles(
     - vehicles:read (to view basic vehicle info)
     """
 
-    # Build query
+    # Build query - show all vehicles (both active and inactive)
     query = select(Vehicle).where(Vehicle.tenant_id == tenant_id)
 
     # Apply filters
@@ -84,8 +84,8 @@ async def list_vehicles(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Vehicle.plate_number)
 
-    # Include branch relationship
-    query = query.options(selectinload(Vehicle.branch))
+    # Include branch relationship and vehicle_type_relation
+    query = query.options(selectinload(Vehicle.branch), selectinload(Vehicle.vehicle_type_relation))
 
     # Execute query
     result = await db.execute(query)
@@ -155,7 +155,8 @@ async def get_vehicle(
         Vehicle.id == vehicle_id,
         Vehicle.tenant_id == tenant_id
     ).options(
-        selectinload(Vehicle.branch)
+        selectinload(Vehicle.branch),
+        selectinload(Vehicle.vehicle_type_relation)
     )
 
     result = await db.execute(query)
@@ -214,8 +215,8 @@ async def create_vehicle(
     await db.commit()
     await db.refresh(vehicle)
 
-    # Load the branch relationship for response
-    await db.refresh(vehicle, ["branch"])
+    # Load the branch and vehicle_type relationships for response
+    await db.refresh(vehicle, ["branch", "vehicle_type_relation"])
 
     return VehicleSchema.model_validate(vehicle)
 
@@ -235,11 +236,11 @@ async def update_vehicle(
     - vehicles:update
     """
 
-    # Get existing vehicle
+    # Get existing vehicle with relationships
     query = select(Vehicle).where(
         Vehicle.id == vehicle_id,
         Vehicle.tenant_id == tenant_id
-    )
+    ).options(selectinload(Vehicle.branch), selectinload(Vehicle.vehicle_type_relation))
     result = await db.execute(query)
     vehicle = result.scalar_one_or_none()
 
@@ -264,8 +265,8 @@ async def update_vehicle(
     await db.commit()
     await db.refresh(vehicle)
 
-    # Load the branch relationship for response
-    await db.refresh(vehicle, ["branch"])
+    # Load the branch and vehicle_type relationships for response
+    await db.refresh(vehicle, ["branch", "vehicle_type_relation"])
 
     return VehicleSchema.model_validate(vehicle)
 
@@ -278,7 +279,7 @@ async def delete_vehicle(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete (deactivate) a vehicle
+    Delete (hard delete) a vehicle
 
     Requires:
     - vehicles:delete
@@ -295,9 +296,11 @@ async def delete_vehicle(
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
-    # Soft delete - deactivate vehicle
-    vehicle.is_active = False
+    # Hard delete - remove vehicle from database
+    await db.delete(vehicle)
     await db.commit()
+
+    return None
 
 
 @router.put("/{vehicle_id}/status", response_model=VehicleSchema)
@@ -389,8 +392,8 @@ async def get_available_vehicles(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Vehicle.plate_number)
 
-    # Include branch relationship
-    query = query.options(selectinload(Vehicle.branch))
+    # Include branch relationship and vehicle_type_relation
+    query = query.options(selectinload(Vehicle.branch), selectinload(Vehicle.vehicle_type_relation))
 
     # Execute query
     result = await db.execute(query)

@@ -26,17 +26,20 @@ import {
   Users,
   Filter,
   Download,
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
   X,
   ChevronDown,
+  Power,
+  PowerOff,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useGetBranchesQuery,
   useDeleteBranchMutation,
+  useUpdateBranchMutation,
 } from "@/services/api/companyApi";
 import {
   Dialog,
@@ -44,12 +47,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/Dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu";
 import { toast } from "react-hot-toast";
 
 export default function BranchesPage() {
@@ -75,6 +72,7 @@ export default function BranchesPage() {
   });
 
   const [deleteBranch, { isLoading: isDeleting }] = useDeleteBranchMutation();
+  const [updateBranch] = useUpdateBranchMutation();
 
   const branches = branchesData?.items || [];
 
@@ -100,6 +98,22 @@ export default function BranchesPage() {
 
   const handleView = (id: string) => {
     router.push(`/company-admin/masters/branches/${id}`);
+  };
+
+  const handleToggleActive = async (branch: any) => {
+    try {
+      await updateBranch({
+        id: branch.id,
+        branch: { is_active: !branch.is_active },
+      }).unwrap();
+      toast.success(
+        branch.is_active
+          ? "Branch deactivated successfully"
+          : "Branch activated successfully"
+      );
+    } catch (error: any) {
+      toast.error(error?.data?.message || "Failed to update branch status");
+    }
   };
 
   const handleDelete = async () => {
@@ -169,7 +183,9 @@ export default function BranchesPage() {
           className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
         >
           <Plus className="w-4 h-4" />
-          <span className="text-sm md:text-base font-semibold hover:font-bold">New Branch</span>
+          <span className="text-sm md:text-base font-semibold hover:font-bold">
+            New Branch
+          </span>
         </Button>
       </div>
 
@@ -204,7 +220,9 @@ export default function BranchesPage() {
           </div>
           <div className="flex items-end justify-between mt-3">
             <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-              {isLoading ? "..." : branches?.filter((b) => b.is_active).length || 0}
+              {isLoading
+                ? "..."
+                : branches?.filter((b) => b.is_active).length || 0}
             </p>
           </div>
         </div>
@@ -221,7 +239,9 @@ export default function BranchesPage() {
           </div>
           <div className="flex items-end justify-between mt-3">
             <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-              {isLoading ? "..." : branches?.filter((b) => !b.is_active).length || 0}
+              {isLoading
+                ? "..."
+                : branches?.filter((b) => !b.is_active).length || 0}
             </p>
           </div>
         </div>
@@ -238,10 +258,12 @@ export default function BranchesPage() {
           </div>
           <div className="flex items-end justify-between mt-3">
             <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-              {isLoading ? "..." : branches?.reduce(
-                (acc, branch) => acc + (branch.customers?.length || 0),
-                0
-              ) || 0}
+              {isLoading
+                ? "..."
+                : branches?.reduce(
+                    (acc, branch) => acc + (branch.customers?.length || 0),
+                    0
+                  ) || 0}
             </p>
           </div>
         </div>
@@ -289,7 +311,9 @@ export default function BranchesPage() {
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
                       >
                         <span>All Branches</span>
-                        {statusFilter === "all" && <span className="w-2 h-2 bg-blue-600 rounded-full" />}
+                        {statusFilter === "all" && (
+                          <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                        )}
                       </button>
                       <button
                         onClick={() => {
@@ -299,7 +323,9 @@ export default function BranchesPage() {
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
                       >
                         <span>Active</span>
-                        {statusFilter === "active" && <span className="w-2 h-2 bg-green-600 rounded-full" />}
+                        {statusFilter === "active" && (
+                          <span className="w-2 h-2 bg-green-600 rounded-full" />
+                        )}
                       </button>
                       <button
                         onClick={() => {
@@ -309,7 +335,9 @@ export default function BranchesPage() {
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
                       >
                         <span>Inactive</span>
-                        {statusFilter === "inactive" && <span className="w-2 h-2 bg-gray-600 rounded-full" />}
+                        {statusFilter === "inactive" && (
+                          <span className="w-2 h-2 bg-gray-600 rounded-full" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -384,18 +412,38 @@ export default function BranchesPage() {
                     <TableHead>Customers</TableHead>
                     <TableHead>Vehicles</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right w-[80px]">Actions</TableHead>
+                    <TableHead className="text-right w-[80px]">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredBranches.map((branch) => (
-                    <TableRow key={branch.id} className="hover:bg-gray-50">
+                    <TableRow
+                      key={branch.id}
+                      className={`hover:bg-gray-50 ${
+                        !branch.is_active ? "bg-gray-50 opacity-60" : ""
+                      }`}
+                    >
                       <TableCell className="font-medium">
-                        {branch.code}
+                        <div className="flex items-center gap-2">
+                          {branch.code}
+                          {!branch.is_active && (
+                            <Badge
+                              variant="default"
+                              className="text-xs bg-gray-400"
+                            >
+                              Inactive
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="max-w-[200px]">
-                          <p className="font-medium text-gray-900 truncate" title={branch.name}>
+                          <p
+                            className="font-medium text-gray-900 truncate"
+                            title={branch.name}
+                          >
                             {branch.name}
                           </p>
                         </div>
@@ -445,34 +493,52 @@ export default function BranchesPage() {
                       </TableCell>
                       <TableCell>{getStatusBadge(branch.is_active)}</TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleView(branch.id)}
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleEdit(branch.id)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => confirmDelete(branch.id)}
-                              className="text-red-600"
-                              disabled={!branch.is_active}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleView(branch.id)}
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(branch.id)}
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant={branch.is_active ? "ghost" : "outline"}
+                            size="sm"
+                            onClick={() => handleToggleActive(branch)}
+                            title={branch.is_active ? "Deactivate" : "Activate"}
+                            className={
+                              branch.is_active
+                                ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                            }
+                          >
+                            {branch.is_active ? (
+                              <Power className="w-4 h-4" />
+                            ) : (
+                              <PowerOff className="w-4 h-4" />
+                            )}
+                          </Button>
+                          {/* Delete button - commented out as per request
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => confirmDelete(branch.id)}
+                            title="Delete"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                          */}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

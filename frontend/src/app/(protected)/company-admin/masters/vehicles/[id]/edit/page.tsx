@@ -21,7 +21,7 @@ import {
   useGetVehicleQuery,
   useUpdateVehicleMutation,
   useGetBranchesQuery,
-  useGetVehicleTypesQuery,
+  useGetAllVehicleTypesQuery,
 } from "@/services/api/companyApi";
 import { VehicleCreate } from "@/services/api/companyApi";
 import { toast } from "react-hot-toast";
@@ -33,7 +33,7 @@ export default function EditVehiclePage() {
 
   const { data: vehicle, isLoading, error } = useGetVehicleQuery(vehicleId);
   const { data: branches } = useGetBranchesQuery({});
-  const { data: vehicleTypes } = useGetVehicleTypesQuery();
+  const { data: vehicleTypes } = useGetAllVehicleTypesQuery({ is_active: true });
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
 
   const [formData, setFormData] = useState<Partial<VehicleCreate>>({
@@ -42,7 +42,7 @@ export default function EditVehiclePage() {
     make: "",
     model: "",
     year: new Date().getFullYear(),
-    vehicle_type: "",
+    vehicle_type_id: "",
     capacity_weight: 0,
     capacity_volume: 0,
     status: "available",
@@ -61,7 +61,7 @@ export default function EditVehiclePage() {
         make: vehicle.make || "",
         model: vehicle.model || "",
         year: vehicle.year || new Date().getFullYear(),
-        vehicle_type: vehicle.vehicle_type || "",
+        vehicle_type_id: vehicle.vehicle_type_id || "",
         capacity_weight: vehicle.capacity_weight || 0,
         capacity_volume: vehicle.capacity_volume || 0,
         status: vehicle.status || "available",
@@ -88,8 +88,8 @@ export default function EditVehiclePage() {
     if (!formData.model?.trim()) {
       newErrors.model = "Vehicle model is required";
     }
-    if (!formData.vehicle_type) {
-      newErrors.vehicle_type = "Vehicle type is required";
+    if (!formData.vehicle_type_id) {
+      newErrors.vehicle_type_id = "Vehicle type is required";
     }
     if (formData.capacity_weight && formData.capacity_weight < 0) {
       newErrors.capacity_weight = "Weight capacity must be positive";
@@ -243,25 +243,25 @@ export default function EditVehiclePage() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="vehicle_type">Vehicle Type *</Label>
+                  <Label htmlFor="vehicle_type_id">Vehicle Type *</Label>
                   <select
-                    id="vehicle_type"
-                    value={formData.vehicle_type}
+                    id="vehicle_type_id"
+                    value={formData.vehicle_type_id}
                     onChange={(e) =>
-                      handleInputChange("vehicle_type", e.target.value)
+                      handleInputChange("vehicle_type_id", e.target.value)
                     }
                     className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select Vehicle Type</option>
                     {vehicleTypes?.map((type) => (
-                      <option className="text-black" key={type} value={type}>
-                        {type.replace("_", " ")}
+                      <option className="text-black" key={type.id} value={type.id}>
+                        {type.name}
                       </option>
                     ))}
                   </select>
-                  {errors.vehicle_type && (
+                  {errors.vehicle_type_id && (
                     <p className="text-sm text-red-600 mt-1">
-                      {errors.vehicle_type}
+                      {errors.vehicle_type_id}
                     </p>
                   )}
                 </div>

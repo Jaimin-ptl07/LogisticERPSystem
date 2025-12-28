@@ -30,12 +30,17 @@ import {
   Calendar,
   Wrench,
   ArrowLeft,
+  Power,
+  PowerOff,
+  Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useGetVehiclesQuery,
   useDeleteVehicleMutation,
-  useGetVehicleTypesQuery,
+  useUpdateVehicleMutation,
+  useGetAllVehicleTypesQuery,
   useGetVehicleStatusOptionsQuery,
   useGetBranchesQuery,
 } from "@/services/api/companyApi";
@@ -45,12 +50,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/Dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu";
 import { toast } from "react-hot-toast";
 
 export default function VehiclesPage() {
@@ -63,7 +62,9 @@ export default function VehiclesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
 
-  const { data: vehicleTypes } = useGetVehicleTypesQuery();
+  const { data: vehicleTypes } = useGetAllVehicleTypesQuery({
+    is_active: true,
+  });
   const { data: statusOptions } = useGetVehicleStatusOptionsQuery();
   const { data: branches } = useGetBranchesQuery({});
 
@@ -75,12 +76,13 @@ export default function VehiclesPage() {
     page,
     per_page: 20,
     search: searchQuery || undefined,
-    vehicle_type: typeFilter !== "all" ? typeFilter : undefined,
+    vehicle_type_id: typeFilter !== "all" ? typeFilter : undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     branch_id: branchFilter !== "all" ? branchFilter : undefined,
   });
 
   const [deleteVehicle, { isLoading: isDeleting }] = useDeleteVehicleMutation();
+  const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
 
   const vehiclesList = vehicles?.items || [];
   const filteredVehicles = vehiclesList.filter((vehicle: any) => {
@@ -93,7 +95,7 @@ export default function VehiclesPage() {
     const matchesStatus =
       statusFilter === "all" || vehicle.status === statusFilter;
     const matchesType =
-      typeFilter === "all" || vehicle.vehicle_type === typeFilter;
+      typeFilter === "all" || getVehicleTypeId(vehicle) === typeFilter;
     const matchesBranch =
       branchFilter === "all" || vehicle.branch_id === branchFilter;
 
@@ -111,6 +113,18 @@ export default function VehiclesPage() {
   const handleDelete = async () => {
     if (!vehicleToDelete) return;
 
+    // Find the vehicle to check its status
+    const vehicle = vehiclesList.find((v: any) => v.id === vehicleToDelete);
+
+    if (vehicle?.status === "on_trip") {
+      toast.error(
+        "Cannot delete a vehicle that is currently on a trip. Please complete the trip first."
+      );
+      setDeleteDialogOpen(false);
+      setVehicleToDelete(null);
+      return;
+    }
+
     try {
       await deleteVehicle(vehicleToDelete).unwrap();
       toast.success("Vehicle deleted successfully");
@@ -124,6 +138,22 @@ export default function VehiclesPage() {
   const confirmDelete = (id: string) => {
     setVehicleToDelete(id);
     setDeleteDialogOpen(true);
+  };
+
+  const handleToggleActive = async (vehicle: any) => {
+    try {
+      await updateVehicle({
+        id: vehicle.id,
+        vehicle: { is_active: !vehicle.is_active },
+      }).unwrap();
+      toast.success(
+        vehicle.is_active
+          ? "Vehicle deactivated successfully"
+          : "Vehicle activated successfully"
+      );
+    } catch (error: any) {
+      toast.error(error?.data?.message || "Failed to update vehicle status");
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -143,22 +173,26 @@ export default function VehiclesPage() {
     );
   };
 
-  const getTypeBadge = (type: string) => {
-    const colors: Record<
-      string,
-      "default" | "success" | "info" | "warning" | "danger"
-    > = {
-      motorcycle: "info",
-      van: "success",
-      truck_small: "warning",
-      truck_medium: "default",
-      truck_large: "danger",
-      trailer: "info",
-    };
+  const getTypeBadge = (vehicle: any) => {
+    // Use the vehicle_type_relation if available, otherwise fall back to the old enum
+    const typeName =
+      vehicle.vehicle_type_relation?.name ||
+      vehicle.vehicle_type?.replace("_", " ") ||
+      "N/A";
+    return <Badge variant="default">{typeName}</Badge>;
+  };
+
+  const getVehicleTypeId = (vehicle: any) => {
+    // Return the vehicle_type_id for filtering
+    return vehicle.vehicle_type_id || vehicle.vehicle_type;
+  };
+
+  const getVehicleTypeName = (vehicle: any) => {
+    // Return the vehicle type name for display
     return (
-      <Badge variant={colors[type] || "default"}>
-        {type?.replace("_", " ") || "N/A"}
-      </Badge>
+      vehicle.vehicle_type_relation?.name ||
+      vehicle.vehicle_type?.replace("_", " ") ||
+      "N/A"
     );
   };
 
@@ -201,13 +235,25 @@ export default function VehiclesPage() {
               </p>
             </div>
           </div>
-          <Button
-            onClick={() => router.push("/company-admin/masters/vehicles/new")}
-            className="flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            New Vehicle
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() =>
+                router.push("/company-admin/masters/vehicle-types")
+              }
+              className="flex items-center gap-2"
+            >
+              <Settings className="w-4 h-4" />
+              Manage Vehicle Types
+            </Button>
+            <Button
+              onClick={() => router.push("/company-admin/masters/vehicles/new")}
+              className="flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              New Vehicle
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -312,8 +358,8 @@ export default function VehiclesPage() {
               >
                 <option value="all">All Types</option>
                 {vehicleTypes?.map((type) => (
-                  <option key={type} value={type}>
-                    {type.replace("_", " ")}
+                  <option key={type.id} value={type.id}>
+                    {type.name}
                   </option>
                 ))}
               </select>
@@ -396,9 +442,24 @@ export default function VehiclesPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredVehicles.map((vehicle: any) => (
-                      <TableRow key={vehicle.id} className="hover:bg-gray-50">
+                      <TableRow
+                        key={vehicle.id}
+                        className={`hover:bg-gray-50 ${
+                          !vehicle.is_active ? "bg-gray-50 opacity-60" : ""
+                        }`}
+                      >
                         <TableCell className="font-medium">
-                          {vehicle.plate_number}
+                          <div className="flex items-center gap-2">
+                            {vehicle.plate_number}
+                            {!vehicle.is_active && (
+                              <Badge
+                                variant="default"
+                                className="text-xs bg-gray-400"
+                              >
+                                Inactive
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div>
@@ -412,9 +473,7 @@ export default function VehiclesPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {getTypeBadge(vehicle.vehicle_type || "")}
-                        </TableCell>
+                        <TableCell>{getTypeBadge(vehicle)}</TableCell>
                         <TableCell>
                           <div>
                             {vehicle.capacity_weight && (
@@ -464,34 +523,56 @@ export default function VehiclesPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => handleView(vehicle.id)}
-                              >
-                                <Eye className="w-4 h-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleEdit(vehicle.id)}
-                              >
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => confirmDelete(vehicle.id)}
-                                className="text-red-600"
-                                disabled={!vehicle.is_active}
-                              >
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleView(vehicle.id)}
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(vehicle.id)}
+                              title="Edit"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleToggleActive(vehicle)}
+                              title={
+                                vehicle.is_active
+                                  ? "Deactivate Vehicle"
+                                  : "Activate Vehicle"
+                              }
+                              className={
+                                vehicle.is_active
+                                  ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                  : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                              }
+                              disabled={isUpdating}
+                            >
+                              {vehicle.is_active ? (
+                                <PowerOff className="w-4 h-4" />
+                              ) : (
+                                <Power className="w-4 h-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => confirmDelete(vehicle.id)}
+                              title="Delete Vehicle"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              disabled={vehicle.status === "on_trip"}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -542,10 +623,51 @@ export default function VehiclesPage() {
               <DialogTitle>Confirm Delete</DialogTitle>
             </DialogHeader>
             <div className="py-4">
-              <p className="text-sm text-gray-600">
-                Are you sure you want to delete this vehicle? This action cannot
-                be undone.
-              </p>
+              {vehicleToDelete &&
+                (() => {
+                  const vehicle = vehiclesList.find(
+                    (v: any) => v.id === vehicleToDelete
+                  );
+                  const isOnTrip = vehicle?.status === "on_trip";
+
+                  return (
+                    <>
+                      {isOnTrip && (
+                        <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
+                          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-red-800">
+                              Cannot Delete Active Vehicle
+                            </p>
+                            <p className="text-sm text-red-600 mt-1">
+                              This vehicle is currently on a trip. You must
+                              complete the trip before deleting it.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {!isOnTrip && (
+                        <>
+                          <p className="text-sm text-gray-600">
+                            Are you sure you want to delete this vehicle? This
+                            action cannot be undone.
+                          </p>
+                          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                            <p className="text-sm font-medium text-gray-900">
+                              {vehicle?.plate_number}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {vehicle?.make} {vehicle?.model} ({vehicle?.year})
+                            </p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              Status: {vehicle?.status?.replace("_", " ")}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
             </div>
             <div className="flex justify-end space-x-2">
               <Button
@@ -557,13 +679,22 @@ export default function VehiclesPage() {
               >
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </Button>
+              {vehicleToDelete &&
+                (() => {
+                  const vehicle = vehiclesList.find(
+                    (v: any) => v.id === vehicleToDelete
+                  );
+                  return vehicle?.status !== "on_trip" ? (
+                    <Button
+                      variant="primary"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {isDeleting ? "Deleting..." : "Delete"}
+                    </Button>
+                  ) : null;
+                })()}
             </div>
           </DialogContent>
         </Dialog>

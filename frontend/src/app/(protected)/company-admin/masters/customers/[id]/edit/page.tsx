@@ -24,9 +24,9 @@ import {
   useGetCustomerQuery,
   useUpdateCustomerMutation,
   useGetBranchesQuery,
-  useGetBusinessTypesQuery,
+  useGetAllBusinessTypesQuery,
 } from "@/services/api/companyApi";
-import { CustomerCreate } from "@/services/api/companyApi";
+import { CustomerCreate, BusinessTypeModel } from "@/services/api/companyApi";
 import { toast } from "react-hot-toast";
 
 export default function EditCustomerPage() {
@@ -39,7 +39,12 @@ export default function EditCustomerPage() {
 
   // Extract branches from paginated response
   const branches = branchesData?.items || [];
-  const { data: businessTypes } = useGetBusinessTypesQuery();
+  const { data: businessTypesData } = useGetAllBusinessTypesQuery({ is_active: true });
+
+  // Handle both array and paginated response formats
+  const businessTypes: BusinessTypeModel[] = Array.isArray(businessTypesData)
+    ? businessTypesData
+    : businessTypesData?.items || [];
   const [updateCustomer, { isLoading: isUpdating }] =
     useUpdateCustomerMutation();
 
@@ -53,7 +58,8 @@ export default function EditCustomerPage() {
     city: "",
     state: "",
     postal_code: "",
-    business_type: "",
+    business_type: "",  // Deprecated - old enum
+    business_type_id: "",  // New - foreign key
     credit_limit: 0,
     pricing_tier: "",
     is_active: true,
@@ -74,6 +80,7 @@ export default function EditCustomerPage() {
         state: customer.state || "",
         postal_code: customer.postal_code || "",
         business_type: customer.business_type || "",
+        business_type_id: customer.business_type_id || "",
         credit_limit: customer.credit_limit || 0,
         pricing_tier: customer.pricing_tier || "",
         is_active: customer.is_active,
@@ -244,22 +251,35 @@ export default function EditCustomerPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="business_type">Business Type</Label>
+                <Label htmlFor="business_type_id">Business Type</Label>
                 <select
-                  id="business_type"
-                  value={formData.business_type}
+                  id="business_type_id"
+                  value={formData.business_type_id}
                   onChange={(e) =>
-                    handleInputChange("business_type", e.target.value)
+                    handleInputChange("business_type_id", e.target.value)
                   }
                   className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Business Type</option>
                   {businessTypes?.map((type) => (
-                    <option className="text-black" key={type} value={type}>
-                      {type.replace("_", " ")}
+                    <option className="text-black" key={type.id} value={type.id}>
+                      {type.name}
                     </option>
                   ))}
+                  {businessTypes?.length === 0 && (
+                    <option value="" disabled>
+                      No business types available
+                    </option>
+                  )}
                 </select>
+                {businessTypes?.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    <a href="/company-admin/masters/business-types" className="text-blue-600 hover:underline">
+                      Create business types
+                    </a>
+                    {" "}to categorize your customers.
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="pricing_tier">Pricing Tier</Label>
