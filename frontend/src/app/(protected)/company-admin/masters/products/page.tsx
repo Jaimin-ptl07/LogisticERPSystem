@@ -22,17 +22,20 @@ import {
   DollarSign,
   AlertTriangle,
   Download,
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
   Tag,
   Box,
   Building,
+  Power,
+  PowerOff,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useGetProductsQuery,
   useDeleteProductMutation,
+  useUpdateProductMutation,
   useGetProductCategoriesQuery,
   useGetBranchesQuery,
 } from "@/services/api/companyApi";
@@ -42,12 +45,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/Dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu";
 import { toast } from "react-hot-toast";
 
 export default function ProductsPage() {
@@ -90,6 +87,7 @@ export default function ProductsPage() {
   });
 
   const [deleteProduct, { isLoading: isDeleting }] = useDeleteProductMutation();
+  const [updateProduct] = useUpdateProductMutation();
 
   // Extract products from paginated response
   const products = productsData?.items || [];
@@ -102,6 +100,18 @@ export default function ProductsPage() {
 
   const handleView = (id: string) => {
     router.push(`/company-admin/masters/products/${id}`);
+  };
+
+  const handleToggleActive = async (product: any) => {
+    try {
+      await updateProduct({
+        id: product.id,
+        product: { is_active: !product.is_active }
+      }).unwrap();
+      toast.success(product.is_active ? "Product deactivated successfully" : "Product activated successfully");
+    } catch (error: any) {
+      toast.error(error?.data?.message || "Failed to update product status");
+    }
   };
 
   const handleDelete = async () => {
@@ -393,6 +403,7 @@ export default function ProductsPage() {
                     <TableHead>Product Code</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
+                    <TableHead>Weight</TableHead>
                     <TableHead>Branch</TableHead>
                     <TableHead>Unit Price</TableHead>
                     <TableHead>Stock Level</TableHead>
@@ -404,9 +415,19 @@ export default function ProductsPage() {
                   {products.map((product) => {
                     const stockStatus = getStockStatus(product);
                     return (
-                      <TableRow key={product.id} className="hover:bg-gray-50">
+                      <TableRow
+                        key={product.id}
+                        className={`hover:bg-gray-50 ${!product.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                      >
                         <TableCell className="font-medium">
-                          {product.code}
+                          <div className="flex items-center gap-2">
+                            {product.code}
+                            {!product.is_active && (
+                              <Badge variant="default" className="text-xs bg-gray-400">
+                                Inactive
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div>
@@ -424,6 +445,22 @@ export default function ProductsPage() {
                           <span className="text-sm text-gray-900">
                             {product.category?.name || "Uncategorized"}
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <Badge
+                              variant={product.weight_type === "fixed" ? "success" : "warning"}
+                              className="w-fit mb-1"
+                            >
+                              {product.weight_type === "fixed" ? "Fixed" : "Variable"}
+                            </Badge>
+                            <span className="text-xs text-gray-600">
+                              {product.weight_type === "fixed"
+                                ? `${product.fixed_weight || product.weight || 0} ${product.weight_unit || "kg"}`
+                                : "Enter weight when creating order"
+                              }
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center text-sm text-gray-900">
@@ -468,35 +505,47 @@ export default function ProductsPage() {
                             {product.is_active ? "Active" : "Inactive"}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => handleView(product.id)}
-                              >
-                                <Eye className="w-4 h-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleEdit(product.id)}
-                              >
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => confirmDelete(product.id)}
-                                className="text-red-600"
-                                disabled={!product.is_active}
-                              >
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleView(product.id)}
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(product.id)}
+                              title="Edit"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant={product.is_active ? "ghost" : "outline"}
+                              size="sm"
+                              onClick={() => handleToggleActive(product)}
+                              title={product.is_active ? "Deactivate" : "Activate"}
+                              className={product.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                            >
+                              {product.is_active ? (
+                                <Power className="w-4 h-4" />
+                              ) : (
+                                <PowerOff className="w-4 h-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => confirmDelete(product.id)}
+                              title="Delete"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -547,10 +596,23 @@ export default function ProductsPage() {
             <DialogTitle>Confirm Delete</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-gray-600">
-              Are you sure you want to delete this product? This action cannot
-              be undone.
-            </p>
+            {productToDelete && (() => {
+              const product = products.find((p: any) => p.id === productToDelete);
+              return (
+                <>
+                  <p className="text-sm text-gray-600">
+                    Are you sure you want to delete this product? This action cannot be undone.
+                  </p>
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <p className="text-sm font-medium text-gray-900">{product?.code}</p>
+                    <p className="text-sm text-gray-600">{product?.name}</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      ${product?.unit_price?.toFixed(2) || 0} per unit
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
           <div className="flex justify-end space-x-2">
             <Button
@@ -566,6 +628,7 @@ export default function ProductsPage() {
               variant="primary"
               onClick={handleDelete}
               disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>

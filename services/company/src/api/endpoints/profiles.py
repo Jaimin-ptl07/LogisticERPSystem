@@ -115,7 +115,7 @@ def driver_profile_to_dict(driver: DriverProfile) -> dict:
         "is_active": driver.is_active,
         "created_at": driver.created_at,
         "updated_at": driver.updated_at,
-        "employee": None
+        "employee": employee_profile_to_dict(driver.employee) if driver.employee else None
     }
 
 
@@ -172,6 +172,69 @@ def logistics_manager_profile_to_dict(profile: LogisticsManagerProfile) -> dict:
         "created_at": profile.created_at,
         "updated_at": profile.updated_at,
         "employee": None
+    }
+
+
+def employee_profile_to_dict(employee: EmployeeProfile) -> dict:
+    """Convert EmployeeProfile SQLAlchemy model to dictionary"""
+    return {
+        "id": str(employee.id),
+        "tenant_id": employee.tenant_id,  # Required by EmployeeProfileInDB schema
+        "user_id": str(employee.user_id),
+        "employee_code": employee.employee_code,
+        "employee_id": employee.employee_code,  # For frontend compatibility
+        "role_id": str(employee.role_id) if employee.role_id else None,
+        "branch_id": str(employee.branch_id) if employee.branch_id else None,
+        "first_name": employee.first_name,
+        "last_name": employee.last_name,
+        "phone": employee.phone,
+        "phone_number": employee.phone,  # For frontend compatibility
+        "email": employee.email,
+        "date_of_birth": employee.date_of_birth.isoformat() if employee.date_of_birth else None,
+        "gender": employee.gender,
+        "blood_group": employee.blood_group,
+        "marital_status": employee.marital_status,
+        "nationality": employee.nationality,
+        "emergency_contact_name": employee.emergency_contact_name,
+        "emergency_contact_phone": employee.emergency_contact_phone,
+        "emergency_contact_number": employee.emergency_contact_phone,  # For frontend compatibility
+        "address": employee.address,
+        "city": employee.city,
+        "state": employee.state,
+        "postal_code": employee.postal_code,
+        "country": employee.country,
+        "current_address": {
+            "address_line1": employee.address or '',
+            "address_line2": '',
+            "city": employee.city or '',
+            "state": employee.state or '',
+            "postal_code": employee.postal_code or '',
+            "country": employee.country or 'India'
+        } if employee.address else None,
+        "hire_date": employee.hire_date.isoformat() if employee.hire_date else None,
+        "date_of_joining": employee.hire_date.isoformat() if employee.hire_date else None,  # For frontend compatibility
+        "employment_type": employee.employment_type,
+        "department": employee.department,
+        "designation": employee.designation,
+        "reports_to": str(employee.reports_to) if employee.reports_to else None,
+        "salary": employee.salary,
+        "bank_account_number": employee.bank_account_number,
+        "bank_name": employee.bank_name,
+        "bank_ifsc": employee.bank_ifsc,
+        "bank_details": {
+            "bank_name": employee.bank_name or '',
+            "account_number": employee.bank_account_number or '',
+            "ifsc_code": employee.bank_ifsc or '',
+            "branch_name": '',
+            "account_type": 'savings'
+        } if employee.bank_name else None,
+        "pan_number": employee.pan_number,
+        "aadhar_number": employee.aadhar_number,
+        "aadhaar_number": employee.aadhar_number,  # For frontend compatibility
+        "passport_number": employee.passport_number,
+        "is_active": employee.is_active,
+        "created_at": employee.created_at.isoformat() if employee.created_at else None,
+        "updated_at": employee.updated_at.isoformat() if employee.updated_at else None,
     }
 
 
@@ -1030,6 +1093,8 @@ async def get_driver_profile_by_user(
     query = select(DriverProfile).where(
         DriverProfile.employee_profile_id == user_id,
         DriverProfile.tenant_id == tenant_id
+    ).options(
+        selectinload(DriverProfile.employee)
     )
 
     result = await db.execute(query)

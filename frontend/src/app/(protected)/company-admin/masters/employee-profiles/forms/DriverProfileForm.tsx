@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { User } from '@/services/api/companyApi'
-import { DriverProfile } from '@/services/api/profileApi'
+import { DriverProfile as DriverProfileType } from '@/services/api/profileApi'
 import { useCreateDriverProfileMutation, useUpdateDriverProfileMutation } from '@/services/api/profileApi'
-import { Save, X, Car, CheckCircle } from 'lucide-react'
+import { Car, X, Save } from 'lucide-react'
 
 interface DriverProfileFormProps {
   user: User
-  profile?: DriverProfile | null
+  profile?: DriverProfileType | null
   isEditing: boolean
   onEdit: () => void
   onSave: () => void
@@ -28,14 +28,12 @@ export default function DriverProfileForm({
 }: DriverProfileFormProps) {
   const [formData, setFormData] = useState({
     license_number: '',
-    license_types: [] as string[],
-    license_issue_date: '',
+    license_type: '',
     license_expiry_date: '',
     license_issuing_authority: '',
     badge_number: '',
     badge_expiry_date: '',
-    vehicle_preferences: [] as string[],
-    preferred_routes: [] as string[],
+    preferred_vehicle_types: [] as string[],
     experience_years: 0
   })
 
@@ -67,14 +65,12 @@ export default function DriverProfileForm({
     if (profile) {
       setFormData({
         license_number: profile.license_number || '',
-        license_types: profile.license_types || [],
-        license_issue_date: profile.license_issue_date || '',
-        license_expiry_date: profile.license_expiry_date || '',
+        license_type: profile.license_type || '',
+        license_expiry_date: profile.license_expiry ? profile.license_expiry.split('T')[0] : '',
         license_issuing_authority: profile.license_issuing_authority || '',
         badge_number: profile.badge_number || '',
-        badge_expiry_date: profile.badge_expiry_date || '',
-        vehicle_preferences: profile.vehicle_preferences || [],
-        preferred_routes: profile.preferred_routes || [],
+        badge_expiry_date: profile.badge_expiry ? profile.badge_expiry.split('T')[0] : '',
+        preferred_vehicle_types: profile.preferred_vehicle_types || [],
         experience_years: profile.experience_years || 0
       })
     }
@@ -87,69 +83,39 @@ export default function DriverProfileForm({
     }))
   }
 
-  const handleLicenseTypeToggle = (licenseType: string) => {
+  const handleVehicleToggle = (vehicle: string) => {
     setFormData(prev => ({
       ...prev,
-      license_types: prev.license_types.includes(licenseType)
-        ? prev.license_types.filter(type => type !== licenseType)
-        : [...prev.license_types, licenseType]
-    }))
-  }
-
-  const handleVehiclePreferenceToggle = (vehicle: string) => {
-    setFormData(prev => ({
-      ...prev,
-      vehicle_preferences: prev.vehicle_preferences.includes(vehicle)
-        ? prev.vehicle_preferences.filter(v => v !== vehicle)
-        : [...prev.vehicle_preferences, vehicle]
-    }))
-  }
-
-  const handlePreferredRouteAdd = () => {
-    const input = document.getElementById('route-input') as HTMLInputElement
-    if (input?.value && input.value.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        preferred_routes: [...prev.preferred_routes, input.value.trim()]
-      }))
-      input.value = ''
-    }
-  }
-
-  const handlePreferredRouteRemove = (route: string) => {
-    setFormData(prev => ({
-      ...prev,
-      preferred_routes: prev.preferred_routes.filter(r => r !== route)
+      preferred_vehicle_types: prev.preferred_vehicle_types.includes(vehicle)
+        ? prev.preferred_vehicle_types.filter(v => v !== vehicle)
+        : [...prev.preferred_vehicle_types, vehicle]
     }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    e.stopPropagation()
 
-    // Block submission if not in edit mode
     if (!isEditing) {
-      console.warn('Form submission blocked: not in edit mode')
       return
     }
 
     try {
-      // Map form field names to backend schema field names
-      const mappedData = {
+      const profileData = {
         license_number: formData.license_number,
-        license_type: formData.license_types[0] || '',  // Take first license type
-        license_expiry: formData.license_expiry_date || undefined,
-        license_issuing_authority: formData.license_issuing_authority || undefined,
-        badge_number: formData.badge_number || undefined,
-        badge_expiry: formData.badge_expiry_date || undefined,
-        experience_years: formData.experience_years || 0,
-        preferred_vehicle_types: formData.vehicle_preferences || [],
+        license_types: [formData.license_type],
+        license_issue_date: new Date().toISOString().split('T')[0], // Current date as issue date
+        license_expiry_date: formData.license_expiry_date,
+        license_issuing_authority: formData.license_issuing_authority || '',
+        badge_number: formData.badge_number,
+        badge_expiry_date: formData.badge_expiry_date,
+        vehicle_preferences: formData.preferred_vehicle_types,
+        experience_years: formData.experience_years,
       }
 
       if (profile) {
-        await updateProfile({ driverId: user.id, profile: mappedData }).unwrap()
+        await updateProfile({ driverId: profile.id!, profile: profileData }).unwrap()
       } else {
-        await createProfile({ userId: user.id, profile: mappedData }).unwrap()
+        await createProfile({ userId: user.id, profile: profileData }).unwrap()
       }
       onSave()
     } catch (error) {
@@ -157,6 +123,96 @@ export default function DriverProfileForm({
     }
   }
 
+  const isLoading = isCreating || isUpdating
+
+  // VIEW MODE - Display existing data
+  if (!isEditing && profile) {
+    return (
+      <div className="space-y-6">
+        {/* License Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Car className="w-5 h-5" />
+              License Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">License Number</label>
+                <p className="text-gray-900 font-medium">{profile.license_number || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">License Type</label>
+                <p className="text-gray-900 font-medium">{profile.license_type || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Issuing Authority</label>
+                <p className="text-gray-900 font-medium">{profile.license_issuing_authority || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Expiry Date</label>
+                <p className="text-gray-900 font-medium">
+                  {profile.license_expiry ? new Date(profile.license_expiry).toLocaleDateString() : '-'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Badge Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Badge Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Badge Number</label>
+                <p className="text-gray-900 font-medium">{profile.badge_number || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Badge Expiry Date</label>
+                <p className="text-gray-900 font-medium">
+                  {profile.badge_expiry ? new Date(profile.badge_expiry).toLocaleDateString() : '-'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Driver Preferences */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Driver Preferences</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Vehicle Preferences</label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {profile.preferred_vehicle_types && profile.preferred_vehicle_types.length > 0 ? (
+                  profile.preferred_vehicle_types.map((vehicle, index) => (
+                    <span key={index} className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
+                      {vehicle}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-gray-600">No vehicle preferences specified</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-500 mb-1">Experience</label>
+              <p className="text-gray-900 font-medium">{profile.experience_years || 0} years</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // NO PROFILE YET - Show create prompt
   if (!isEditing && !profile) {
     return (
       <Card>
@@ -177,104 +233,7 @@ export default function DriverProfileForm({
     )
   }
 
-  if (!isEditing && profile) {
-    return (
-      <div className="space-y-6">
-        {/* License Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Car className="w-5 h-5" />
-              License Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">License Number</label>
-                <p className="text-gray-900">{profile.license_number}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Issuing Authority</label>
-                <p className="text-gray-900">{profile.license_issuing_authority || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Issue Date</label>
-                <p className="text-gray-900">{profile.license_issue_date || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-                <p className="text-gray-900">{profile.license_expiry_date || '-'}</p>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">License Types</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {profile.license_types?.map((type, index) => (
-                  <span key={index} className="px-2 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">
-                    {type}
-                  </span>
-                )) || <span className="text-gray-600">No license types specified</span>}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Badge Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Badge Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Badge Number</label>
-                <p className="text-gray-900">{profile.badge_number || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Badge Expiry Date</label>
-                <p className="text-gray-900">{profile.badge_expiry_date || '-'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Driver Preferences */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Driver Preferences</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Preferences</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {profile.vehicle_preferences?.map((vehicle, index) => (
-                  <span key={index} className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
-                    {vehicle}
-                  </span>
-                )) || <span className="text-gray-600">No vehicle preferences specified</span>}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Routes</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {profile.preferred_routes?.map((route, index) => (
-                  <span key={index} className="px-2 py-1 bg-purple-100 text-purple-700 text-sm rounded-full">
-                    {route}
-                  </span>
-                )) || <span className="text-gray-600">No preferred routes specified</span>}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Experience</label>
-              <p className="text-gray-900">{profile.experience_years || 0} years</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
+  // EDIT MODE - Form inputs
   return (
     <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
       {/* License Information */}
@@ -305,12 +264,18 @@ export default function DriverProfileForm({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Issue Date</label>
-              <Input
-                type="date"
-                value={formData.license_issue_date}
-                onChange={(e) => handleInputChange('license_issue_date', e.target.value)}
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">License Type *</label>
+              <select
+                value={formData.license_type}
+                onChange={(e) => handleInputChange('license_type', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              >
+                <option value="">Select license type</option>
+                {availableLicenseTypes.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date *</label>
@@ -320,23 +285,6 @@ export default function DriverProfileForm({
                 onChange={(e) => handleInputChange('license_expiry_date', e.target.value)}
                 required
               />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">License Types</label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {availableLicenseTypes.map((type) => (
-                <label key={type} className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.license_types.includes(type)}
-                    onChange={() => handleLicenseTypeToggle(type)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700">{type}</span>
-                </label>
-              ))}
             </div>
           </div>
         </CardContent>
@@ -382,43 +330,12 @@ export default function DriverProfileForm({
                 <label key={vehicle} className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={formData.vehicle_preferences.includes(vehicle)}
-                    onChange={() => handleVehiclePreferenceToggle(vehicle)}
+                    checked={formData.preferred_vehicle_types.includes(vehicle)}
+                    onChange={() => handleVehicleToggle(vehicle)}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700">{vehicle}</span>
                 </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Preferred Routes</label>
-            <div className="flex gap-2 mb-2">
-              <Input
-                id="route-input"
-                placeholder="Enter route name"
-                className="flex-1"
-              />
-              <Button type="button" onClick={handlePreferredRouteAdd}>
-                Add
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {formData.preferred_routes.map((route, index) => (
-                <span
-                  key={index}
-                  className="px-2 py-1 bg-purple-100 text-purple-700 text-sm rounded-full flex items-center gap-1"
-                >
-                  {route}
-                  <button
-                    type="button"
-                    onClick={() => handlePreferredRouteRemove(route)}
-                    className="text-purple-500 hover:text-purple-700"
-                  >
-                    ×
-                  </button>
-                </span>
               ))}
             </div>
           </div>
@@ -437,23 +354,33 @@ export default function DriverProfileForm({
       </Card>
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-3 pt-4">
+      <div className="flex justify-end gap-3 pt-4 border-t">
         <Button
           type="button"
           variant="outline"
           onClick={onCancel}
-          disabled={isCreating || isUpdating}
+          disabled={isLoading}
+          className="flex items-center gap-2"
         >
-          <X className="w-4 h-4 mr-2" />
+          <X className="w-4 h-4" />
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={isCreating || isUpdating}
+          disabled={isLoading}
           className="flex items-center gap-2"
         >
-          <Save className="w-4 h-4" />
-          {isCreating || isUpdating ? 'Saving...' : (profile ? 'Update Profile' : 'Create Profile')}
+          {isLoading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              Save Changes
+            </>
+          )}
         </Button>
       </div>
     </form>

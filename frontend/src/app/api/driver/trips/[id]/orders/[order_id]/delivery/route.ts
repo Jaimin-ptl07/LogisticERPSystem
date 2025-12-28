@@ -5,10 +5,10 @@ const NEXT_PUBLIC_DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_UR
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string; order_id: string } }
+  { params }: { params: Promise<{ id: string; order_id: string }> }
 ) {
   try {
-    const { id: tripId, order_id } = params;
+    const { id: tripId, order_id } = await params;
     const body = await request.json();
 
     const url = `${NEXT_PUBLIC_DRIVER_SERVICE_URL}/api/v1/driver/trips/${tripId}/orders/${order_id}/delivery`;

@@ -21,5 +21,5 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  return proxyRequest(request, COMPANY_API_URL, `vehicles/${id}/`)
+  return proxyRequest(request, COMPANY_API_URL, `vehicles/${id}`)
 }

@@ -91,7 +91,7 @@ export default function BranchManagerProfileForm({
     e.preventDefault()
     try {
       if (profile) {
-        await updateProfile({ userId: user.id, profile: formData }).unwrap()
+        await updateProfile({ profileId: profile.id!, profile: formData }).unwrap()
       } else {
         await createProfile({ userId: user.id, profile: formData }).unwrap()
       }

@@ -3,9 +3,10 @@ Pydantic schemas for Company Service
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_serializer
 from uuid import UUID
-from .database import BusinessType, VehicleType, VehicleStatus, ServiceType
+from .database import BusinessType, VehicleStatus, ServiceType, WeightType
+# Note: VehicleType enum is now deprecated, use VehicleTypeModel instead
 
 
 # Base schemas
@@ -60,6 +61,74 @@ class Branch(BranchInDB):
     pass
 
 
+# BusinessType schemas
+class BusinessTypeBase(BaseSchema):
+    """Base business type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class BusinessTypeCreate(BusinessTypeBase):
+    """Schema for creating a business type"""
+    pass
+
+
+class BusinessTypeUpdate(BaseSchema):
+    """Schema for updating a business type"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class BusinessTypeInDB(BusinessTypeBase):
+    """Schema for business type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class BusinessTypeModel(BusinessTypeInDB):
+    """Schema for business type response"""
+    pass
+
+
+# VehicleType schemas
+class VehicleTypeBase(BaseSchema):
+    """Base vehicle type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class VehicleTypeCreate(VehicleTypeBase):
+    """Schema for creating a vehicle type"""
+    pass
+
+
+class VehicleTypeUpdate(BaseSchema):
+    """Schema for updating a vehicle type"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class VehicleTypeInDB(VehicleTypeBase):
+    """Schema for vehicle type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class VehicleTypeModel(VehicleTypeInDB):
+    """Schema for vehicle type response"""
+    pass
+
+
 # Customer schemas
 class CustomerBase(BaseSchema):
     """Base customer schema"""
@@ -72,10 +141,22 @@ class CustomerBase(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
+    # Support both old enum and new foreign key
     business_type: Optional[BusinessType] = None
+    business_type_id: Optional[UUID] = None
     credit_limit: float = Field(default=0, ge=0)
     pricing_tier: str = Field(default="standard", max_length=20)
     is_active: bool = True
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_empty_business_type_to_none(cls, data):
+        """Convert empty string for business_type to None to avoid enum validation errors"""
+        if isinstance(data, dict):
+            business_type_value = data.get('business_type')
+            if business_type_value == '':
+                data['business_type'] = None
+        return data
 
 
 class CustomerCreate(CustomerBase):
@@ -93,7 +174,9 @@ class CustomerUpdate(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
+    # Support both old enum and new foreign key
     business_type: Optional[BusinessType] = None
+    business_type_id: Optional[UUID] = None
     credit_limit: Optional[float] = Field(None, ge=0)
     pricing_tier: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
@@ -110,6 +193,7 @@ class CustomerInDB(CustomerBase):
 class Customer(CustomerInDB):
     """Schema for customer response"""
     home_branch: Optional[Branch] = None
+    business_type_relation: Optional[BusinessTypeModel] = None
 
 
 # Vehicle schemas
@@ -120,13 +204,25 @@ class VehicleBase(BaseSchema):
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
-    vehicle_type: Optional[VehicleType] = None
+    # Support both old enum (as string) and new foreign key
+    vehicle_type: Optional[str] = None  # Deprecated: use vehicle_type_id instead
+    vehicle_type_id: Optional[UUID] = None
     capacity_weight: Optional[float] = Field(None, ge=0)  # in kg
     capacity_volume: Optional[float] = Field(None, ge=0)  # in cubic meters
     status: VehicleStatus = VehicleStatus.AVAILABLE
     last_maintenance: Optional[datetime] = None
     next_maintenance: Optional[datetime] = None
     is_active: bool = True
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_empty_vehicle_type_to_none(cls, data):
+        """Convert empty string for vehicle_type to None to avoid enum validation errors"""
+        if isinstance(data, dict):
+            vehicle_type_value = data.get('vehicle_type')
+            if vehicle_type_value == '':
+                data['vehicle_type'] = None
+        return data
 
 
 class VehicleCreate(VehicleBase):
@@ -140,7 +236,9 @@ class VehicleUpdate(BaseSchema):
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
-    vehicle_type: Optional[VehicleType] = None
+    # Support both old enum (as string) and new foreign key
+    vehicle_type: Optional[str] = None
+    vehicle_type_id: Optional[UUID] = None
     capacity_weight: Optional[float] = Field(None, ge=0)
     capacity_volume: Optional[float] = Field(None, ge=0)
     status: Optional[VehicleStatus] = None
@@ -160,6 +258,7 @@ class VehicleInDB(VehicleBase):
 class Vehicle(VehicleInDB):
     """Schema for vehicle response"""
     branch: Optional[Branch] = None
+    vehicle_type_relation: Optional[VehicleTypeModel] = None
 
 
 # Product Category schemas
@@ -210,16 +309,43 @@ class ProductBase(BaseSchema):
     description: Optional[str] = Field(None, max_length=500)
     unit_price: float = Field(..., gt=0)
     special_price: Optional[float] = Field(None, ge=0)
-    weight: Optional[float] = Field(None, ge=0)  # in kg
+
+    # Weight configuration - supports fixed and variable weight types
+    weight_type: WeightType = Field(default=WeightType.FIXED, description="Type of weight: fixed or variable")
+    weight: Optional[float] = Field(None, ge=0, description="Deprecated - use fixed_weight")  # in kg
+    fixed_weight: Optional[float] = Field(None, ge=0, description="Fixed weight in kg for FIXED type products")
+    weight_unit: str = Field(default="kg", max_length=20, description="Weight unit (kg, lb, g, etc.)")
+
+    @field_serializer('weight_type')
+    def serialize_weight_type(self, value: WeightType) -> str:
+        """Serialize WeightType enum to its string value"""
+        if value is None:
+            return WeightType.FIXED.value
+        return value.value if isinstance(value, WeightType) else str(value)
+
+    # Dimensions
     length: Optional[float] = Field(None, ge=0)  # in cm
     width: Optional[float] = Field(None, ge=0)   # in cm
     height: Optional[float] = Field(None, ge=0)  # in cm
     volume: Optional[float] = Field(None, ge=0)  # in cubic meters
+
     handling_requirements: Optional[List[str]] = Field(default_factory=list)
     min_stock_level: int = Field(default=0, ge=0)
     max_stock_level: Optional[int] = Field(None, ge=0)
     current_stock: int = Field(default=0, ge=0)
     is_active: bool = True
+
+    @model_validator(mode='after')
+    def validate_weight_fields(self):
+        """Validate weight fields based on weight_type"""
+        if self.weight_type == WeightType.FIXED:
+            if self.fixed_weight is None and self.weight is None:
+                raise ValueError("fixed_weight is required for FIXED weight type")
+            # If weight is provided (legacy), use it as fixed_weight
+            if self.weight is not None and self.fixed_weight is None:
+                self.fixed_weight = self.weight
+        # VARIABLE type doesn't require any weight fields - actual weight entered when creating orders
+        return self
 
 
 class ProductCreate(ProductBase):
@@ -237,7 +363,13 @@ class ProductUpdate(BaseSchema):
     description: Optional[str] = Field(None, max_length=500)
     unit_price: Optional[float] = Field(None, gt=0)
     special_price: Optional[float] = Field(None, ge=0)
+
+    # Weight configuration
+    weight_type: Optional[WeightType] = None
     weight: Optional[float] = Field(None, ge=0)
+    fixed_weight: Optional[float] = Field(None, ge=0)
+    weight_unit: Optional[str] = None
+
     length: Optional[float] = Field(None, ge=0)
     width: Optional[float] = Field(None, ge=0)
     height: Optional[float] = Field(None, ge=0)
@@ -473,6 +605,8 @@ class EmployeeProfileBase(BaseSchema):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = Field(None, max_length=10)
     blood_group: Optional[str] = Field(None, max_length=5)
+    marital_status: Optional[str] = Field(None, max_length=20)  # single, married, divorced, widowed
+    nationality: Optional[str] = Field("India", max_length=50)
     emergency_contact_name: Optional[str] = Field(None, max_length=100)
     emergency_contact_phone: Optional[str] = Field(None, max_length=20)
     address: Optional[str] = Field(None, max_length=1000)
@@ -491,6 +625,7 @@ class EmployeeProfileBase(BaseSchema):
     bank_ifsc: Optional[str] = Field(None, max_length=20)
     pan_number: Optional[str] = Field(None, max_length=20)
     aadhar_number: Optional[str] = Field(None, max_length=20)
+    passport_number: Optional[str] = Field(None, max_length=20)
     is_active: bool = True
 
 
@@ -521,6 +656,8 @@ class EmployeeProfileUpdate(BaseSchema):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = Field(None, max_length=10)
     blood_group: Optional[str] = Field(None, max_length=5)
+    marital_status: Optional[str] = Field(None, max_length=20)  # single, married, divorced, widowed
+    nationality: Optional[str] = Field(None, max_length=50)
     emergency_contact_name: Optional[str] = Field(None, max_length=100)
     emergency_contact_phone: Optional[str] = Field(None, max_length=20)
     address: Optional[str] = Field(None, max_length=1000)
@@ -539,6 +676,7 @@ class EmployeeProfileUpdate(BaseSchema):
     bank_ifsc: Optional[str] = Field(None, max_length=20)
     pan_number: Optional[str] = Field(None, max_length=20)
     aadhar_number: Optional[str] = Field(None, max_length=20)
+    passport_number: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
 
 

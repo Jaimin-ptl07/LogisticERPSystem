@@ -9,12 +9,23 @@ import logging
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.config_local import settings
-from src.database import AsyncSessionLocal, EmployeeProfile, UserInvitation, Branch, EmployeeBranch
+from src.database import (
+    AsyncSessionLocal,
+    EmployeeProfile,
+    UserInvitation,
+    Branch,
+    EmployeeBranch,
+    DriverProfile,
+    FinanceManagerProfile,
+    BranchManagerProfile,
+    LogisticsManagerProfile,
+    EmployeeDocument
+)
 from src.helpers import validate_branch_exists, validate_role_exists, validate_employee_reporting_hierarchy, validate_employee_exists
 from src.schemas import (
     EmployeeProfile as EmployeeProfileSchema,
@@ -165,6 +176,7 @@ async def list_users(
     role_id: Optional[str] = Query(None),
     branch_id: Optional[uuid.UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
+    user_id: Optional[str] = Query(None),  # Filter by auth user_id
     token_data: TokenData = Depends(require_any_permission([USER_READ_ALL[0], USER_READ[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
@@ -198,6 +210,10 @@ async def list_users(
 
     if is_active is not None:
         query = query.where(EmployeeProfile.is_active == is_active)
+
+    if user_id:
+        # Filter by auth user_id (the UUID from auth service)
+        query = query.where(EmployeeProfile.user_id == user_id)
 
     # Count total items
     count_query = select(func.count()).select_from(query.subquery())
@@ -393,6 +409,8 @@ async def get_user(
         'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
         'gender': user.gender,
         'blood_group': user.blood_group,
+        'marital_status': user.marital_status,
+        'nationality': user.nationality,
         'emergency_contact_name': user.emergency_contact_name,
         'emergency_contact_phone': user.emergency_contact_phone,
         # Frontend expected field name (mapped)
@@ -441,6 +459,7 @@ async def get_user(
             'account_type': 'savings'
         } if user.bank_name or user.bank_account_number else None,
         'pan_number': user.pan_number,
+        'passport_number': user.passport_number,
         'aadhaar_number': user.aadhar_number,
         'aadhar_number': user.aadhar_number,
         'is_active': user.is_active,
@@ -946,6 +965,71 @@ async def invite_user(
     return UserInvitationSchema.model_validate(invitation_dict)
 
 
+@router.put("/{user_id}/status", response_model=UserManagementResponse)
+async def update_user_status(
+    request: Request,
+    user_id: str,
+    status_data: dict,
+    token_data: TokenData = Depends(require_permissions([USER_ACTIVATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update user status (activate/deactivate)
+    This updates both the company database AND the auth service
+
+    Requires:
+    - users:activate
+    """
+
+    is_active = status_data.get("is_active")
+    if is_active is None:
+        raise HTTPException(status_code=400, detail="is_active field is required")
+
+    # Get user from company database
+    query = select(EmployeeProfile).where(
+        EmployeeProfile.id == user_id,
+        EmployeeProfile.tenant_id == tenant_id
+    )
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update in company database
+    user.is_active = is_active
+    await db.commit()
+
+    # Also update in auth service (this is where authentication is managed)
+    auth_token = extract_auth_token(request)
+    if auth_token and user.user_id:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Call activate or deactivate endpoint based on status
+                endpoint = "activate" if is_active else "deactivate"
+                auth_response = await client.put(
+                    f"{settings.AUTH_SERVICE_URL}/api/v1/users/{user.user_id}/{endpoint}",
+                    headers={
+                        "Authorization": f"Bearer {auth_token}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                if auth_response.status_code == 200:
+                    logger.info(f"Successfully {'activated' if is_active else 'deactivated'} user {user.user_id} in auth service")
+                else:
+                    logger.warning(f"Failed to update user status in auth service: {auth_response.status_code} - {auth_response.text}")
+        except Exception as e:
+            logger.error(f"Error updating user status in auth service: {e}")
+
+    return UserManagementResponse(
+        user_id=user.user_id,
+        employee_id=user_id,
+        status="activated" if is_active else "deactivated",
+        message=f"User {'activated' if is_active else 'deactivated'} successfully"
+    )
+
+
 @router.post("/{user_id}/activate", response_model=UserManagementResponse)
 async def activate_user(
     user_id: str,
@@ -1017,6 +1101,92 @@ async def deactivate_user(
         employee_id=user_id,
         status="deactivated",
         message="User deactivated successfully"
+    )
+
+
+@router.delete("/{user_id}", response_model=UserManagementResponse)
+async def delete_user(
+    request: Request,
+    user_id: str,
+    token_data: TokenData = Depends(require_permissions([USER_DELETE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete a user's employee profile from company database
+    All dependent records are deleted first to avoid foreign key constraint violations
+
+    Note: This endpoint is called by the auth service when a user is deleted from auth.
+    The auth service is the source of truth for user deletion.
+
+    Requires:
+    - users:delete
+    """
+
+    # Get user from company database (user_id here is employee_profile.id)
+    query = select(EmployeeProfile).where(
+        EmployeeProfile.id == user_id,
+        EmployeeProfile.tenant_id == tenant_id
+    )
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # If employee profile not found by ID, try to find by user_id (auth user UUID)
+        # This handles the case when auth service passes the auth user UUID
+        query_by_uuid = select(EmployeeProfile).where(
+            EmployeeProfile.user_id == user_id,
+            EmployeeProfile.tenant_id == tenant_id
+        )
+        result_by_uuid = await db.execute(query_by_uuid)
+        user = result_by_uuid.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    user_uuid = user.user_id
+    employee_profile_id = user.id
+
+    # Delete dependent records first to avoid foreign key constraint violations
+    # 1. Delete driver profile if exists
+    await db.execute(
+        delete(DriverProfile).where(DriverProfile.employee_profile_id == employee_profile_id)
+    )
+
+    # 2. Delete finance manager profile if exists
+    await db.execute(
+        delete(FinanceManagerProfile).where(FinanceManagerProfile.employee_profile_id == employee_profile_id)
+    )
+
+    # 3. Delete branch manager profile if exists
+    await db.execute(
+        delete(BranchManagerProfile).where(BranchManagerProfile.employee_profile_id == employee_profile_id)
+    )
+
+    # 4. Delete logistics manager profile if exists
+    await db.execute(
+        delete(LogisticsManagerProfile).where(LogisticsManagerProfile.employee_profile_id == employee_profile_id)
+    )
+
+    # 5. Delete employee documents
+    await db.execute(
+        delete(EmployeeDocument).where(EmployeeDocument.employee_profile_id == employee_profile_id)
+    )
+
+    # 6. Delete employee-branch assignments
+    await db.execute(
+        delete(EmployeeBranch).where(EmployeeBranch.employee_profile_id == employee_profile_id)
+    )
+
+    # 7. Finally delete the employee profile
+    await db.delete(user)
+    await db.commit()
+
+    return UserManagementResponse(
+        user_id=user_uuid,
+        employee_id=employee_profile_id,
+        status="deleted",
+        message="Employee profile deleted successfully"
     )
 
 

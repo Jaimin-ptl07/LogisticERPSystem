@@ -531,3 +531,207 @@ CREATE POLICY employee_branches_tenant_policy ON employee_branches
     FOR ALL TO authenticated_users
     USING (tenant_id = current_tenant_id());
 */
+
+-- ================================================================================
+-- MIGRATION 007: Alter driver_profiles license_type column length
+-- ================================================================================
+-- Drop the CHECK constraint that restricts values
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'driver_profiles_license_type_check'
+    ) THEN
+        ALTER TABLE driver_profiles DROP CONSTRAINT driver_profiles_license_type_check;
+    END IF;
+END $$;
+
+-- Alter the license_type column to VARCHAR(50)
+ALTER TABLE driver_profiles
+ALTER COLUMN license_type TYPE VARCHAR(50) USING license_type::VARCHAR(50);
+
+-- Add comment
+COMMENT ON COLUMN driver_profiles.license_type IS 'License type (e.g., Light Motor Vehicle (LMV), Heavy Motor Vehicle (HMV), Transport Vehicle, Goods Vehicle)';
+
+-- ================================================================================
+-- MIGRATION 008: Add employee profile fields
+-- ================================================================================
+ALTER TABLE employee_profiles
+ADD COLUMN IF NOT EXISTS marital_status VARCHAR(20);
+
+ALTER TABLE employee_profiles
+ADD COLUMN IF NOT EXISTS nationality VARCHAR(50) DEFAULT 'India';
+
+ALTER TABLE employee_profiles
+ADD COLUMN IF NOT EXISTS passport_number VARCHAR(20);
+
+-- Add comments
+COMMENT ON COLUMN employee_profiles.marital_status IS 'Marital status: single, married, divorced, widowed';
+COMMENT ON COLUMN employee_profiles.nationality IS 'Nationality of the employee';
+COMMENT ON COLUMN employee_profiles.passport_number IS 'Passport number for international employees';
+
+-- ================================================================================
+-- MIGRATION 009: Add product weight type fields
+-- ================================================================================
+-- Add weight_type enum type
+DO $$ BEGIN
+    CREATE TYPE weight_type AS ENUM ('fixed', 'variable');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- Add new columns to products table
+ALTER TABLE products
+    ADD COLUMN IF NOT EXISTS weight_type weight_type DEFAULT 'fixed',
+    ADD COLUMN IF NOT EXISTS fixed_weight FLOAT,
+    ADD COLUMN IF NOT EXISTS weight_unit VARCHAR(20) DEFAULT 'kg';
+
+-- Add comments for documentation
+COMMENT ON COLUMN products.weight_type IS 'Type of weight: fixed (pre-determined) or variable (entered when creating order)';
+COMMENT ON COLUMN products.fixed_weight IS 'Standard weight for FIXED weight type products';
+COMMENT ON COLUMN products.weight_unit IS 'Weight unit (kg, lb, g, etc.)';
+
+-- Create index on weight_type for filtering
+CREATE INDEX IF NOT EXISTS idx_products_weight_type ON products(weight_type);
+
+-- ================================================================================
+-- MIGRATION 010: Add business_types table for dynamic business type management
+-- ================================================================================
+CREATE TABLE IF NOT EXISTS business_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR(255) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(50) NOT NULL,
+    description VARCHAR(500),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, code)
+);
+
+-- Create index on tenant_id for faster queries
+CREATE INDEX IF NOT EXISTS idx_business_types_tenant_id ON business_types(tenant_id);
+
+-- Create index on is_active for filtering
+CREATE INDEX IF NOT EXISTS idx_business_types_is_active ON business_types(is_active);
+
+-- Add new column to customers table to reference business_types
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_type_id UUID REFERENCES business_types(id) ON DELETE SET NULL;
+
+-- Create index on business_type_id
+CREATE INDEX IF NOT EXISTS idx_customers_business_type_id ON customers(business_type_id);
+
+-- Add comments
+COMMENT ON TABLE business_types IS 'Dynamic business types for customers - replaces hardcoded enum';
+COMMENT ON COLUMN customers.business_type_id IS 'Foreign key reference to dynamic business types table';
+
+-- Create trigger for business_types updated_at
+CREATE TRIGGER update_business_types_updated_at BEFORE UPDATE ON business_types
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable Row Level Security for business_types
+ALTER TABLE business_types ENABLE ROW LEVEL SECURITY;
+
+-- ================================================================================
+-- MIGRATION 011: Add vehicle_types table for dynamic vehicle type management
+-- ================================================================================
+-- Make the old vehicle_type column nullable to support the new vehicle_type_id
+DO $$
+BEGIN
+    -- Check if vehicle_type column exists and is not nullable
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'vehicles'
+        AND column_name = 'vehicle_type'
+        AND is_nullable = 'NO'
+    ) THEN
+        ALTER TABLE vehicles ALTER COLUMN vehicle_type DROP NOT NULL;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS vehicle_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR(255) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(50) NOT NULL,
+    description VARCHAR(500),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, code)
+);
+
+-- Create index on tenant_id for faster queries
+CREATE INDEX IF NOT EXISTS idx_vehicle_types_tenant_id ON vehicle_types(tenant_id);
+
+-- Create index on is_active for filtering
+CREATE INDEX IF NOT EXISTS idx_vehicle_types_is_active ON vehicle_types(is_active);
+
+-- Insert default vehicle types for existing tenants
+-- These correspond to the old enum values: motorcycle, van, truck_small, truck_medium, truck_large, trailer
+INSERT INTO vehicle_types (tenant_id, name, code, description, is_active)
+SELECT DISTINCT tenant_id, 'Motorcycle', 'motorcycle', 'Two-wheeled motor vehicle', TRUE
+FROM vehicles
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO vehicle_types (tenant_id, name, code, description, is_active)
+SELECT DISTINCT tenant_id, 'Van', 'van', 'Small delivery van', TRUE
+FROM vehicles
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO vehicle_types (tenant_id, name, code, description, is_active)
+SELECT DISTINCT tenant_id, 'Small Truck', 'truck_small', 'Small capacity truck (up to 3 tons)', TRUE
+FROM vehicles
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO vehicle_types (tenant_id, name, code, description, is_active)
+SELECT DISTINCT tenant_id, 'Medium Truck', 'truck_medium', 'Medium capacity truck (3-7 tons)', TRUE
+FROM vehicles
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO vehicle_types (tenant_id, name, code, description, is_active)
+SELECT DISTINCT tenant_id, 'Large Truck', 'truck_large', 'Large capacity truck (7-15 tons)', TRUE
+FROM vehicles
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO vehicle_types (tenant_id, name, code, description, is_active)
+SELECT DISTINCT tenant_id, 'Trailer', 'trailer', 'Heavy trailer for large cargo', TRUE
+FROM vehicles
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+-- Add new column to vehicles table to reference vehicle_types
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS vehicle_type_id UUID REFERENCES vehicle_types(id) ON DELETE SET NULL;
+
+-- Migrate existing vehicle_type enum values to vehicle_type_id
+-- Cast vehicle_type enum to text for comparison
+UPDATE vehicles
+SET vehicle_type_id = (
+    SELECT vt.id
+    FROM vehicle_types vt
+    WHERE vt.tenant_id = vehicles.tenant_id
+    AND vt.code = (vehicles.vehicle_type::text)
+    LIMIT 1
+)
+WHERE vehicle_type IS NOT NULL;
+
+-- Create index on vehicle_type_id
+CREATE INDEX IF NOT EXISTS idx_vehicles_vehicle_type_id ON vehicles(vehicle_type_id);
+
+-- Add comments
+COMMENT ON TABLE vehicle_types IS 'Dynamic vehicle types for vehicles - replaces hardcoded enum';
+COMMENT ON COLUMN vehicles.vehicle_type_id IS 'Foreign key reference to dynamic vehicle types table';
+
+-- Create trigger for vehicle_types updated_at if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname = 'update_vehicle_types_updated_at'
+    ) THEN
+        CREATE TRIGGER update_vehicle_types_updated_at BEFORE UPDATE ON vehicle_types
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
+
+-- Enable Row Level Security for vehicle_types
+ALTER TABLE vehicle_types ENABLE ROW LEVEL SECURITY;

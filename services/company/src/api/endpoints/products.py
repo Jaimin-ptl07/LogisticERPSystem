@@ -357,7 +357,7 @@ async def delete_product(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete (deactivate) a product
+    Delete (hard delete) a product
 
     Requires:
     - products:delete
@@ -374,9 +374,11 @@ async def delete_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Soft delete - deactivate product
-    product.is_active = False
+    # Hard delete - remove product from database
+    await db.delete(product)
     await db.commit()
+
+    return None
 
 
 @router.get("/low-stock", response_model=PaginatedResponse)

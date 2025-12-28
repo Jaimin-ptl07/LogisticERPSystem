@@ -4,13 +4,16 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { useGetUserQuery } from '@/services/api/companyApi'
 import {
   useGetDriverProfileByUserQuery,
   useGetBranchManagerProfileByUserQuery,
   useGetFinanceManagerProfileByUserQuery,
   useGetLogisticsManagerProfileByUserQuery,
+  DriverProfile,
+  BranchManagerProfileExtended,
+  FinanceManagerProfile,
+  LogisticsManagerProfile,
 } from '@/services/api/profileApi'
 import { User } from '@/services/api/companyApi'
 import EmployeeProfileForm from '../forms/EmployeeProfileForm'
@@ -18,7 +21,22 @@ import DriverProfileForm from '../forms/DriverProfileForm'
 import BranchManagerProfileForm from '../forms/BranchManagerProfileForm'
 import FinanceManagerProfileForm from '../forms/FinanceManagerProfileForm'
 import LogisticsManagerProfileForm from '../forms/LogisticsManagerProfileForm'
-import { ArrowLeft, User as UserIcon, Car, Building, Truck, DollarSign, FileText, AlertCircle, CheckCircle, Save, X, Loader2 } from 'lucide-react'
+import { ArrowLeft, User as UserIcon, Car, Building2, DollarSign, Truck, CheckCircle, Loader2, Pencil, Save } from 'lucide-react'
+
+// ============================================================================
+// TYPES & UTILITIES
+// ============================================================================
+
+type TabType = 'basic' | 'license' | 'branch' | 'finance' | 'logistics'
+
+interface ProfileConfig {
+  icon: React.ComponentType<{ className?: string }>
+  color: string
+  bgColor: string
+  label: string
+  tabId: TabType | null
+  tabLabel: string | null
+}
 
 // Check if user has completed the basic employee profile
 const hasEmployeeProfile = (user: User | null): boolean => {
@@ -34,32 +52,43 @@ const hasEmployeeProfile = (user: User | null): boolean => {
 // Helper functions to check user role
 const isDriverRole = (user: User | null) => {
   if (!user) return false
-  const roleName = (user.role?.name || user.role?.role_name || user.role?.role_name || '').toLowerCase()
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
   return roleName.includes('driver')
 }
 
 const isBranchManagerRole = (user: User | null) => {
   if (!user) return false
-  const roleName = (user.role?.name || user.role?.role_name || user.role?.role_name || '').toLowerCase()
-  return roleName.includes('branch manager') || roleName.includes('branch-manager')
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
+  return roleName.includes('branch') && roleName.includes('manager')
 }
 
 const isFinanceManagerRole = (user: User | null) => {
   if (!user) return false
-  const roleName = (user.role?.name || user.role?.role_name || user.role?.role_name || '').toLowerCase()
-  return roleName.includes('finance manager') || roleName.includes('finance-manager')
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
+  return roleName.includes('finance') && roleName.includes('manager')
 }
 
 const isLogisticsManagerRole = (user: User | null) => {
   if (!user) return false
-  const roleName = (user.role?.name || user.role?.role_name || user.role?.role_name || '').toLowerCase()
-  return roleName.includes('logistics manager') || roleName.includes('logistics-manager')
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
+  return roleName.includes('logistics') && roleName.includes('manager')
 }
 
-const getProfileConfig = (roleName: string | undefined) => {
-  const name = (roleName || '').toLowerCase()
+const getProfileConfig = (user: User | null): ProfileConfig => {
+  if (!user || !user.role) {
+    return {
+      icon: UserIcon,
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-100',
+      label: 'Employee',
+      tabId: null,
+      tabLabel: null
+    }
+  }
 
-  if (name.includes('driver')) {
+  const roleName = (user.role?.name || user.role?.role_name || '').toLowerCase()
+
+  if (roleName.includes('driver')) {
     return {
       icon: Car,
       color: 'text-green-600',
@@ -68,34 +97,41 @@ const getProfileConfig = (roleName: string | undefined) => {
       tabId: 'license',
       tabLabel: 'License Info'
     }
-  } else if (name.includes('branch manager') || name.includes('branch-manager')) {
+  }
+
+  if (roleName.includes('branch') && roleName.includes('manager')) {
     return {
-      icon: Building,
+      icon: Building2,
       color: 'text-purple-600',
       bgColor: 'bg-purple-100',
       label: 'Branch Manager',
       tabId: 'branch',
-      tabLabel: 'Branch Management'
-    }
-  } else if (name.includes('finance manager') || name.includes('finance-manager')) {
-    return {
-      icon: DollarSign,
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-100',
-      label: 'Finance Manager',
-      tabId: 'finance',
-      tabLabel: 'Finance Settings'
-    }
-  } else if (name.includes('logistics manager') || name.includes('logistics-manager')) {
-    return {
-      icon: Truck,
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-100',
-      label: 'Logistics Manager',
-      tabId: 'logistics',
-      tabLabel: 'Logistics Settings'
+      tabLabel: 'Branch Info'
     }
   }
+
+  if (roleName.includes('finance') && roleName.includes('manager')) {
+    return {
+      icon: DollarSign,
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-100',
+      label: 'Finance Manager',
+      tabId: 'finance',
+      tabLabel: 'Finance Info'
+    }
+  }
+
+  if (roleName.includes('logistics') && roleName.includes('manager')) {
+    return {
+      icon: Truck,
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-100',
+      label: 'Logistics Manager',
+      tabId: 'logistics',
+      tabLabel: 'Logistics Info'
+    }
+  }
+
   return {
     icon: UserIcon,
     color: 'text-blue-600',
@@ -106,70 +142,43 @@ const getProfileConfig = (roleName: string | undefined) => {
   }
 }
 
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
+
 export default function EmployeeProfileDetailPage() {
   const params = useParams()
   const router = useRouter()
 
-  // Extract userId safely from useParams
-  // Next.js useParams can return: string | string[] | undefined
+  // ============================================================================
+  // STATE
+  // ============================================================================
+  const [activeTab, setActiveTab] = useState<TabType>('basic')
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  // ============================================================================
+  // URL PARAMETER EXTRACTION
+  // ============================================================================
   const getUserIdFromParams = (): string | null => {
     const userIdParam = params.userId
-
-    console.log('getUserIdFromParams - userIdParam:', userIdParam, 'type:', typeof userIdParam)
-
-    // Handle undefined
-    if (!userIdParam) {
-      console.log('userIdParam is falsy, returning null')
-      return null
-    }
-
-    // Handle string array (rare but possible)
-    if (Array.isArray(userIdParam)) {
-      console.log('userIdParam is array, returning first element:', userIdParam[0])
-      return userIdParam[0] || null
-    }
-
-    // Handle object (shouldn't happen but defensive)
-    // Note: typeof null === 'object' in JavaScript, so check for null first
-    if (userIdParam !== null && typeof userIdParam === 'object') {
-      console.error('userIdParam is an object:', userIdParam)
-      return null
-    }
-
-    // Handle string
-    if (typeof userIdParam === 'string') {
-      // Check if it's the literal "[object Object]" string (not a real object)
-      if (userIdParam === '[object Object]') {
-        console.error('userIdParam is literally the string "[object Object]"')
-        return null
-      }
-      console.log('userIdParam is valid string:', userIdParam)
-      return userIdParam
-    }
-
-    console.log('userIdParam did not match any expected type, returning null')
+    if (!userIdParam) return null
+    if (Array.isArray(userIdParam)) return userIdParam[0] || null
+    if (typeof userIdParam === 'string') return userIdParam
     return null
   }
 
   const userId = getUserIdFromParams()
 
-  // Debug log to understand what's happening
-  console.log('EmployeeProfileDetailPage render:', {
-    params,
-    userId,
-    userIdType: typeof userId,
-    currentUrl: window.location.href
-  })
-
   // Redirect if userId is invalid
   useEffect(() => {
     if (!userId) {
-      console.error('Invalid userId, redirecting:', { params, userId })
       router.push('/company-admin/masters/employee-profiles')
     }
-  }, [userId, params, router])
+  }, [userId, router])
 
-  // Don't render if userId is invalid
   if (!userId) {
     return (
       <div className="container mx-auto p-6">
@@ -180,51 +189,40 @@ export default function EmployeeProfileDetailPage() {
     )
   }
 
-  const [activeTab, setActiveTab] = useState<'basic' | 'license' | 'branch' | 'finance' | 'logistics'>('basic')
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [justSaved, setJustSaved] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-
-  // Fetch user details - userId is guaranteed to be a string here or component returns early
+  // ============================================================================
+  // DATA FETCHING
+  // ============================================================================
   const { data: user, isLoading, error, refetch } = useGetUserQuery(userId, {
-    skip: !userId  // Skip only if userId is null (which would have returned early anyway)
+    skip: !userId
   })
 
-  // Fetch role-specific profile based on user's role
-  const skipRoleProfile = !user || !user.id
-
+  // Fetch driver profile if user is a driver
+  const skipDriverProfile = !user || !user.id || !isDriverRole(user)
   const { data: driverProfile } = useGetDriverProfileByUserQuery(
     user?.id || '',
-    { skip: skipRoleProfile || !isDriverRole(user) }
+    { skip: skipDriverProfile }
   )
 
+  // Fetch branch manager profile if user is a branch manager
+  const skipBranchManagerProfile = !user || !user.id || !isBranchManagerRole(user)
   const { data: branchManagerProfile } = useGetBranchManagerProfileByUserQuery(
     user?.id || '',
-    { skip: skipRoleProfile || !isBranchManagerRole(user) }
+    { skip: skipBranchManagerProfile }
   )
 
+  // Fetch finance manager profile if user is a finance manager
+  const skipFinanceManagerProfile = !user || !user.id || !isFinanceManagerRole(user)
   const { data: financeManagerProfile } = useGetFinanceManagerProfileByUserQuery(
     user?.id || '',
-    { skip: skipRoleProfile || !isFinanceManagerRole(user) }
+    { skip: skipFinanceManagerProfile }
   )
 
+  // Fetch logistics manager profile if user is a logistics manager
+  const skipLogisticsManagerProfile = !user || !user.id || !isLogisticsManagerRole(user)
   const { data: logisticsManagerProfile } = useGetLogisticsManagerProfileByUserQuery(
     user?.id || '',
-    { skip: skipRoleProfile || !isLogisticsManagerRole(user) }
+    { skip: skipLogisticsManagerProfile }
   )
-
-  // Get the appropriate profile based on role
-  const getRoleSpecificProfile = (user: User | null) => {
-    if (!user) return undefined
-
-    if (isDriverRole(user)) return driverProfile
-    if (isBranchManagerRole(user)) return branchManagerProfile
-    if (isFinanceManagerRole(user)) return financeManagerProfile
-    if (isLogisticsManagerRole(user)) return logisticsManagerProfile
-
-    return undefined
-  }
 
   // Redirect to list page if user not found
   useEffect(() => {
@@ -233,33 +231,50 @@ export default function EmployeeProfileDetailPage() {
     }
   }, [error, isLoading, router])
 
-  const config = user ? getProfileConfig(user.role?.name || user.role?.role_name || user.role?.role_name) : getProfileConfig(undefined)
+  // ============================================================================
+  // DERIVED VALUES
+  // ============================================================================
+  const config = getProfileConfig(user || null)
   const ProfileIcon = config.icon
   const profileLabel = config.label
   const employeeProfileComplete = hasEmployeeProfile(user || null)
 
-  // Define tabs based on employee profile completion
-  const tabs = [
-    { id: 'basic' as const, label: '1. Basic Info', icon: UserIcon }
-  ]
-
-  if (employeeProfileComplete && config.tabId) {
-    tabs.push({ id: config.tabId as any, label: `2. ${config.tabLabel}!`, icon: config.icon })
+  const hasRoleSpecificProfile = () => {
+    if (isDriverRole(user || null)) return !!driverProfile
+    if (isBranchManagerRole(user || null)) return !!branchManagerProfile
+    if (isFinanceManagerRole(user || null)) return !!financeManagerProfile
+    if (isLogisticsManagerRole(user || null)) return !!logisticsManagerProfile
+    return false
   }
 
-  const handleSave = () => {
+  const roleProfile = isDriverRole(user || null)
+    ? driverProfile
+    : isBranchManagerRole(user || null)
+    ? branchManagerProfile
+    : isFinanceManagerRole(user || null)
+    ? financeManagerProfile
+    : isLogisticsManagerRole(user || null)
+    ? logisticsManagerProfile
+    : null
+
+  // ============================================================================
+  // EVENT HANDLERS
+  // ============================================================================
+  const handleSave = async () => {
     setIsSaving(true)
     setSaveError(null)
 
-    // Simulate save and refetch
-    setTimeout(() => {
-      setIsSaving(false)
+    try {
+      // Refetch user data after save
+      await refetch()
+      setSaveSuccess(true)
       setIsEditing(false)
-      setJustSaved(true)
-      refetch()
-
-      setTimeout(() => setJustSaved(false), 3000)
-    }, 1000)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (err) {
+      setSaveError('Failed to save profile. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleCancel = () => {
@@ -267,50 +282,22 @@ export default function EmployeeProfileDetailPage() {
     setSaveError(null)
   }
 
-  const handleTabChange = (tabId: typeof activeTab) => {
+  const handleTabChange = (tabId: TabType) => {
     if (tabId !== 'basic' && !employeeProfileComplete) {
       return
     }
     setActiveTab(tabId)
-    // Reset to view mode for basic tab
-    if (tabId === 'basic') {
-      setIsEditing(false)
-    } else {
-      // For role-specific tabs, enable edit mode so the form shows directly
-      // (instead of "No profile" placeholder)
-      setIsEditing(true)
-    }
+    // Don't reset isEditing when switching tabs - keep edit state
   }
 
-  const renderForm = () => {
-    if (!user) return null
-
-    // Get role-specific profile
-    const roleProfile = getRoleSpecificProfile(user)
-
-    const formProps = {
-      user,
-      profile: roleProfile,  // Now uses fetched profile
-      isEditing,
-      onEdit: () => setIsEditing(true),
-      onSave: handleSave,
-      onCancel: handleCancel
-    }
-
-    if (activeTab === 'basic') {
-      return <EmployeeProfileForm {...formProps} />
-    } else if (activeTab === 'license') {
-      return <DriverProfileForm {...formProps} />
-    } else if (activeTab === 'branch') {
-      return <BranchManagerProfileForm {...formProps} />
-    } else if (activeTab === 'finance') {
-      return <FinanceManagerProfileForm {...formProps} />
-    } else if (activeTab === 'logistics') {
-      return <LogisticsManagerProfileForm {...formProps} />
-    }
-    return <EmployeeProfileForm {...formProps} />
+  const handleEdit = () => {
+    setIsEditing(true)
+    setSaveError(null)
   }
 
+  // ============================================================================
+  // LOADING STATE
+  // ============================================================================
   if (isLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -336,10 +323,78 @@ export default function EmployeeProfileDetailPage() {
     )
   }
 
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+  const renderForm = () => {
+    if (activeTab === 'basic') {
+      // EmployeeProfileForm gets user data directly, not role-specific profile
+      return (
+        <EmployeeProfileForm
+          user={user}
+          profile={null}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    } else if (activeTab === 'license') {
+      return (
+        <DriverProfileForm
+          user={user}
+          profile={roleProfile as DriverProfile | null}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    } else if (activeTab === 'branch') {
+      return (
+        <BranchManagerProfileForm
+          user={user}
+          profile={roleProfile as BranchManagerProfileExtended | null}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    } else if (activeTab === 'finance') {
+      return (
+        <FinanceManagerProfileForm
+          user={user}
+          profile={roleProfile as FinanceManagerProfile | null}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    } else if (activeTab === 'logistics') {
+      return (
+        <LogisticsManagerProfileForm
+          user={user}
+          profile={roleProfile as LogisticsManagerProfile | null}
+          isEditing={isEditing}
+          onEdit={handleEdit}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )
+    }
+    return null
+  }
+
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="container mx-auto p-6 max-w-5xl">
       {/* Back Button */}
-      <Button variant="ghost" onClick={() => router.push('/company-admin/masters/employee-profiles')} className="mb-4">
+      <Button
+        variant="ghost"
+        onClick={() => router.push('/company-admin/masters/employee-profiles')}
+        className="mb-4"
+      >
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back to Employee Profiles
       </Button>
@@ -365,18 +420,34 @@ export default function EmployeeProfileDetailPage() {
                       <span className="text-gray-400">•</span>
                       <span className="text-sm text-green-600 font-medium flex items-center gap-1">
                         <CheckCircle className="w-4 h-4" />
-                        Basic Profile Complete
+                        Profile Complete
                       </span>
-                    </>
-                  )}
-                  {(user.role?.name || user.role?.role_name || user.role?.role_name) && (
-                    <>
-                      <span className="text-gray-400">•</span>
-                      <span className="text-sm text-gray-500">{user.role?.name || user.role?.role_name || user.role?.role_name}</span>
                     </>
                   )}
                 </div>
               </div>
+            </div>
+            <div className="flex gap-2">
+              {!isEditing && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEdit}
+                  className="flex items-center gap-2"
+                >
+                  {employeeProfileComplete ? (
+                    <>
+                      <Pencil className="w-4 h-4" />
+                      Edit
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Create Profile
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -386,92 +457,53 @@ export default function EmployeeProfileDetailPage() {
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                 employeeProfileComplete ? 'bg-green-100 text-green-700' : 'bg-blue-600 text-white'
               }`}>
-                {employeeProfileComplete ? '✓' : activeTab === 'basic' && isEditing ? '⠿' : '1'}
+                {employeeProfileComplete ? '✓' : '1'}
               </div>
-              <span className={`text-sm font-medium ${activeTab === 'basic' ? 'text-blue-600' : 'text-gray-700'}`}>
-                Basic Info
-              </span>
+              <span className="text-sm font-medium text-gray-700">Basic Info</span>
             </div>
-            <div className={`w-12 h-0.5 ${employeeProfileComplete ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+            <div className={`w-16 h-0.5 ${employeeProfileComplete ? 'bg-green-500' : 'bg-gray-300'}`}></div>
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                employeeProfileComplete && activeTab !== 'basic' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                hasRoleSpecificProfile() ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
               }`}>
-                {employeeProfileComplete ? '2' : '⏳'}
+                {hasRoleSpecificProfile() ? '✓' : '2'}
               </div>
-              <span className={`text-sm font-medium ${activeTab !== 'basic' ? 'text-blue-600' : 'text-gray-500'}`}>
-                {profileLabel} Profile
-              </span>
+              <span className="text-sm font-medium text-gray-700">{profileLabel} Profile</span>
             </div>
           </div>
         </CardHeader>
       </Card>
 
       {/* Tabs */}
-      {tabs.length > 1 && (
+      {employeeProfileComplete && config.tabId && (
         <div className="border-b border-gray-200 mb-6">
-          <nav className="flex -mb-px gap-2">
-            {tabs.map((tab) => {
-              const TabIcon = tab.icon
-              const isActive = activeTab === tab.id
-              const isDisabled = tab.id !== 'basic' && !employeeProfileComplete
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id)}
-                  disabled={isDisabled}
-                  className={`flex items-center gap-2 px-6 py-3 border-b-2 font-medium text-sm rounded-t-lg transition-colors ${
-                    isActive
-                      ? 'border-blue-500 text-blue-600 bg-blue-50'
-                      : isDisabled
-                      ? 'border-transparent text-gray-400 cursor-not-allowed bg-gray-50'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <TabIcon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              )
-            })}
+          <nav className="flex gap-6">
+            <button
+              onClick={() => handleTabChange('basic')}
+              className={`pb-3 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'basic'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Basic Info
+            </button>
+            <button
+              onClick={() => handleTabChange(config.tabId!)}
+              className={`pb-3 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === config.tabId
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {config.tabLabel}
+            </button>
           </nav>
         </div>
       )}
 
-      {/* Info Messages */}
-      {!employeeProfileComplete && activeTab === 'basic' && !isEditing && (
-        <Card className="mb-6 border-blue-200 bg-blue-50">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-medium text-blue-800">Step 1: Complete Basic Employee Profile</h4>
-                <p className="text-sm text-blue-700 mt-1">
-                  Fill in the basic employee information first. After completing this, you can add {profileLabel.toLowerCase()}-specific details.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {employeeProfileComplete && activeTab === 'basic' && !isEditing && config.tabId && (
-        <Card className="mb-6 border-green-200 bg-green-50">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-medium text-green-800">Step 1 Complete!</h4>
-                <p className="text-sm text-green-700 mt-1">
-                  Basic employee profile is complete. Now you can add {profileLabel.toLowerCase()}-specific details in the next tab.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Success/Error Messages */}
-      {justSaved && (
+      {saveSuccess && (
         <Card className="mb-6 border-green-200 bg-green-50">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-green-700">
@@ -486,50 +518,36 @@ export default function EmployeeProfileDetailPage() {
         <Card className="mb-6 border-red-200 bg-red-50">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-red-700">
-              <AlertCircle className="w-4 h-4" />
               <span className="font-medium">{saveError}</span>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Form Content */}
-      <div className="mb-20">
-        {renderForm()}
-      </div>
+      {/* Info Messages */}
+      {!employeeProfileComplete && (
+        <Card className="mb-6 border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="text-blue-600">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="font-medium text-blue-800">Complete Employee Profile</h4>
+                <p className="text-sm text-blue-700 mt-1">
+                  Fill in the basic employee information to get started.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Sticky Footer Actions */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-10">
-        <div className="container mx-auto max-w-6xl flex justify-between items-center">
-          <div className="text-sm text-gray-600">
-            {activeTab === 'basic' && !employeeProfileComplete && 'Complete all required fields marked with *'}
-            {activeTab !== 'basic' && `${profileLabel} profile information`}
-          </div>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => router.push('/company-admin/masters/employee-profiles')}>
-              Cancel
-            </Button>
-            {!isEditing ? (
-              <Button onClick={() => setIsEditing(true)}>
-                {activeTab === 'basic' ? (employeeProfileComplete ? 'Edit Basic Info' : 'Create Basic Profile') : `Create ${profileLabel} Profile`}
-              </Button>
-            ) : (
-              <Button type="submit" form="profile-form" disabled={isSaving}>
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
-        </div>
+      {/* Form Content */}
+      <div className="mb-24">
+        {renderForm()}
       </div>
     </div>
   )

@@ -120,6 +120,9 @@ async def get_products(
                     "unit_price": product["unit_price"],
                     "special_price": product.get("special_price"),
                     "weight": product.get("weight", 0),
+                    "weight_type": product.get("weight_type", "fixed"),
+                    "fixed_weight": product.get("fixed_weight"),
+                    "weight_unit": product.get("weight_unit", "kg"),
                     "current_stock": product.get("current_stock", 0),
                     "is_active": product["is_active"],
                     "available_for_all_branches": product.get("available_for_all_branches", True),
@@ -250,6 +253,9 @@ async def get_products_by_category(
                     "unit_price": product["unit_price"],
                     "special_price": product.get("special_price"),
                     "weight": product.get("weight", 0),
+                    "weight_type": product.get("weight_type", "fixed"),
+                    "fixed_weight": product.get("fixed_weight"),
+                    "weight_unit": product.get("weight_unit", "kg"),
                     "current_stock": product.get("current_stock", 0),
                     "available_for_all_branches": product.get("available_for_all_branches", True)
                 })

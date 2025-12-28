@@ -50,16 +50,17 @@ export interface FinanceManagerProfile {
   user_id: string
   employee_profile_id?: string
   can_approve_payments?: boolean
-  max_approval_amount?: number
-  can_manage_payroll?: boolean
-  can_view_financial_reports?: boolean
-  can_create_invoices?: boolean
-  can_manage_expenses?: boolean
+  max_approval_limit?: number
+  managed_branches?: string[]
   access_levels?: {
     can_view_all_branches?: boolean
     can_access_bank_accounts?: boolean
     can_handle_tax_compliance?: boolean
     can_audit_transactions?: boolean
+    can_manage_payroll?: boolean
+    can_view_financial_reports?: boolean
+    can_create_invoices?: boolean
+    can_manage_expenses?: boolean
   }
   created_at?: string
   updated_at?: string
@@ -71,13 +72,15 @@ export interface LogisticsManagerProfile {
   id?: string
   user_id: string
   employee_profile_id?: string
-  managed_branches?: string[]
+  managed_zones?: string[]
+  can_assign_drivers?: boolean
+  can_approve_overtime?: boolean
   can_plan_routes?: boolean
-  can_dispatch_vehicles?: boolean
-  can_manage_drivers?: boolean
-  can_track_shipments?: boolean
-  can_handle_emergency_dispatch?: boolean
-  fleet_management_permissions?: {
+  vehicle_management_permissions?: {
+    can_dispatch_vehicles?: boolean
+    can_manage_drivers?: boolean
+    can_track_shipments?: boolean
+    can_handle_emergency_dispatch?: boolean
     can_maintain_vehicles?: boolean
     can_purchase_vehicles?: boolean
     can_sell_vehicles?: boolean
@@ -157,13 +160,15 @@ export interface FinanceManagerProfileForm {
 }
 
 export interface LogisticsManagerProfileForm {
-  managed_branches?: string[]
+  managed_zones?: string[]
+  can_assign_drivers?: boolean
+  can_approve_overtime?: boolean
   can_plan_routes?: boolean
-  can_dispatch_vehicles?: boolean
-  can_manage_drivers?: boolean
-  can_track_shipments?: boolean
-  can_handle_emergency_dispatch?: boolean
-  fleet_management_permissions?: {
+  vehicle_management_permissions?: {
+    can_dispatch_vehicles?: boolean
+    can_manage_drivers?: boolean
+    can_track_shipments?: boolean
+    can_handle_emergency_dispatch?: boolean
     can_maintain_vehicles?: boolean
     can_purchase_vehicles?: boolean
     can_sell_vehicles?: boolean
@@ -324,7 +329,7 @@ export const profileApi = createApi({
 
     // Branch Manager Profile endpoints
     getBranchManagerProfile: builder.query<BranchManagerProfileExtended, string>({
-      query: (userId) => `company/profiles/branch-manager/${userId}`,
+      query: (userId) => `company/profiles/branch-managers/${userId}`,
       providesTags: ['BranchManagerProfile'],
     }),
     getBranchManagerProfileByUser: builder.query<BranchManagerProfileExtended, string>({
@@ -333,23 +338,23 @@ export const profileApi = createApi({
     }),
     createBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { userId: string; profile: BranchManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/branch-manager`,
+        url: `company/profiles/branch-managers`,
         method: 'POST',
         body: { employee_profile_id: userId, ...profile },
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
     }),
-    updateBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { userId: string; profile: Partial<BranchManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/branch-manager/${userId}`,
+    updateBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { profileId: string; profile: Partial<BranchManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/branch-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
     }),
     deleteBranchManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/branch-manager/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/branch-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
@@ -357,7 +362,7 @@ export const profileApi = createApi({
 
     // Finance Manager Profile endpoints
     getFinanceManagerProfile: builder.query<FinanceManagerProfile, string>({
-      query: (userId) => `company/profiles/finance-manager/${userId}`,
+      query: (userId) => `company/profiles/finance-managers/${userId}`,
       providesTags: ['FinanceManagerProfile'],
     }),
     getFinanceManagerProfileByUser: builder.query<FinanceManagerProfile, string>({
@@ -366,23 +371,23 @@ export const profileApi = createApi({
     }),
     createFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { userId: string; profile: FinanceManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/finance-manager`,
+        url: `company/profiles/finance-managers`,
         method: 'POST',
         body: { employee_profile_id: userId, ...profile },
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
     }),
-    updateFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { userId: string; profile: Partial<FinanceManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/finance-manager/${userId}`,
+    updateFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { profileId: string; profile: Partial<FinanceManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/finance-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
     }),
     deleteFinanceManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/finance-manager/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/finance-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
@@ -390,7 +395,7 @@ export const profileApi = createApi({
 
     // Logistics Manager Profile endpoints
     getLogisticsManagerProfile: builder.query<LogisticsManagerProfile, string>({
-      query: (userId) => `company/profiles/logistics-manager/${userId}`,
+      query: (userId) => `company/profiles/logistics-managers/${userId}`,
       providesTags: ['LogisticsManagerProfile'],
     }),
     getLogisticsManagerProfileByUser: builder.query<LogisticsManagerProfile, string>({
@@ -399,23 +404,23 @@ export const profileApi = createApi({
     }),
     createLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { userId: string; profile: LogisticsManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/logistics-manager`,
+        url: `company/profiles/logistics-managers`,
         method: 'POST',
         body: { employee_profile_id: userId, ...profile },
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
     }),
-    updateLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { userId: string; profile: Partial<LogisticsManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/logistics-manager/${userId}`,
+    updateLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { profileId: string; profile: Partial<LogisticsManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/logistics-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
     }),
     deleteLogisticsManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/logistics-manager/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/logistics-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],

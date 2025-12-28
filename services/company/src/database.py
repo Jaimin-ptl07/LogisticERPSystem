@@ -85,6 +85,12 @@ class ServiceType(enum.Enum):
     FREIGHT = "freight"
 
 
+class WeightType(str, enum.Enum):
+    """Weight type enum for products"""
+    FIXED = "fixed"
+    VARIABLE = "variable"
+
+
 # Models
 class Branch(Base):
     """Branch model"""
@@ -111,6 +117,40 @@ class Branch(Base):
     vehicles = relationship("Vehicle", back_populates="branch")
 
 
+class BusinessTypeModel(Base):
+    """Business Type model - dynamic business types per tenant"""
+    __tablename__ = "business_types"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
+    name = Column(String(100), nullable=False)
+    code = Column(String(50), nullable=False)
+    description = Column(String(500))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    customers = relationship("Customer", back_populates="business_type_relation")
+
+
+class VehicleTypeModel(Base):
+    """Vehicle Type model - dynamic vehicle types per tenant"""
+    __tablename__ = "vehicle_types"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
+    name = Column(String(100), nullable=False)
+    code = Column(String(50), nullable=False)
+    description = Column(String(500))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    vehicles = relationship("Vehicle", back_populates="vehicle_type_relation")
+
+
 class Customer(Base):
     """Customer model"""
     __tablename__ = "customers"
@@ -126,6 +166,9 @@ class Customer(Base):
     city = Column(String(100))
     state = Column(String(100))
     postal_code = Column(String(20))
+    # New foreign key to business_types table
+    business_type_id = Column(UUID(as_uuid=True), ForeignKey("business_types.id", ondelete="SET NULL"))
+    # Keep old enum for backward compatibility during migration
     business_type = Column(
         SQLEnum(
             BusinessType,
@@ -142,6 +185,7 @@ class Customer(Base):
 
     # Relationships
     home_branch = relationship("Branch", back_populates="customers")
+    business_type_relation = relationship("BusinessTypeModel", back_populates="customers")
 
 
 class Vehicle(Base):
@@ -155,13 +199,17 @@ class Vehicle(Base):
     make = Column(String(50))
     model = Column(String(50))
     year = Column(Integer)
+    # New foreign key to vehicle_types table
+    vehicle_type_id = Column(UUID(as_uuid=True), ForeignKey("vehicle_types.id", ondelete="SET NULL"))
+    # Keep old enum for backward compatibility during migration - now nullable
     vehicle_type = Column(
         SQLEnum(
             VehicleType,
             name="vehicle_type",
             native_enum=True,
             values_callable=lambda enum_cls: [e.value for e in enum_cls]
-        )
+        ),
+        nullable=True  # Make nullable to support new vehicle_type_id
     )
     capacity_weight = Column(Float)  # in kg
     capacity_volume = Column(Float)  # in cubic meters
@@ -182,6 +230,7 @@ class Vehicle(Base):
 
     # Relationships
     branch = relationship("Branch", back_populates="vehicles")
+    vehicle_type_relation = relationship("VehicleTypeModel", back_populates="vehicles")
 
 
 class ProductCategory(Base):
@@ -214,11 +263,28 @@ class Product(Base):
     description = Column(String(500))
     unit_price = Column(Float, nullable=False)
     special_price = Column(Float)  # For specific customers or promotions
-    weight = Column(Float)  # in kg
+
+    # Weight configuration - supports fixed and variable weight types
+    weight_type = Column(
+        SQLEnum(
+            WeightType,
+            name="weight_type",
+            native_enum=True,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls]
+        ),
+        default=WeightType.FIXED,
+        nullable=False
+    )
+    weight = Column(Float)  # Deprecated - use fixed_weight for fixed type products
+    fixed_weight = Column(Float)  # For FIXED weight type - standard weight
+    weight_unit = Column(String(20), default="kg")  # Weight unit (kg, lb, g, etc.)
+
+    # Dimensions
     length = Column(Float)  # in cm
     width = Column(Float)   # in cm
     height = Column(Float)  # in cm
     volume = Column(Float)  # in cubic meters (calculated)
+
     handling_requirements = Column(JSON)  # ["fragile", "hazardous", "refrigerated"]
     min_stock_level = Column(Integer, default=0)
     max_stock_level = Column(Integer)
@@ -347,6 +413,8 @@ class EmployeeProfile(Base):
     date_of_birth = Column(DateTime(timezone=True))
     gender = Column(String(10))  # male, female, other
     blood_group = Column(String(5))
+    marital_status = Column(String(20))  # single, married, divorced, widowed
+    nationality = Column(String(50), default='India')
     emergency_contact_name = Column(String(100))
     emergency_contact_phone = Column(String(20))
     address = Column(Text)
@@ -365,6 +433,7 @@ class EmployeeProfile(Base):
     bank_ifsc = Column(String(20))
     pan_number = Column(String(20))
     aadhar_number = Column(String(20))
+    passport_number = Column(String(20))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

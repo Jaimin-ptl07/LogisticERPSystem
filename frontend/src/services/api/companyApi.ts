@@ -205,13 +205,15 @@ export interface Customer {
   city?: string
   state?: string
   postal_code?: string
-  business_type?: string
+  business_type?: string  // Deprecated - old enum
+  business_type_id?: string  // New foreign key to business_types table
   credit_limit: number
   pricing_tier: string
   is_active: boolean
   created_at: string
   updated_at?: string
   home_branch?: Branch
+  business_type_relation?: BusinessTypeModel
 }
 
 export interface Vehicle {
@@ -223,6 +225,7 @@ export interface Vehicle {
   model?: string
   year?: number
   vehicle_type?: string
+  vehicle_type_id?: string
   capacity_weight?: number
   capacity_volume?: number
   status: string
@@ -232,6 +235,7 @@ export interface Vehicle {
   created_at: string
   updated_at?: string
   branch?: Branch
+  vehicle_type_relation?: VehicleTypeModel
 }
 
 export interface ProductCategory {
@@ -247,6 +251,28 @@ export interface ProductCategory {
   children?: ProductCategory[]
 }
 
+export interface BusinessTypeModel {
+  id: string
+  tenant_id: string
+  name: string
+  code: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
+export interface VehicleTypeModel {
+  id: string
+  tenant_id: string
+  name: string
+  code: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
 export interface Product {
   id: string
   tenant_id: string
@@ -256,7 +282,11 @@ export interface Product {
   description?: string
   unit_price: number
   special_price?: number
-  weight?: number
+  // Weight configuration - supports fixed and variable weight types
+  weight_type?: 'fixed' | 'variable'
+  weight?: number  // Deprecated - use fixed_weight
+  fixed_weight?: number  // For FIXED weight type
+  weight_unit?: string  // Weight unit (kg, lb, g, etc.)
   length?: number
   width?: number
   height?: number
@@ -313,7 +343,8 @@ export interface CustomerCreate {
   city?: string
   state?: string
   postal_code?: string
-  business_type?: string
+  business_type?: string  // Deprecated - old enum
+  business_type_id?: string  // New foreign key to business_types table
   credit_limit?: number
   pricing_tier?: string
   is_active?: boolean
@@ -341,7 +372,11 @@ export interface ProductCreate {
   description?: string
   unit_price: number
   special_price?: number
-  weight?: number
+  // Weight configuration - supports fixed and variable weight types
+  weight_type?: 'fixed' | 'variable'
+  weight?: number  // Deprecated - use fixed_weight
+  fixed_weight?: number  // For FIXED weight type
+  weight_unit?: string  // Weight unit (kg, lb, g, etc.)
   length?: number
   width?: number
   height?: number
@@ -358,6 +393,20 @@ export interface ProductCategoryCreate {
   name: string
   description?: string
   parent_id?: string
+  is_active?: boolean
+}
+
+export interface BusinessTypeModelCreate {
+  name: string
+  code: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface VehicleTypeModelCreate {
+  name: string
+  code: string
+  description?: string
   is_active?: boolean
 }
 
@@ -480,7 +529,7 @@ export interface UserProfileUpdate {
 export const companyApi = createApi({
   reducerPath: 'companyApi',
   baseQuery: baseQuery,
-  tagTypes: ['Branch', 'Customer', 'Vehicle', 'Product', 'ProductCategory', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument'],
+  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument'],
   endpoints: (builder) => ({
     // Branch endpoints
     getBranches: builder.query<{ items: Branch[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
@@ -567,19 +616,16 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['Customer'],
     }),
-    getBusinessTypes: builder.query<string[], void>({
-      query: () => 'company/customers/business-types/',
-      providesTags: ['Customer'],
-    }),
 
     // Vehicle endpoints
-    getVehicles: builder.query<{ items: Vehicle[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; vehicle_type?: string; status?: string; branch_id?: string; is_active?: boolean }>({
-      query: ({ page = 1, per_page = 20, search, vehicle_type, status, branch_id, is_active }) => {
+    getVehicles: builder.query<{ items: Vehicle[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; vehicle_type?: string; vehicle_type_id?: string; status?: string; branch_id?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, vehicle_type, vehicle_type_id, status, branch_id, is_active }) => {
         const params = new URLSearchParams()
         params.append('page', page.toString())
         params.append('per_page', per_page.toString())
         if (search) params.append('search', search)
         if (vehicle_type) params.append('vehicle_type', vehicle_type)
+        if (vehicle_type_id) params.append('vehicle_type_id', vehicle_type_id)
         if (status) params.append('status', status)
         if (branch_id) params.append('branch_id', branch_id)
         if (is_active !== undefined) params.append('is_active', is_active.toString())
@@ -633,10 +679,6 @@ export const companyApi = createApi({
       },
       providesTags: ['Vehicle'],
     }),
-    getVehicleTypes: builder.query<string[], void>({
-      query: () => 'company/vehicles/vehicle-types',
-      providesTags: ['Vehicle'],
-    }),
     getVehicleStatusOptions: builder.query<string[], void>({
       query: () => 'company/vehicles/status-options',
       providesTags: ['Vehicle'],
@@ -686,6 +728,102 @@ export const companyApi = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: ['ProductCategory'],
+    }),
+
+    // BusinessType endpoints
+    getBusinessTypes: builder.query<{ items: BusinessTypeModel[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, is_active }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (search) params.append('search', search)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/business-types?${params}`
+      },
+      providesTags: ['BusinessTypeModel'],
+    }),
+    getAllBusinessTypes: builder.query<BusinessTypeModel[], { is_active?: boolean }>({
+      query: ({ is_active = true }) => {
+        const params = new URLSearchParams()
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/business-types/all?${params}`
+      },
+      providesTags: ['BusinessTypeModel'],
+    }),
+    getBusinessType: builder.query<BusinessTypeModel, string>({
+      query: (id) => `company/business-types/${id}`,
+      providesTags: ['BusinessTypeModel'],
+    }),
+    createBusinessType: builder.mutation<BusinessTypeModel, BusinessTypeModelCreate>({
+      query: (businessType) => ({
+        url: 'company/business-types/',
+        method: 'POST',
+        body: businessType,
+      }),
+      invalidatesTags: ['BusinessTypeModel', 'Customer'],
+    }),
+    updateBusinessType: builder.mutation<BusinessTypeModel, { id: string; businessType: Partial<BusinessTypeModelCreate> }>({
+      query: ({ id, businessType }) => ({
+        url: `company/business-types/${id}`,
+        method: 'PUT',
+        body: businessType,
+      }),
+      invalidatesTags: ['BusinessTypeModel', 'Customer'],
+    }),
+    deleteBusinessType: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/business-types/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['BusinessTypeModel', 'Customer'],
+    }),
+
+    // VehicleType endpoints
+    getVehicleTypes: builder.query<{ items: VehicleTypeModel[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, is_active }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (search) params.append('search', search)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/vehicle-types?${params}`
+      },
+      providesTags: ['VehicleTypeModel'],
+    }),
+    getAllVehicleTypes: builder.query<VehicleTypeModel[], { is_active?: boolean }>({
+      query: ({ is_active = true }) => {
+        const params = new URLSearchParams()
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/vehicle-types/all?${params}`
+      },
+      providesTags: ['VehicleTypeModel'],
+    }),
+    getVehicleType: builder.query<VehicleTypeModel, string>({
+      query: (id) => `company/vehicle-types/${id}`,
+      providesTags: ['VehicleTypeModel'],
+    }),
+    createVehicleType: builder.mutation<VehicleTypeModel, VehicleTypeModelCreate>({
+      query: (vehicleType) => ({
+        url: 'company/vehicle-types/',
+        method: 'POST',
+        body: vehicleType,
+      }),
+      invalidatesTags: ['VehicleTypeModel', 'Vehicle'],
+    }),
+    updateVehicleType: builder.mutation<VehicleTypeModel, { id: string; vehicleType: Partial<VehicleTypeModelCreate> }>({
+      query: ({ id, vehicleType }) => ({
+        url: `company/vehicle-types/${id}`,
+        method: 'PUT',
+        body: vehicleType,
+      }),
+      invalidatesTags: ['VehicleTypeModel', 'Vehicle'],
+    }),
+    deleteVehicleType: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/vehicle-types/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['VehicleTypeModel', 'Vehicle'],
     }),
 
     // Product endpoints
@@ -837,10 +975,36 @@ export const companyApi = createApi({
       invalidatesTags: ['User', 'UserProfile'],
     }),
     deleteUser: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `company/users/${id}`,
-        method: 'DELETE',
-      }),
+      queryFn: async (id, _queryApi, _extraOptions, baseQuery) => {
+        // First, get the user from company service to find the auth user_id
+        const userResponse = await baseQuery({
+          url: `company/users/${id}`,
+          method: 'GET',
+        })
+
+        if (userResponse.error) {
+          return { error: userResponse.error }
+        }
+
+        const user = userResponse.data as User
+        const authUserId = user.user_id
+
+        if (!authUserId) {
+          return { error: { status: 400, data: { message: 'User does not have an associated auth account' } } }
+        }
+
+        // Delete from auth service (this will cascade to company service)
+        const deleteResponse = await baseQuery({
+          url: `auth/users/${authUserId}`,
+          method: 'DELETE',
+        })
+
+        if (deleteResponse.error) {
+          return { error: deleteResponse.error }
+        }
+
+        return { data: undefined }
+      },
       invalidatesTags: ['User'],
     }),
     inviteUser: builder.mutation<void, UserInvitation>({
@@ -1057,7 +1221,6 @@ export const {
   useCreateCustomerMutation,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
-  useGetBusinessTypesQuery,
   useGetVehiclesQuery,
   useLazyGetVehiclesQuery,
   useGetVehicleQuery,
@@ -1066,7 +1229,6 @@ export const {
   useDeleteVehicleMutation,
   useUpdateVehicleStatusMutation,
   useGetAvailableVehiclesQuery,
-  useGetVehicleTypesQuery,
   useGetVehicleStatusOptionsQuery,
   useGetProductCategoriesQuery,
   useGetProductCategoryTreeQuery,
@@ -1074,6 +1236,18 @@ export const {
   useCreateProductCategoryMutation,
   useUpdateProductCategoryMutation,
   useDeleteProductCategoryMutation,
+  useGetBusinessTypesQuery,
+  useGetAllBusinessTypesQuery,
+  useGetBusinessTypeQuery,
+  useCreateBusinessTypeMutation,
+  useUpdateBusinessTypeMutation,
+  useDeleteBusinessTypeMutation,
+  useGetVehicleTypesQuery,
+  useGetAllVehicleTypesQuery,
+  useGetVehicleTypeQuery,
+  useCreateVehicleTypeMutation,
+  useUpdateVehicleTypeMutation,
+  useDeleteVehicleTypeMutation,
   useGetProductsQuery,
   useLazyGetProductsQuery,
   useGetProductQuery,

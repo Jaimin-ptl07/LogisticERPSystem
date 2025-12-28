@@ -327,7 +327,7 @@ export default function ProductDetailsPage() {
       </div>
 
       {/* Product Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -372,10 +372,10 @@ export default function ProductDetailsPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </div> */}
 
       {/* Detailed Tabs */}
-      <Tabs defaultValue="overview" className="w-full">
+      {/* <Tabs defaultValue="overview" className="w-full">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="description">Description</TabsTrigger>
@@ -605,7 +605,7 @@ export default function ProductDetailsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+      </Tabs> */}
     </div>
   );
 }

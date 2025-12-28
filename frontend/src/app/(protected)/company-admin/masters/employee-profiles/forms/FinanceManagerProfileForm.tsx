@@ -28,16 +28,16 @@ export default function FinanceManagerProfileForm({
 }: FinanceManagerProfileFormProps) {
   const [formData, setFormData] = useState({
     can_approve_payments: false,
-    max_approval_amount: 0,
-    can_manage_payroll: false,
-    can_view_financial_reports: false,
-    can_create_invoices: false,
-    can_manage_expenses: false,
+    max_approval_limit: 0,
     access_levels: {
       can_view_all_branches: false,
       can_access_bank_accounts: false,
       can_handle_tax_compliance: false,
-      can_audit_transactions: false
+      can_audit_transactions: false,
+      can_manage_payroll: false,
+      can_view_financial_reports: false,
+      can_create_invoices: false,
+      can_manage_expenses: false
     }
   })
 
@@ -48,16 +48,16 @@ export default function FinanceManagerProfileForm({
     if (profile) {
       setFormData({
         can_approve_payments: profile.can_approve_payments || false,
-        max_approval_amount: profile.max_approval_amount || 0,
-        can_manage_payroll: profile.can_manage_payroll || false,
-        can_view_financial_reports: profile.can_view_financial_reports || false,
-        can_create_invoices: profile.can_create_invoices || false,
-        can_manage_expenses: profile.can_manage_expenses || false,
+        max_approval_limit: profile.max_approval_limit || 0,
         access_levels: {
           can_view_all_branches: profile.access_levels?.can_view_all_branches || false,
           can_access_bank_accounts: profile.access_levels?.can_access_bank_accounts || false,
           can_handle_tax_compliance: profile.access_levels?.can_handle_tax_compliance || false,
-          can_audit_transactions: profile.access_levels?.can_audit_transactions || false
+          can_audit_transactions: profile.access_levels?.can_audit_transactions || false,
+          can_manage_payroll: profile.access_levels?.can_manage_payroll || false,
+          can_view_financial_reports: profile.access_levels?.can_view_financial_reports || false,
+          can_create_invoices: profile.access_levels?.can_create_invoices || false,
+          can_manage_expenses: profile.access_levels?.can_manage_expenses || false
         }
       })
     }
@@ -85,7 +85,7 @@ export default function FinanceManagerProfileForm({
     e.preventDefault()
     try {
       if (profile) {
-        await updateProfile({ userId: user.id, profile: formData }).unwrap()
+        await updateProfile({ profileId: profile.id!, profile: formData }).unwrap()
       } else {
         await createProfile({ userId: user.id, profile: formData }).unwrap()
       }
@@ -125,38 +125,32 @@ export default function FinanceManagerProfileForm({
           <CardContent className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Max Approval Amount</label>
-              <p className="text-gray-900">₹{profile.max_approval_amount?.toLocaleString() || 0}</p>
+              <p className="text-gray-900">₹{profile.max_approval_limit?.toLocaleString() || 0}</p>
             </div>
 
             <div className="space-y-3">
-              <h4 className="font-medium text-gray-900">Financial Permissions</h4>
+              <h4 className="font-medium text-gray-900">Permissions</h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <div className="flex items-center gap-2">
                   <CheckCircle className={`w-4 h-4 ${profile.can_approve_payments ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Approve Payments</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_manage_payroll ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.access_levels?.can_manage_payroll ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Manage Payroll</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_view_financial_reports ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.access_levels?.can_view_financial_reports ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">View Financial Reports</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_create_invoices ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.access_levels?.can_create_invoices ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Create Invoices</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className={`w-4 h-4 ${profile.can_manage_expenses ? 'text-green-600' : 'text-gray-400'}`} />
+                  <CheckCircle className={`w-4 h-4 ${profile.access_levels?.can_manage_expenses ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">Manage Expenses</span>
                 </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h4 className="font-medium text-gray-900 mt-4">Access Levels</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <div className="flex items-center gap-2">
                   <CheckCircle className={`w-4 h-4 ${profile.access_levels?.can_view_all_branches ? 'text-green-600' : 'text-gray-400'}`} />
                   <span className="text-sm">View All Branches</span>
@@ -195,8 +189,8 @@ export default function FinanceManagerProfileForm({
                 type="number"
                 min="0"
                 step="0.01"
-                value={formData.max_approval_amount}
-                onChange={(e) => handleInputChange('max_approval_amount', parseFloat(e.target.value) || 0)}
+                value={formData.max_approval_limit}
+                onChange={(e) => handleInputChange('max_approval_limit', parseFloat(e.target.value) || 0)}
                 placeholder="Enter max approval amount"
               />
             </div>
@@ -214,11 +208,15 @@ export default function FinanceManagerProfileForm({
                 />
                 <span className="text-sm">Approve Payments</span>
               </label>
+            </div>
+
+            <h4 className="font-medium text-gray-900 mt-4">Access Levels</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_manage_payroll}
-                  onChange={(e) => handleInputChange('can_manage_payroll', e.target.checked)}
+                  checked={formData.access_levels.can_manage_payroll}
+                  onChange={(e) => handleInputChange('access_levels.can_manage_payroll', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Manage Payroll</span>
@@ -226,8 +224,8 @@ export default function FinanceManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_view_financial_reports}
-                  onChange={(e) => handleInputChange('can_view_financial_reports', e.target.checked)}
+                  checked={formData.access_levels.can_view_financial_reports}
+                  onChange={(e) => handleInputChange('access_levels.can_view_financial_reports', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">View Financial Reports</span>
@@ -235,8 +233,8 @@ export default function FinanceManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_create_invoices}
-                  onChange={(e) => handleInputChange('can_create_invoices', e.target.checked)}
+                  checked={formData.access_levels.can_create_invoices}
+                  onChange={(e) => handleInputChange('access_levels.can_create_invoices', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Create Invoices</span>
@@ -244,16 +242,12 @@ export default function FinanceManagerProfileForm({
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.can_manage_expenses}
-                  onChange={(e) => handleInputChange('can_manage_expenses', e.target.checked)}
+                  checked={formData.access_levels.can_manage_expenses}
+                  onChange={(e) => handleInputChange('access_levels.can_manage_expenses', e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm">Manage Expenses</span>
               </label>
-            </div>
-
-            <h4 className="font-medium text-gray-900 mt-4">Access Levels</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
