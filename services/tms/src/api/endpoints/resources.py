@@ -361,7 +361,8 @@ async def get_orders(
                     "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
                     "status": order.get("status", "unknown"),
                     "total": order.get("total_amount", 0),
-                    "weight": sum(item.get("total_weight", 0) or 0 for item in order.get("items", [])),
+                    # Use order's total_weight directly, or sum item weights if not available
+                    "weight": order.get("total_weight", 0) or sum(item.get("weight", 0) or 0 for item in order.get("items", [])),
                     "volume": sum(item.get("volume", 0) or 0 for item in order.get("items", [])),
                     "date": date_obj,
                     "priority": order.get("priority", "medium"),

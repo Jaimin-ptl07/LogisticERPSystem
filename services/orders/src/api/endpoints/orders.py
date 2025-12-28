@@ -264,6 +264,9 @@ async def list_orders(
             'order_type': order.order_type,
             'priority': order.priority,
             'total_amount': float(order.total_amount) if order.total_amount else 0,
+            'total_weight': float(order.total_weight) if order.total_weight else 0,
+            'total_volume': float(order.total_volume) if order.total_volume else 0,
+            'package_count': order.package_count if order.package_count else 0,
             'payment_type': order.payment_type,
             'pickup_date': order.pickup_date,
             'delivery_date': order.delivery_date,
@@ -403,6 +406,7 @@ async def create_order(
 
     # Order service will use the tenant_id from the token
     order = await order_service.create_order(order_data, user_id, tenant_id)
+
     return order
 
 
