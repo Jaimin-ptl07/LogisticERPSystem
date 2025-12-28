@@ -702,6 +702,16 @@ VALUES
     'update',
     'Update driver information'
 ),
+(
+    'drivers',
+    'read',
+    'Read driver information'
+),
+(
+    'drivers',
+    'read_all',
+    'Read all driver information'
+),
 -- Driver Service permissions
 (
     'driver',
