@@ -34,6 +34,7 @@ import {
   PowerOff,
   Trash2,
   AlertCircle,
+  GitBranch,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -193,6 +194,51 @@ export default function VehiclesPage() {
       vehicle.vehicle_type_relation?.name ||
       vehicle.vehicle_type?.replace("_", " ") ||
       "N/A"
+    );
+  };
+
+  const getBranchesDisplay = (vehicle: any) => {
+    // If available for all branches, show "All Branches"
+    if (vehicle.available_for_all_branches) {
+      return (
+        <div className="flex items-center text-sm text-gray-900">
+          <GitBranch className="w-3 h-3 mr-1 text-blue-500" />
+          <span className="font-medium">All Branches</span>
+        </div>
+      );
+    }
+
+    // Show assigned branches
+    const branches = vehicle.branches || [];
+    if (branches.length === 0) {
+      return (
+        <div className="flex items-center text-sm text-gray-400">
+          <GitBranch className="w-3 h-3 mr-1" />
+          <span>None</span>
+        </div>
+      );
+    }
+
+    // Show first 2 branches and count for remaining
+    const displayBranches = branches.slice(0, 2);
+    const remainingCount = branches.length - 2;
+
+    return (
+      <div className="space-y-1">
+        {displayBranches.map((vb: any) => (
+          <div key={vb.branch.id} className="flex items-center text-sm text-gray-900">
+            <GitBranch className="w-3 h-3 mr-1 text-blue-500 flex-shrink-0" />
+            <span className="truncate" title={vb.branch.name}>
+              {vb.branch.name}
+            </span>
+          </div>
+        ))}
+        {remainingCount > 0 && (
+          <div className="text-xs text-gray-500 ml-4">
+            +{remainingCount} more
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -434,7 +480,7 @@ export default function VehiclesPage() {
                       <TableHead>Make/Model</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Capacity</TableHead>
-                      <TableHead>Branch</TableHead>
+                      <TableHead>Branches</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Last Maintenance</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -488,12 +534,7 @@ export default function VehiclesPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center text-sm text-gray-900">
-                            <Building className="w-3 h-3 mr-1" />
-                            {vehicle.branch?.name || "Not assigned"}
-                          </div>
-                        </TableCell>
+                        <TableCell>{getBranchesDisplay(vehicle)}</TableCell>
                         <TableCell>
                           {getStatusBadge(vehicle.status || "")}
                         </TableCell>

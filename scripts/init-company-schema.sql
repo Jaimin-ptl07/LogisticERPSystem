@@ -63,7 +63,6 @@ END $$;
 CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    home_branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
     code VARCHAR(20) UNIQUE NOT NULL,
     name VARCHAR(100) NOT NULL,
     phone VARCHAR(20),
@@ -76,15 +75,25 @@ CREATE TABLE IF NOT EXISTS customers (
     credit_limit DECIMAL(12,2) DEFAULT 0,
     pricing_tier VARCHAR(20) DEFAULT 'standard',
     is_active BOOLEAN DEFAULT true,
+    available_for_all_branches BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Junction table for customer-branch relationships (for customers not available in all branches)
+CREATE TABLE IF NOT EXISTS customer_branches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(customer_id, branch_id)
 );
 
 -- Create vehicles table
 CREATE TABLE IF NOT EXISTS vehicles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
     plate_number VARCHAR(20) UNIQUE NOT NULL,
     make VARCHAR(50),
     model VARCHAR(50),
@@ -96,8 +105,19 @@ CREATE TABLE IF NOT EXISTS vehicles (
     last_maintenance TIMESTAMP WITH TIME ZONE,
     next_maintenance TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT true,
+    available_for_all_branches BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Junction table for vehicle-branch relationships (for vehicles not available in all branches)
+CREATE TABLE IF NOT EXISTS vehicle_branches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(vehicle_id, branch_id)
 );
 
 -- Create product_categories table
@@ -182,9 +202,10 @@ CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_tenant ON vehicles(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_branches_manager ON branches(manager_id);
-CREATE INDEX IF NOT EXISTS idx_customers_branch ON customers(home_branch_id);
 CREATE INDEX IF NOT EXISTS idx_customers_business_type ON customers(business_type);
-CREATE INDEX IF NOT EXISTS idx_vehicles_branch ON vehicles(branch_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_branches_vehicle_id ON vehicle_branches(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_branches_branch_id ON vehicle_branches(branch_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_branches_tenant_id ON vehicle_branches(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);
 CREATE INDEX IF NOT EXISTS idx_vehicles_type ON vehicles(vehicle_type);
 CREATE INDEX IF NOT EXISTS idx_pricing_tenant_zone ON pricing_rules(tenant_id, zone_origin, zone_destination);
@@ -195,6 +216,9 @@ CREATE INDEX IF NOT EXISTS idx_products_stock ON products(current_stock, min_sto
 CREATE INDEX idx_product_branches_product_id ON product_branches(product_id);
 CREATE INDEX idx_product_branches_branch_id ON product_branches(branch_id);
 CREATE INDEX idx_product_branches_tenant_id ON product_branches(tenant_id);
+CREATE INDEX idx_customer_branches_customer_id ON customer_branches(customer_id);
+CREATE INDEX idx_customer_branches_branch_id ON customer_branches(branch_id);
+CREATE INDEX idx_customer_branches_tenant_id ON customer_branches(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_product_categories_tenant ON product_categories(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_product_categories_parent ON product_categories(parent_id);
 CREATE INDEX IF NOT EXISTS idx_service_zones_tenant ON service_zones(tenant_id);

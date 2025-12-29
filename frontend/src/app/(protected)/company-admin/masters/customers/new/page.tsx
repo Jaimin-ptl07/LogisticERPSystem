@@ -45,7 +45,8 @@ export default function NewCustomerPage() {
     useCreateCustomerMutation();
 
   const [formData, setFormData] = useState<CustomerCreate>({
-    home_branch_id: "",
+    branch_ids: [],
+    available_for_all_branches: true,
     code: "",
     name: "",
     phone: "",
@@ -59,9 +60,11 @@ export default function NewCustomerPage() {
     credit_limit: 0,
     pricing_tier: "standard",
     is_active: true,
-  });
+  } as CustomerCreate);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isAvailableForAllBranches, setIsAvailableForAllBranches] = useState(true);
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -86,6 +89,11 @@ export default function NewCustomerPage() {
     }
     if (formData.credit_limit && formData.credit_limit < 0) {
       newErrors.credit_limit = "Credit limit must be positive";
+    }
+
+    // Validate branches if not available for all
+    if (!isAvailableForAllBranches && selectedBranches.length === 0) {
+      newErrors.branches = "Please select at least one branch";
     }
 
     // Only validate business_type_id if business types are loaded
@@ -122,6 +130,11 @@ export default function NewCustomerPage() {
           : {}),
         credit_limit: formData.credit_limit || 0,
         pricing_tier: formData.pricing_tier || "standard",
+        // Branch availability
+        available_for_all_branches: isAvailableForAllBranches,
+        // Only include branch_ids if not available for all branches
+        ...(!isAvailableForAllBranches &&
+          selectedBranches.length > 0 && { branch_ids: selectedBranches }),
       };
 
       // Remove business_type_id from payload if it's null/empty
@@ -309,6 +322,81 @@ export default function NewCustomerPage() {
                 </select>
               </div>
             </div>
+
+            {/* Branch Availability - Same pattern as products */}
+            <div>
+              <Label className="text-sm font-medium text-gray-700 mb-3 block">
+                Branch Availability
+              </Label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="available_for_all_branches"
+                    checked={isAvailableForAllBranches}
+                    onChange={(e) =>
+                      setIsAvailableForAllBranches(e.target.checked)
+                    }
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <Label
+                    htmlFor="available_for_all_branches"
+                    className="text-sm font-medium text-gray-900"
+                  >
+                    Available for all branches
+                  </Label>
+                </div>
+
+                {!isAvailableForAllBranches && (
+                  <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Select specific branches:
+                    </Label>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {branches?.map((branch: any) => (
+                        <div
+                          key={branch.id}
+                          className="flex items-center space-x-2"
+                        >
+                          <input
+                            type="checkbox"
+                            id={`branch_${branch.id}`}
+                            checked={selectedBranches.includes(branch.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedBranches([
+                                  ...selectedBranches,
+                                  branch.id,
+                                ]);
+                              } else {
+                                setSelectedBranches(
+                                  selectedBranches.filter(
+                                    (id) => id !== branch.id
+                                  )
+                                );
+                              }
+                            }}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <Label
+                            htmlFor={`branch_${branch.id}`}
+                            className="text-sm text-gray-900"
+                          >
+                            {branch.name} ({branch.code})
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedBranches.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-2">
+                        Please select at least one branch
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="flex items-center space-x-3">
               <Switch
                 checked={formData.is_active}
@@ -376,27 +464,6 @@ export default function NewCustomerPage() {
                   </p>
                 )}
               </div>
-            </div>
-            <div>
-              <Label htmlFor="home_branch_id">Home Branch</Label>
-              <select
-                id="home_branch_id"
-                value={formData.home_branch_id}
-                onChange={(e) =>
-                  handleInputChange("home_branch_id", e.target.value)
-                }
-                className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Home Branch</option>
-                {branches?.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name} ({branch.code})
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Optional: Assign a home branch for this customer
-              </p>
             </div>
           </CardContent>
         </Card>
