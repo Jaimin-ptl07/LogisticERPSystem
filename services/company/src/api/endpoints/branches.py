@@ -128,13 +128,12 @@ async def get_my_assigned_branches(
     # Get user_id from token_data
     user_id = token_data.user_id
 
-    # Check if user is superuser OR has branches:read_all permission
+    # Check if user is superuser OR has branches:read_all permission OR is Admin
     is_super = token_data.is_super_user()
     has_read_all = await token_data.has_permission("branches:read_all")
     logger.info(f"Checking branch access for user {token_data}")
     role = token_data.role
-    is_admin = is_super or has_read_all
-    logger.debug(f"User role: {role}")  
+    is_admin = role == "Admin"  
     # Debug logging
     logger.info(f"Branch access check - user_id: {user_id}, tenant_id: {tenant_id}, is_super: {is_super}, has_read_all: {has_read_all}, is_admin: {is_admin}")
 

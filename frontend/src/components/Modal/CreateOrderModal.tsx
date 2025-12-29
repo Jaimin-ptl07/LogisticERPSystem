@@ -56,10 +56,12 @@ export function CreateOrderModal({
     handleSubmit,
     watch,
     setValue,
+    trigger,
     formState: { errors, isValid },
     reset,
   } = useForm<OrderFormData>({
     resolver: zodResolver(orderFormSchema),
+    mode: "onChange", // Enable validation on change
     defaultValues: {
       orderNumber: "",
       dueDays: 7,
@@ -79,6 +81,15 @@ export function CreateOrderModal({
 
   const selectedBranch = watch("branch");
   const orderItems = watch("orderItems");
+
+  // Check if form has all required fields filled
+  const isFormValid = () => {
+    return selectedBranch &&
+           watch("customer") &&
+           watch("orderNumber") &&
+           orderItems.length > 0 &&
+           orderItems.every(item => item.productName && item.weight > 0 && item.quantity > 0);
+  };
 
   // Fetch real data from APIs
   const { data: branchesData, isLoading: branchesLoading } =
@@ -174,12 +185,13 @@ export function CreateOrderModal({
       if (item.id === id) {
         const updatedItem = { ...item, [field]: value };
 
-        // Auto-fill weight when product is selected
+        // Auto-fill weight when product is selected (only for fixed weight products)
         if (field === "productName" && value) {
           const product = products.find((p) => p.name === value);
-          if (product && (product.weight || product.current_stock)) {
-            updatedItem.weight = product.weight || 1; // Default to 1kg if no weight
+          if (product && product.weight_type === 'fixed' && product.weight) {
+            updatedItem.weight = product.weight; // Auto-fill only for fixed weight products
           }
+          // For variable weight products, leave weight empty so user can enter it
         }
 
         return updatedItem;
@@ -206,11 +218,17 @@ export function CreateOrderModal({
         const product = products.find(
           (p) => p.name === item.productName || p.code === item.productName
         );
+        // Use user-entered weight if provided (for variable weight products),
+        // otherwise fall back to product weight (for fixed weight products)
+        const itemWeight = item.weight !== undefined && item.weight > 0
+          ? item.weight
+          : (product?.weight || 0);
+
         return {
           product_id: product?.id || item.productName,
           quantity: item.quantity,
           unit_price: product?.unit_price || 0,
-          weight: item.weight || product?.weight || 0,
+          weight: itemWeight,
         };
       });
 
@@ -514,9 +532,9 @@ export function CreateOrderModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {/* Product Name */}
-                <div className="sm:col-span-2 lg:col-span-2">
+                <div className="sm:col-span-2">
                   <label
                     className={`mb-1 flex items-center gap-1 text-sm font-medium ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
@@ -558,7 +576,7 @@ export function CreateOrderModal({
                   </select>
                 </div>
 
-                {/* Weight */}
+                {/* Weight - read-only for fixed weight products */}
                 <div>
                   <label
                     className={`text-sm font-medium mb-1 flex items-center gap-1 ${
@@ -568,22 +586,31 @@ export function CreateOrderModal({
                     <Weight className="w-4 h-4" />
                     Weight (kg) *
                   </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    value={item.weight || ""}
-                    onChange={(e) =>
-                      updateOrderItem(item.id, "weight", Number(e.target.value))
-                    }
-                    disabled={!selectedBranch}
-                    className={`w-full px-3 py-2 rounded-lg border text-black placeholder-gray-400 transition-all duration-200 ease-in-out ${
-                      selectedBranch
-                        ? "border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 cursor-text"
-                        : "border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500"
-                    }`}
-                    placeholder={selectedBranch ? "0.0" : "Select branch first"}
-                  />
+                  {(() => {
+                    const selectedProduct = products.find((p) => p.name === item.productName);
+                    const isFixedWeight = selectedProduct?.weight_type === 'fixed';
+                    return (
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        value={item.weight || ""}
+                        onChange={(e) =>
+                          updateOrderItem(item.id, "weight", Number(e.target.value))
+                        }
+                        disabled={!selectedBranch || isFixedWeight}
+                        readOnly={isFixedWeight}
+                        className={`w-full px-3 py-2 rounded-lg border text-black placeholder-gray-400 transition-all duration-200 ease-in-out ${
+                          selectedBranch
+                            ? isFixedWeight
+                              ? "border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed"
+                              : "border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 cursor-text"
+                            : "border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500"
+                        }`}
+                        placeholder={selectedBranch ? "0.0" : "Select branch first"}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Quantity */}
@@ -616,27 +643,27 @@ export function CreateOrderModal({
                   />
                 </div>
 
-                {/* Total Weight (calculated) */}
+                {/* Total Weight (read-only display) */}
                 <div>
                   <label
                     className={`block text-sm font-medium mb-1 ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
                     }`}
                   >
-                    Total Weight (kg)
+                    Total (kg)
                   </label>
-                  <div
-                    className={`w-full px-3 py-2 rounded-lg border transition-all duration-200 ease-in-out ${
+                  <input
+                    type="text"
+                    value={calculateItemTotalWeight(item.weight || 0, item.quantity || 0).toFixed(1)}
+                    readOnly
+                    disabled={!selectedBranch}
+                    className={`w-full px-3 py-2 rounded-lg border text-black placeholder-gray-400 transition-all duration-200 ease-in-out ${
                       selectedBranch
-                        ? "border-gray-300 bg-gray-50 text-gray-900"
-                        : "border-gray-200 bg-gray-100 text-gray-500"
+                        ? "border-gray-200 bg-gray-50 text-gray-900 cursor-not-allowed font-semibold"
+                        : "border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
                     }`}
-                  >
-                    {calculateItemTotalWeight(
-                      item.weight || 0,
-                      item.quantity || 0
-                    ).toFixed(1)}
-                  </div>
+                    placeholder="0.0"
+                  />
                 </div>
               </div>
             </div>
@@ -645,28 +672,24 @@ export function CreateOrderModal({
           {/* Summary Section */}
           {selectedBranch && (
             <div className="border border-gray-200 rounded-lg p-4 bg-gradient-to-r from-blue-50 to-indigo-50">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <Info className="w-4 h-4 text-blue-600" />
-                Order Summary
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg p-3 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Total Units:</span>
-                    <span className="text-lg font-bold text-blue-600">
-                      {calculateTotalUnits()}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">Packages</div>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-gray-700">Order Summary</span>
                 </div>
-                <div className="bg-white rounded-lg p-3 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Total Weight:</span>
-                    <span className="text-lg font-bold text-green-600">
-                      {calculateTotalWeight().toFixed(1)}
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Total Units:</span>
+                    <span className="text-base font-bold text-blue-600">
+                      {calculateTotalUnits()} Packages
                     </span>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">Kilograms</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Total Weight:</span>
+                    <span className="text-base font-bold text-green-600">
+                      {calculateTotalWeight().toFixed(1)} kg
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -686,8 +709,7 @@ export function CreateOrderModal({
           <Button
             type="submit"
             disabled={
-              !isValid ||
-              !selectedBranch ||
+              !isFormValid() ||
               isCreating ||
               productsLoading ||
               customersLoading

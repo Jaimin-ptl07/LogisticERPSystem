@@ -27,7 +27,6 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('Branches API response data:', data);
     return NextResponse.json(data);
   } catch (error) {
     console.error('Branches API error:', error);

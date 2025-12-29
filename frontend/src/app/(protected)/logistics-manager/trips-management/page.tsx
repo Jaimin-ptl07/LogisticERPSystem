@@ -135,11 +135,14 @@ export default function Trips() {
           tmsResourcesAPI.getBranches(tenantId),
         ]);
 
+      console.log("fetchResources - driversData:", driversData);
+      console.log("fetchResources - branchesData:", branchesData);
       setAvailableTrucks(trucksData);
       setAvailableDrivers(driversData);
       setAvailableOrders(ordersData);
       setBranches(branchesData);
     } catch (err) {
+      console.error("fetchResources error:", err);
       setError(
         err instanceof Error ? err.message : "Failed to fetch resources"
       );
@@ -258,23 +261,28 @@ export default function Trips() {
         (t) => t.id === selectedTruck
       );
 
-      if (!selectedTruckDetails || !selectedDriver || !selectedBranch) {
+      // Find selected branch details to get the branch name and ID
+      const selectedBranchDetails = branches.find(
+        (b) => b.id === selectedBranch
+      );
+
+      if (!selectedTruckDetails || !selectedDriver || !selectedBranch || !selectedBranchDetails) {
         alert("Please select branch, truck, and driver");
         return;
       }
 
       // Create trip via API
       const tripData: TripCreateData = {
-        branch: selectedBranch,
+        branch: selectedBranch, // Send branch UUID directly (branch field contains UUID)
         truck_plate: selectedTruckDetails.plate,
         truck_model: selectedTruckDetails.model,
         truck_capacity: selectedTruckDetails.capacity,
-        driver_id: selectedDriver.id,
+        driver_id: selectedDriver.user_id, // Store the driver's user_id from auth service
         driver_name: selectedDriver.name,
         driver_phone: selectedDriver.phone,
         capacity_total: selectedTruckDetails.capacity,
         trip_date: new Date().toISOString().split("T")[0],
-        origin: selectedBranch,
+        origin: selectedBranchDetails.name, // Send branch name for origin (display)
         destination: null, // Will be determined later
       };
 
@@ -309,8 +317,8 @@ export default function Trips() {
     }
   };
 
-  const handleBranchSelect = async (branchName: string) => {
-    setSelectedBranch(branchName);
+  const handleBranchSelect = async (branchId: string) => {
+    setSelectedBranch(branchId);
     setSelectedTruck("");
     setSelectedDriver(null);
     setBranchSearchTerm("");
@@ -318,7 +326,7 @@ export default function Trips() {
     setDriverSearchTerm("");
 
     // Find the branch object to get its ID
-    const selectedBranchObj = branches.find((b) => b.name === branchName);
+    const selectedBranchObj = branches.find((b) => b.id === branchId);
 
     if (selectedBranchObj) {
       try {
@@ -427,10 +435,21 @@ export default function Trips() {
     );
   const getTrucksAvailable = () =>
     availableTrucks.filter((truck) => truck.status === "available");
-  const getDriversAvailable = () =>
-    availableDrivers.filter(
-      (driver) => driver.status === "active" && !driver.currentTruck
+  const getDriversAvailable = () => {
+    console.log("getDriversAvailable - availableDrivers:", availableDrivers);
+    console.log("getDriversAvailable - selectedBranch:", selectedBranch);
+    const filtered = availableDrivers.filter(
+      (driver) => {
+        const statusMatch = driver.status === "available";
+        const noTruck = !driver.currentTruck;
+        const branchMatch = !selectedBranch || driver.branch_id === selectedBranch;
+        console.log(`Driver ${driver.name}: status=${driver.status}, branch_id=${driver.branch_id}, statusMatch=${statusMatch}, noTruck=${noTruck}, branchMatch=${branchMatch}`);
+        return statusMatch && noTruck && branchMatch;
+      }
     );
+    console.log("getDriversAvailable - filtered:", filtered);
+    return filtered;
+  };
 
   // Check if order is already assigned to any trip
   const isOrderAssigned = (orderId: string) => {
@@ -1402,6 +1421,16 @@ export default function Trips() {
                                     </span>
                                   )}
                                 </h4>
+                                {trip.status === "planning" && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleAddOrderClick(trip)}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                  >
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Add Order
+                                  </Button>
+                                )}
                               </div>
                               {trip.orders.length > 0 && (
                                 <div
@@ -1873,9 +1902,9 @@ export default function Trips() {
                         {getFilteredBranches().map((branch) => (
                           <div
                             key={branch.id}
-                            onClick={() => handleBranchSelect(branch.name)}
+                            onClick={() => handleBranchSelect(branch.id)}
                             className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                              selectedBranch === branch.name
+                              selectedBranch === branch.id
                                 ? "border-green-500 bg-green-50"
                                 : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                             }`}
@@ -1894,12 +1923,12 @@ export default function Trips() {
                               </div>
                               <div
                                 className={`w-5 h-5 rounded-full border-2 ${
-                                  selectedBranch === branch.name
+                                  selectedBranch === branch.id
                                     ? "border-green-500 bg-green-500"
                                     : "border-gray-300"
                                 }`}
                               >
-                                {selectedBranch === branch.name && (
+                                {selectedBranch === branch.id && (
                                   <div className="w-full h-full rounded-full bg-white"></div>
                                 )}
                               </div>
@@ -1923,7 +1952,7 @@ export default function Trips() {
                               Selected Branch:
                             </p>
                             <p className="font-medium text-black">
-                              {selectedBranch || "Not selected"}
+                              {branches.find(b => b.id === selectedBranch)?.name || "Not selected"}
                             </p>
                           </div>
                           <div>
@@ -2019,7 +2048,7 @@ export default function Trips() {
                               Selected Branch:
                             </span>
                             <span className="font-medium text-black">
-                              {selectedBranch}
+                              {branches.find(b => b.id === selectedBranch)?.name || selectedBranch}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">

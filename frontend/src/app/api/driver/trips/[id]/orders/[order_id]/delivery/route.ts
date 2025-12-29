@@ -17,6 +17,10 @@ export async function PUT(
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        // Forward authorization headers if any
+        ...(request.headers.get('authorization') && {
+          'Authorization': request.headers.get('authorization')!
+        }),
       },
       body: JSON.stringify(body),
     });

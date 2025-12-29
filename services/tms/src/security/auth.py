@@ -144,7 +144,7 @@ class TokenData:
         return self._is_superuser
 
     def __str__(self):
-        return f"TokenData(user_id={self.user_id}, tenant_id={self.tenant_id}, role_id={self.role_id})"
+        return f"TokenData(user_id={self.user_id}, tenant_id={self.tenant_id}, role_id={self.role_id}, role={self.role})"
 
 
 def verify_token(token: str) -> TokenData:

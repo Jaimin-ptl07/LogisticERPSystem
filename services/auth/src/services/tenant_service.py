@@ -153,6 +153,9 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "schedules:read", "schedules:update",
                 "shipping:create", "shipping:read", "shipping:read_all", "shipping:update",
                 "vehicles:track",
+                "branches:read", "branches:read_all",
+                "products:read", "products:read_all",
+                "customers:read", "customers:read_all",
                 "company_reports:read", "company_reports:read_all", "company_reports:export",
                 "reports:read", "dashboard:read",
             ]

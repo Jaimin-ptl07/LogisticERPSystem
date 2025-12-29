@@ -172,6 +172,8 @@ export interface Driver {
   phone: string;
   license: string;
   experience: string;
-  status: "active" | "inactive";
-  currentTruck?: string;
+  status: "available" | "on_trip" | "off_duty" | "on_leave" | "suspended";
+  currentTruck?: string | null;
+  branch_id?: string | null;
+  user_id?: string | null;
 }

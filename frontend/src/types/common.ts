@@ -25,6 +25,8 @@ export interface Driver {
   license: string;
   status: string;
   currentTruck?: string | null;
+  branch_id?: string | null;
+  user_id?: string | null;
 }
 
 export interface Trip {
