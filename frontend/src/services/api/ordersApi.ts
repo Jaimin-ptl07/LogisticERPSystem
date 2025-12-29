@@ -49,8 +49,10 @@ export interface OrderItem {
   unit: string;
   unit_price?: number;
   total_price?: number;
-  weight?: number;
-  total_weight?: number;
+  weight?: number;  // Weight per unit (in kg)
+  weight_type?: 'fixed' | 'variable';  // Product weight type
+  fixed_weight?: number;  // Fixed weight for fixed weight products (in kg)
+  weight_unit?: string;  // Weight unit (kg, lb, g, etc.)
   volume?: number;
 }
 
@@ -139,7 +141,10 @@ export interface Product {
   };
   unit_price: number;
   special_price?: number;
-  weight?: number;
+  weight?: number;  // Deprecated - use fixed_weight
+  fixed_weight?: number;  // Fixed weight for FIXED type products (in kg)
+  weight_type?: 'fixed' | 'variable';  // Type of weight: fixed or variable
+  weight_unit?: string;  // Weight unit (kg, lb, g, etc.)
   current_stock: number;
   is_active: boolean;
   available_for_all_branches: boolean;
