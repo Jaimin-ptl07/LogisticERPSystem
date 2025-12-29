@@ -18,7 +18,8 @@ import {
   Info,
   BarChart3,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  GitBranch,
 } from 'lucide-react';
 import { useGetVehicleQuery } from '@/services/api/companyApi';
 
@@ -187,31 +188,43 @@ export default function VehicleDetailsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Building className="w-5 h-5 mr-2" />
-                Assignment
+                <GitBranch className="w-5 h-5 mr-2" />
+                Branch Assignment
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Assigned Branch</label>
-                <p className="text-gray-900">{vehicle.branch?.name || 'Not assigned'}</p>
-              </div>
-              {vehicle.branch && (
+              {vehicle.available_for_all_branches ? (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Available Branches</label>
+                  <div className="flex items-center text-gray-900 mt-1">
+                    <GitBranch className="w-4 h-4 mr-2 text-blue-500" />
+                    <span className="font-medium">All Branches</span>
+                  </div>
+                </div>
+              ) : vehicle.branches && vehicle.branches.length > 0 ? (
                 <>
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Branch Code</label>
-                    <p className="text-gray-900">{vehicle.branch.code}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Location</label>
-                    <p className="text-gray-900">
-                      {vehicle.branch.city && vehicle.branch.state
-                        ? `${vehicle.branch.city}, ${vehicle.branch.state}`
-                        : 'N/A'
-                      }
-                    </p>
+                    <label className="text-sm font-medium text-gray-500">Assigned Branches</label>
+                    <div className="mt-2 space-y-2">
+                      {vehicle.branches.map((vb: any) => (
+                        <div key={vb.branch.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center">
+                            <GitBranch className="w-4 h-4 mr-2 text-blue-500" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{vb.branch.name}</p>
+                              <p className="text-xs text-gray-500">{vb.branch.code}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </>
+              ) : (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Assigned Branches</label>
+                  <p className="text-gray-400 mt-1">Not assigned to any branches</p>
+                </div>
               )}
             </CardContent>
           </Card>
