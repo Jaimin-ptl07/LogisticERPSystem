@@ -281,8 +281,8 @@ export function Sidebar({
                   className={cn(
                     "w-full flex items-center cursor-pointer px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                     hasActiveChild
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-700 hover:bg-gray-100",
+                      ? "bg-[#E6ECFF] text-[#1F40AE]"
+                      : "text-gray-700 hover:bg-[#F1F4FF]",
                     isCollapsed ? "justify-center" : "justify-between"
                   )}
                   title={isCollapsed ? item.label : undefined}
@@ -330,8 +330,8 @@ export function Sidebar({
                               className={cn(
                                 "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
                                 isActive
-                                  ? "bg-blue-100 text-blue-700 font-medium"
-                                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                  ? "bg-[#D4DEFF] text-[#1F40AE] font-medium"
+                                  : "text-gray-600 hover:bg-[#F1F4FF] hover:text-gray-900"
                               )}
                             >
                               <SubIcon className="w-4 h-4 shrink-0" />

@@ -360,14 +360,16 @@ export interface CustomerCreate {
 }
 
 export interface VehicleCreate {
-  branch_id?: string
+  branch_ids?: string[]
   plate_number: string
   make?: string
   model?: string
   year?: number
   vehicle_type?: string
+  vehicle_type_id?:string
   capacity_weight?: number
   capacity_volume?: number
+  available_for_all_branches?:boolean
   status?: string
   last_maintenance?: string
   next_maintenance?: string

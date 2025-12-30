@@ -787,6 +787,7 @@ export default function NewProductPage() {
               type="button"
               variant="outline"
               onClick={() => router.back()}
+              className="bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium"
             >
               <X className="w-4 h-4 mr-2" />
               Cancel
@@ -794,7 +795,7 @@ export default function NewProductPage() {
             <Button
               type="submit"
               disabled={isCreating}
-              className="min-w-[120px]"
+              className="min-w-[120px] bg-[#1F40AE] hover:bg-[#203BA0] active:bg-[#192F80] text-white px-4 py-2 rounded-lg font-medium"
             >
               {isCreating ? (
                 <>

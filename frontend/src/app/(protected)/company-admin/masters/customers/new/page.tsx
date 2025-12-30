@@ -34,7 +34,9 @@ export default function NewCustomerPage() {
 
   // Extract branches from paginated response
   const branches = branchesData?.items || [];
-  const { data: businessTypesData } = useGetAllBusinessTypesQuery({ is_active: true });
+  const { data: businessTypesData } = useGetAllBusinessTypesQuery({
+    is_active: true,
+  });
 
   // Handle both array and paginated response formats
   const businessTypes: BusinessTypeModel[] = Array.isArray(businessTypesData)
@@ -55,15 +57,16 @@ export default function NewCustomerPage() {
     city: "",
     state: "",
     postal_code: "",
-    business_type: "",  // Deprecated - old enum
-    business_type_id: "",  // New - foreign key
+    business_type: "", // Deprecated - old enum
+    business_type_id: "", // New - foreign key
     credit_limit: 0,
     pricing_tier: "standard",
     is_active: true,
   } as CustomerCreate);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isAvailableForAllBranches, setIsAvailableForAllBranches] = useState(true);
+  const [isAvailableForAllBranches, setIsAvailableForAllBranches] =
+    useState(true);
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   const validateForm = (): boolean => {
@@ -97,7 +100,11 @@ export default function NewCustomerPage() {
     }
 
     // Only validate business_type_id if business types are loaded
-    if (businessTypes && businessTypes.length > 0 && !formData.business_type_id) {
+    if (
+      businessTypes &&
+      businessTypes.length > 0 &&
+      !formData.business_type_id
+    ) {
       newErrors.business_type_id = "Please select a business type";
     }
 
@@ -277,7 +284,9 @@ export default function NewCustomerPage() {
                     handleInputChange("business_type_id", e.target.value)
                   }
                   className={`w-full px-3 py-2 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.business_type_id ? "border-red-500" : "border-gray-300"
+                    errors.business_type_id
+                      ? "border-red-500"
+                      : "border-gray-300"
                   }`}
                 >
                   <option value="">Select Business Type</option>
@@ -299,10 +308,13 @@ export default function NewCustomerPage() {
                 )}
                 {businessTypes.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">
-                    <a href="/company-admin/masters/business-types" className="text-blue-600 hover:underline">
+                    <a
+                      href="/company-admin/masters/business-types"
+                      className="text-blue-600 hover:underline"
+                    >
                       Create business types
-                    </a>
-                    {" "}to categorize your customers.
+                    </a>{" "}
+                    to categorize your customers.
                   </p>
                 )}
               </div>
@@ -550,11 +562,34 @@ export default function NewCustomerPage() {
 
         {/* Form Actions */}
         <div className="flex justify-end space-x-3">
-          <Button type="button" variant="outline" onClick={() => router.back()}>
+          <Button
+            className="bg-gray-100
+  hover:bg-gray-200
+  active:bg-gray-300
+  text-gray-700
+  px-4 py-2
+  rounded-lg
+  font-medium
+"
+            type="button"
+            variant="outline"
+            onClick={() => router.back()}
+          >
             <X className="w-4 h-4 mr-2" />
             Cancel
           </Button>
-          <Button type="submit" disabled={isCreating} className="min-w-[120px]">
+          <Button
+            type="submit"
+            disabled={isCreating}
+            className="min-w-[120px]   bg-[#1F40AE]
+  hover:bg-[#203BA0]
+  active:bg-[#192F80]
+  text-white
+  px-4 py-2
+  rounded-lg
+  font-medium
+"
+          >
             {isCreating ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />

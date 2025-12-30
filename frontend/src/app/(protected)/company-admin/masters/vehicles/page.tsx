@@ -588,14 +588,14 @@ export default function VehiclesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Plate Number</TableHead>
-                      <TableHead>Make/Model</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Capacity</TableHead>
-                      <TableHead>Branches</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Maintenance</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="whitespace-nowrap">Plate Number</TableHead>
+                      <TableHead className="whitespace-nowrap">Make/Model</TableHead>
+                      <TableHead className="whitespace-nowrap">Type</TableHead>
+                      <TableHead className="whitespace-nowrap">Capacity</TableHead>
+                      <TableHead className="whitespace-nowrap">Branches</TableHead>
+                      <TableHead className="whitespace-nowrap">Status</TableHead>
+                      <TableHead className="whitespace-nowrap">Last Maintenance</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
