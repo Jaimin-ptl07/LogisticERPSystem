@@ -40,6 +40,7 @@ import {
   Filter,
   X,
   ChevronDown,
+  GitBranch,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -203,6 +204,54 @@ export default function CustomersPage() {
     }
 
     return <Badge variant={badgeColor}>{businessTypeName}</Badge>;
+  };
+
+  const getBranchesDisplay = (customer: any) => {
+    // If available for all branches, show "All Branches"
+    if (customer.available_for_all_branches) {
+      return (
+        <div className="flex items-center text-sm text-gray-900">
+          <GitBranch className="w-3 h-3 mr-1 text-blue-500" />
+          <span className="font-medium">All Branches</span>
+        </div>
+      );
+    }
+
+    // Show assigned branches
+    const branches = customer.branches || [];
+    if (branches.length === 0) {
+      return (
+        <div className="flex items-center text-sm text-gray-400">
+          <GitBranch className="w-3 h-3 mr-1" />
+          <span>None</span>
+        </div>
+      );
+    }
+
+    // Show first 2 branches and count for remaining
+    const displayBranches = branches.slice(0, 2);
+    const remainingCount = branches.length - 2;
+
+    return (
+      <div className="space-y-1">
+        {displayBranches.map((cb: any) => (
+          <div
+            key={cb.branch.id}
+            className="flex items-center text-sm text-gray-900"
+          >
+            <GitBranch className="w-3 h-3 mr-1 text-blue-500 flex-shrink-0" />
+            <span className="truncate" title={cb.branch.name}>
+              {cb.branch.name}
+            </span>
+          </div>
+        ))}
+        {remainingCount > 0 && (
+          <div className="text-xs text-gray-500 ml-4">
+            +{remainingCount} more
+          </div>
+        )}
+      </div>
+    );
   };
 
   if (error) {
@@ -517,29 +566,15 @@ export default function CustomersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-35 whitespace-nowrap">
-                      Customer Code
-                    </TableHead>
-                    <TableHead className="w-50 whitespace-nowrap">
-                      Name
-                    </TableHead>
-                    <TableHead className="whitespace-nowrap">Contact</TableHead>
-                    <TableHead className="whitespace-nowrap">
-                      Location
-                    </TableHead>
-                    <TableHead className="whitespace-nowrap">
-                      Business Type
-                    </TableHead>
-                    <TableHead className="whitespace-nowrap">
-                      Home Branch
-                    </TableHead>
-                    <TableHead className="whitespace-nowrap">
-                      Credit Limit
-                    </TableHead>
-                    <TableHead className="whitespace-nowrap">Status</TableHead>
-                    <TableHead className="text-right w-20 whitespace-nowrap">
-                      Actions
-                    </TableHead>
+                    <TableHead>Customer Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Business Type</TableHead>
+                    <TableHead>Branches</TableHead>
+                    <TableHead>Credit Limit</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -595,12 +630,7 @@ export default function CustomersPage() {
                         </div>
                       </TableCell>
                       <TableCell>{getBusinessTypeBadge(customer)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center text-sm text-gray-900">
-                          <Building className="w-3 h-3 mr-1" />
-                          {customer.home_branch?.name || "Not assigned"}
-                        </div>
-                      </TableCell>
+                      <TableCell>{getBranchesDisplay(customer)}</TableCell>
                       <TableCell>
                         <span className="text-sm font-medium text-gray-900">
                           ${customer.credit_limit?.toLocaleString() || 0}

@@ -132,7 +132,8 @@ class VehicleTypeModel(VehicleTypeInDB):
 # Customer schemas
 class CustomerBase(BaseSchema):
     """Base customer schema"""
-    home_branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: bool = True
     code: str = Field(..., min_length=2, max_length=20)
     name: str = Field(..., min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
@@ -166,7 +167,8 @@ class CustomerCreate(CustomerBase):
 
 class CustomerUpdate(BaseSchema):
     """Schema for updating a customer"""
-    home_branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: Optional[bool] = None
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=100)
@@ -192,14 +194,21 @@ class CustomerInDB(CustomerBase):
 
 class Customer(CustomerInDB):
     """Schema for customer response"""
-    home_branch: Optional[Branch] = None
     business_type_relation: Optional[BusinessTypeModel] = None
+    available_for_all_branches: bool = True
+    branches: Optional[List["CustomerBranch"]] = None
+
+
+class CustomerBranch(BaseSchema):
+    """Schema for customer-branch relationship"""
+    branch: Optional[Branch] = None
 
 
 # Vehicle schemas
 class VehicleBase(BaseSchema):
     """Base vehicle schema"""
-    branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: bool = True
     plate_number: str = Field(..., min_length=2, max_length=20)
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
@@ -232,7 +241,8 @@ class VehicleCreate(VehicleBase):
 
 class VehicleUpdate(BaseSchema):
     """Schema for updating a vehicle"""
-    branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: Optional[bool] = None
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
@@ -257,8 +267,14 @@ class VehicleInDB(VehicleBase):
 
 class Vehicle(VehicleInDB):
     """Schema for vehicle response"""
-    branch: Optional[Branch] = None
     vehicle_type_relation: Optional[VehicleTypeModel] = None
+    available_for_all_branches: bool = True
+    branches: Optional[List["VehicleBranch"]] = None
+
+
+class VehicleBranch(BaseSchema):
+    """Schema for vehicle-branch relationship"""
+    branch: Optional[Branch] = None
 
 
 # Product Category schemas

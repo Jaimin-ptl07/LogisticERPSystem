@@ -37,6 +37,7 @@ import {
   AlertCircle,
   X,
   ChevronDown,
+  GitBranch,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -208,6 +209,54 @@ export default function VehiclesPage() {
     );
   };
 
+  const getBranchesDisplay = (vehicle: any) => {
+    // If available for all branches, show "All Branches"
+    if (vehicle.available_for_all_branches) {
+      return (
+        <div className="flex items-center text-sm text-gray-900">
+          <GitBranch className="w-3 h-3 mr-1 text-blue-500" />
+          <span className="font-medium">All Branches</span>
+        </div>
+      );
+    }
+
+    // Show assigned branches
+    const branches = vehicle.branches || [];
+    if (branches.length === 0) {
+      return (
+        <div className="flex items-center text-sm text-gray-400">
+          <GitBranch className="w-3 h-3 mr-1" />
+          <span>None</span>
+        </div>
+      );
+    }
+
+    // Show first 2 branches and count for remaining
+    const displayBranches = branches.slice(0, 2);
+    const remainingCount = branches.length - 2;
+
+    return (
+      <div className="space-y-1">
+        {displayBranches.map((vb: any) => (
+          <div
+            key={vb.branch.id}
+            className="flex items-center text-sm text-gray-900"
+          >
+            <GitBranch className="w-3 h-3 mr-1 text-blue-500 flex-shrink-0" />
+            <span className="truncate" title={vb.branch.name}>
+              {vb.branch.name}
+            </span>
+          </div>
+        ))}
+        {remainingCount > 0 && (
+          <div className="text-xs text-gray-500 ml-4">
+            +{remainingCount} more
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (error) {
     return (
       <div>
@@ -260,7 +309,9 @@ export default function VehiclesPage() {
               className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
             >
               <Plus className="w-4 h-4" />
-              <span className="text-sm md:text-base font-semibold hover:font-bold">New Vehicle</span>
+              <span className="text-sm md:text-base font-semibold hover:font-bold">
+                New Vehicle
+              </span>
             </Button>
           </div>
         </div>
@@ -296,7 +347,10 @@ export default function VehiclesPage() {
             </div>
             <div className="flex items-end justify-between mt-3">
               <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-                {isLoading ? "..." : vehiclesList.filter((v: any) => v.status === "available").length || 0}
+                {isLoading
+                  ? "..."
+                  : vehiclesList.filter((v: any) => v.status === "available")
+                      .length || 0}
               </p>
             </div>
           </div>
@@ -313,7 +367,10 @@ export default function VehiclesPage() {
             </div>
             <div className="flex items-end justify-between mt-3">
               <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-                {isLoading ? "..." : vehiclesList.filter((v: any) => v.status === "on_trip").length || 0}
+                {isLoading
+                  ? "..."
+                  : vehiclesList.filter((v: any) => v.status === "on_trip")
+                      .length || 0}
               </p>
             </div>
           </div>
@@ -330,7 +387,10 @@ export default function VehiclesPage() {
             </div>
             <div className="flex items-end justify-between mt-3">
               <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-                {isLoading ? "..." : vehiclesList.filter((v: any) => v.status === "maintenance").length || 0}
+                {isLoading
+                  ? "..."
+                  : vehiclesList.filter((v: any) => v.status === "maintenance")
+                      .length || 0}
               </p>
             </div>
           </div>
@@ -462,7 +522,8 @@ export default function VehiclesPage() {
             {typeFilter !== "all" && (
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <div className="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
-                  {vehicleTypes?.find((vt) => vt.id === typeFilter)?.name || typeFilter}
+                  {vehicleTypes?.find((vt) => vt.id === typeFilter)?.name ||
+                    typeFilter}
                   <button
                     onClick={() => setTypeFilter("all")}
                     className="ml-1 hover:bg-purple-200 rounded-full p-0.5"
@@ -477,7 +538,8 @@ export default function VehiclesPage() {
             {branchFilter !== "all" && (
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <div className="inline-flex items-center gap-1 px-3 py-1 bg-sky-100 text-sky-800 rounded-full text-sm font-medium">
-                  {branches?.items?.find((b: any) => b.id === branchFilter)?.name || branchFilter}
+                  {branches?.items?.find((b: any) => b.id === branchFilter)
+                    ?.name || branchFilter}
                   <button
                     onClick={() => setBranchFilter("all")}
                     className="ml-1 hover:bg-sky-200 rounded-full p-0.5"
@@ -526,14 +588,14 @@ export default function VehiclesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-40 whitespace-nowrap">Plate Number</TableHead>
-                      <TableHead className="w-48 whitespace-nowrap">Make/Model</TableHead>
-                      <TableHead className="whitespace-nowrap">Type</TableHead>
-                      <TableHead className="whitespace-nowrap">Capacity</TableHead>
-                      <TableHead className="whitespace-nowrap">Branch</TableHead>
-                      <TableHead className="whitespace-nowrap">Status</TableHead>
-                      <TableHead className="whitespace-nowrap">Last Maintenance</TableHead>
-                      <TableHead className="text-right w-20 whitespace-nowrap">Actions</TableHead>
+                      <TableHead>Plate Number</TableHead>
+                      <TableHead>Make/Model</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Capacity</TableHead>
+                      <TableHead>Branches</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Last Maintenance</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -584,12 +646,7 @@ export default function VehiclesPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center text-sm text-gray-900">
-                            <Building className="w-3 h-3 mr-1" />
-                            {vehicle.branch?.name || "Not assigned"}
-                          </div>
-                        </TableCell>
+                        <TableCell>{getBranchesDisplay(vehicle)}</TableCell>
                         <TableCell>
                           {getStatusBadge(vehicle.status || "")}
                         </TableCell>

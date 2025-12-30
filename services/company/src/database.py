@@ -113,8 +113,6 @@ class Branch(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    customers = relationship("Customer", back_populates="home_branch")
-    vehicles = relationship("Vehicle", back_populates="branch")
 
 
 class BusinessTypeModel(Base):
@@ -157,7 +155,6 @@ class Customer(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
-    home_branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     code = Column(String(20), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
     phone = Column(String(20))
@@ -180,12 +177,13 @@ class Customer(Base):
     credit_limit = Column(Float, default=0)
     pricing_tier = Column(String(20), default="standard")
     is_active = Column(Boolean, default=True)
+    available_for_all_branches = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    home_branch = relationship("Branch", back_populates="customers")
     business_type_relation = relationship("BusinessTypeModel", back_populates="customers")
+    branches = relationship("CustomerBranch", back_populates="customer")
 
 
 class Vehicle(Base):
@@ -194,7 +192,6 @@ class Vehicle(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
-    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     plate_number = Column(String(20), unique=True, nullable=False)
     make = Column(String(50))
     model = Column(String(50))
@@ -225,12 +222,13 @@ class Vehicle(Base):
     last_maintenance = Column(DateTime(timezone=True))
     next_maintenance = Column(DateTime(timezone=True))
     is_active = Column(Boolean, default=True)
+    available_for_all_branches = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    branch = relationship("Branch", back_populates="vehicles")
     vehicle_type_relation = relationship("VehicleTypeModel", back_populates="vehicles")
+    branches = relationship("VehicleBranch", back_populates="vehicle")
 
 
 class ProductCategory(Base):
@@ -311,6 +309,36 @@ class ProductBranch(Base):
 
     # Relationships
     product = relationship("Product", back_populates="branches")
+    branch = relationship("Branch")
+
+
+class CustomerBranch(Base):
+    """Junction table for customer-branch relationships"""
+    __tablename__ = "customer_branches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"))
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="CASCADE"))
+    tenant_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    customer = relationship("Customer", back_populates="branches")
+    branch = relationship("Branch")
+
+
+class VehicleBranch(Base):
+    """Junction table for vehicle-branch relationships"""
+    __tablename__ = "vehicle_branches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"))
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="CASCADE"))
+    tenant_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    vehicle = relationship("Vehicle", back_populates="branches")
     branch = relationship("Branch")
 
 
