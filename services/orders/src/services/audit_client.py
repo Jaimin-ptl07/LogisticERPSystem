@@ -62,17 +62,18 @@ class AuditClient:
                 user_data = response.json()
                 user_details = {
                     "user_name": user_data.get("full_name") or user_data.get("username", ""),
-                    "user_email": user_data.get("email", "")
+                    "user_email": user_data.get("email", ""),
+                    "user_role": user_data.get("role_name", "")
                 }
                 # Cache the result
                 _user_cache[user_id] = user_details
                 return user_details
             else:
                 logger.warning(f"Failed to fetch user details: {response.status_code}")
-                return {"user_name": "", "user_email": ""}
+                return {"user_name": "", "user_email": "", "user_role": ""}
         except Exception as e:
             logger.error(f"Error fetching user details: {str(e)}")
-            return {"user_name": "", "user_email": ""}
+            return {"user_name": "", "user_email": "", "user_role": ""}
 
     async def log_event(
         self,
@@ -122,12 +123,14 @@ class AuditClient:
             True if successful, False otherwise (non-blocking)
         """
         # Fetch user details if not provided
-        if not user_name or not user_email:
+        if not user_name or not user_email or not user_role:
             user_details = await self._fetch_user_details(user_id)
             if not user_name:
                 user_name = user_details.get("user_name", "")
             if not user_email:
                 user_email = user_details.get("user_email", "")
+            if not user_role:
+                user_role = user_details.get("user_role", "")
 
         try:
             payload = {

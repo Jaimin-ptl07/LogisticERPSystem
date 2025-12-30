@@ -264,7 +264,6 @@ async def mark_order_delivered(
         await audit_client.log_event(
             tenant_id=tenant_id,
             user_id=user_id,
-            user_role=str(token_data.role_id) if hasattr(token_data, 'role_id') else "driver",
             action="deliver",
             module="trips",
             entity_type="trip_order",

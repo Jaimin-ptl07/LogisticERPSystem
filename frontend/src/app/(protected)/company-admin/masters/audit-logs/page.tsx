@@ -255,19 +255,37 @@ function DetailModal({ log, onClose }: { log: AuditLog; onClose: () => void }) {
           </div>
 
           {/* Status Change */}
-          {(log.from_status || log.to_status) && (
+          {(log.from_status || log.to_status ||
+            (log.new_values && (log.new_values.delivery_status || log.new_values.status))) && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Status Change</h3>
-              <div className="bg-gray-50 rounded-lg p-4 flex items-center gap-3">
-                {log.from_status && (
-                  <>
-                    <Badge variant="outline" className="bg-gray-100">{log.from_status}</Badge>
-                    <ArrowRight className="w-4 h-4 text-gray-400" />
-                  </>
-                )}
-                {log.to_status && (
-                  <Badge variant="outline" className="bg-blue-100">{log.to_status}</Badge>
-                )}
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Status Change
+              </h3>
+              <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg p-4">
+                <div className="flex items-center justify-center gap-3">
+                  {(log.from_status || (log.old_values && log.old_values.status)) && (
+                    <div className="flex flex-col items-center">
+                      <span className="text-xs text-gray-500 mb-1">From</span>
+                      <Badge variant="outline" className="bg-white border-gray-200 shadow-sm px-4 py-2">
+                        <span className="capitalize text-black">
+                          {log.from_status || (log.old_values?.status)?.replace(/-/g, ' ') || '-'}
+                        </span>
+                      </Badge>
+                    </div>
+                  )}
+                  <ArrowRight className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                  {(log.to_status || (log.new_values && (log.new_values.delivery_status || log.new_values.status))) && (
+                    <div className="flex flex-col items-center">
+                      <span className="text-xs text-gray-500 mb-1">To</span>
+                      <Badge variant="outline" className="bg-blue-100 border-blue-200 shadow-sm px-4 py-2">
+                        <span className="capitalize text-black">
+                          {log.to_status || (log.new_values?.delivery_status || log.new_values?.status)?.replace(/-/g, ' ') || '-'}
+                        </span>
+                      </Badge>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -300,11 +318,23 @@ function DetailModal({ log, onClose }: { log: AuditLog; onClose: () => void }) {
           {/* Old Values */}
           {log.old_values && Object.keys(log.old_values).length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Previous Values</h3>
-              <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
-                <pre className="text-xs text-gray-900 whitespace-pre-wrap">
-                  {JSON.stringify(log.old_values, null, 2)}
-                </pre>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Layers className="w-4 h-4" />
+                Previous Values
+              </h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="space-y-2">
+                  {Object.entries(log.old_values).map(([key, value]) => (
+                    <div key={key} className="flex items-start gap-3 py-2 border-b border-gray-200 last:border-0">
+                      <span className="text-xs font-medium text-gray-500 min-w-[120px] capitalize">
+                        {key.replace(/_/g, ' ')}:
+                      </span>
+                      <span className="text-sm text-gray-900 flex-1">
+                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -312,11 +342,23 @@ function DetailModal({ log, onClose }: { log: AuditLog; onClose: () => void }) {
           {/* New Values */}
           {log.new_values && Object.keys(log.new_values).length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">New Values</h3>
-              <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
-                <pre className="text-xs text-gray-900 whitespace-pre-wrap">
-                  {JSON.stringify(log.new_values, null, 2)}
-                </pre>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Layers className="w-4 h-4" />
+                New Values
+              </h3>
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4">
+                <div className="space-y-2">
+                  {Object.entries(log.new_values).map(([key, value]) => (
+                    <div key={key} className="flex items-start gap-3 py-2 border-b border-blue-200 last:border-0">
+                      <span className="text-xs font-medium text-blue-600 min-w-[120px] capitalize">
+                        {key.replace(/_/g, ' ')}:
+                      </span>
+                      <span className="text-sm text-gray-900 flex-1 font-medium">
+                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -332,14 +374,14 @@ function DetailModal({ log, onClose }: { log: AuditLog; onClose: () => void }) {
                 <p className="text-xs text-gray-500">Service</p>
                 <p className="text-sm font-medium text-gray-900">{log.service_name || '-'}</p>
               </div>
-              <div>
+              {/* <div>
                 <p className="text-xs text-gray-500">IP Address</p>
                 <p className="text-sm font-medium text-gray-900">{log.ip_address || '-'}</p>
               </div>
               <div className="col-span-2">
                 <p className="text-xs text-gray-500">User Agent</p>
                 <p className="text-sm font-medium text-gray-900 break-all">{log.user_agent || '-'}</p>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
