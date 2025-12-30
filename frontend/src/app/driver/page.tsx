@@ -48,6 +48,7 @@ export default function DriverDashboard() {
   const [tripDetails, setTripDetails] = useState<Map<string, DriverTripDetail>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deliveringOrderId, setDeliveringOrderId] = useState<string | null>(null);
 
   // Load data on component mount
   useEffect(() => {
@@ -114,6 +115,10 @@ export default function DriverDashboard() {
         return;
       }
 
+      // Set loading state for this specific order
+      setDeliveringOrderId(orderId);
+      setError(null);
+
       console.log('Marking order as delivered:', { tripId, orderId });
       await driverAPI.markOrderDelivered(tripId, orderId);
 
@@ -127,6 +132,9 @@ export default function DriverDashboard() {
     } catch (err) {
       console.error('Error marking order as delivered:', err);
       setError(err instanceof Error ? err.message : 'Failed to mark order as delivered');
+    } finally {
+      // Clear loading state
+      setDeliveringOrderId(null);
     }
   };
 
@@ -264,9 +272,17 @@ export default function DriverDashboard() {
                                 console.log('All trip orders:', tripOrders);
                                 markOrderDelivered(activeTrip.id, order.order_id);
                               }}
-                              className="px-6 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700"
+                              disabled={deliveringOrderId === order.order_id}
+                              className="px-6 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                             >
-                              Mark as Delivered
+                              {deliveringOrderId === order.order_id ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                  Delivering...
+                                </>
+                              ) : (
+                                'Mark as Delivered'
+                              )}
                             </button>
                           ) : (
                             <button

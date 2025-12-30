@@ -18,6 +18,7 @@ from src.schemas import (
     OrderQueryParams,
 )
 from src.config_local import OrdersSettings
+from src.services.audit_client import AuditClient
 
 settings = OrdersSettings()
 
@@ -323,6 +324,26 @@ class OrderService:
             # Commit transaction
             await self.db.commit()
 
+            # Send audit log
+            audit_client = AuditClient(self.auth_headers)
+            await audit_client.log_event(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="create",
+                module="orders",
+                entity_type="order",
+                entity_id=str(order.id),
+                description=f"Order {order.order_number} created",
+                new_values={
+                    "order_number": order.order_number,
+                    "status": order.status,
+                    "total_amount": str(total_amount),
+                    "customer_id": order.customer_id,
+                    "branch_id": order.branch_id
+                }
+            )
+            await audit_client.close()
+
             # Query the order back with all relationships loaded
             result = await self.db.execute(
                 select(Order)
@@ -410,6 +431,21 @@ class OrderService:
         await self.db.commit()
         await self.db.refresh(order)
 
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="submit",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} submitted for finance approval",
+            from_status="draft",
+            to_status="submitted"
+        )
+        await audit_client.close()
+
         # TODO: Send notification to finance manager
 
         return order
@@ -454,6 +490,23 @@ class OrderService:
 
         await self.db.commit()
         await self.db.refresh(order)
+
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="approve" if approved else "reject",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} {'approved' if approved else 'rejected'} by finance",
+            from_status="submitted",
+            to_status=new_status,
+            approval_status="approved" if approved else "rejected",
+            reason=reason
+        )
+        await audit_client.close()
 
         # TODO: Send notification to relevant parties
 
@@ -502,6 +555,28 @@ class OrderService:
 
         await self.db.commit()
         await self.db.refresh(order)
+
+        # Send audit log
+        new_values = {}
+        if driver_id or trip_id:
+            new_values = {"driver_id": driver_id, "trip_id": trip_id}
+
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="approve" if approved else "reject",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} {'approved' if approved else 'rejected'} by logistics",
+            from_status="finance_approved",
+            to_status=new_status,
+            approval_status="approved" if approved else "rejected",
+            reason=reason,
+            new_values=new_values if new_values else None
+        )
+        await audit_client.close()
 
         # TODO: Send notification to driver and branch manager
 
@@ -568,6 +643,7 @@ class OrderService:
         if order.status in [OrderStatus.PICKED_UP, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED]:
             raise ValueError("Order cannot be cancelled in current status")
 
+        old_status = order.status
         await self._update_order_status(
             order,
             OrderStatus.CANCELLED,
@@ -578,6 +654,22 @@ class OrderService:
 
         await self.db.commit()
         await self.db.refresh(order)
+
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="cancel",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} cancelled",
+            from_status=old_status,
+            to_status="cancelled",
+            reason=reason
+        )
+        await audit_client.close()
 
         return order
 
