@@ -249,8 +249,11 @@ async def list_orders(
                     'unit': product_data.get('unit', item.unit),
                     'unit_price': float(product_data.get('unit_price', item.unit_price)) if product_data.get('unit_price') or item.unit_price else None,
                     'total_price': float(item.total_price) if item.total_price else None,
-                    'weight': float(product_data.get('weight', item.weight)) if product_data.get('weight') or item.weight else None,
-                    'total_weight': float(product_data.get('weight', item.weight) * item.quantity) if (product_data.get('weight') or item.weight) and item.quantity else None,
+                    'weight': float(item.weight) if item.weight else None,  # Use the actual weight stored in order item
+                    'weight_type': product_data.get('weight_type', 'fixed'),  # Include product weight type
+                    'fixed_weight': float(product_data.get('fixed_weight', product_data.get('weight', 0))) if product_data.get('fixed_weight') or product_data.get('weight') else None,  # Fixed weight from product
+                    'weight_unit': product_data.get('weight_unit', 'kg'),  # Weight unit
+                    'total_weight': float(item.weight * item.quantity) if item.weight and item.quantity else None,
                     'volume': float(product_data.get('volume', item.volume)) if product_data.get('volume') or item.volume else None,
                 }
                 items_data.append(item_dict)
