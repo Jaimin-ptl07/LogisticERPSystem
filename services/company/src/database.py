@@ -589,3 +589,48 @@ class EmployeeBranch(Base):
     # Relationships
     employee = relationship("EmployeeProfile", back_populates="assigned_branches")
     branch = relationship("Branch")
+
+
+class AuditLog(Base):
+    """Audit log model to track all operations across the ERP system"""
+    __tablename__ = "audit_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(255), nullable=False)
+
+    # User information
+    user_id = Column(String(255), nullable=False)
+    user_name = Column(String(255))
+    user_role = Column(String(100))
+    user_email = Column(String(255))
+
+    # Entity information
+    entity_type = Column(String(50), nullable=False)  # order, trip, payment, customer, etc.
+    entity_id = Column(String(255), nullable=False)    # ID of the affected entity
+    entity_name = Column(String(500))                  # Human-readable name of the entity
+
+    # Action details
+    action = Column(String(100), nullable=False)       # created, updated, deleted, approved, rejected, etc.
+    module = Column(String(50), nullable=False)        # orders, finance, tms, driver, auth, company
+    sub_module = Column(String(50))                    # Specific sub-module (e.g., deliveries, approvals)
+
+    # Status changes
+    old_status = Column(String(50))
+    new_status = Column(String(50))
+    status_changed = Column(Boolean, default=False)
+
+    # Additional details
+    description = Column(Text)
+    reason = Column(Text)
+    notes = Column(Text)
+    meta_data = Column(JSON)                           # Additional flexible data (renamed from 'metadata' - reserved in SQLAlchemy)
+
+    # Request context
+    ip_address = Column(String)                        # INET type stored as string
+    user_agent = Column(Text)
+    request_id = Column(String(100))
+
+    # Timestamps
+    action_timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -7,15 +7,25 @@ from datetime import date
 
 from src.database import Trip, TripOrder
 from src.schemas import TripCreate, TripUpdate
+from src.audit_client import AuditClient
 
 
 class TripService:
     """Service for trip operations"""
 
+    def __init__(self, db: AsyncSession, auth_headers: dict = None):
+        self.db = db
+        # Initialize audit client with auth token
+        auth_token = auth_headers.get("authorization", "").replace("Bearer ", "") if auth_headers else None
+        self.audit_client = AuditClient(auth_token=auth_token)
+
     @staticmethod
     async def create_trip(
         db: AsyncSession,
-        trip_data: TripCreate
+        trip_data: TripCreate,
+        user_id: str = None,
+        tenant_id: str = None,
+        audit_client: AuditClient = None
     ) -> Trip:
         """Create a new trip"""
         from uuid import uuid4
@@ -32,6 +42,24 @@ class TripService:
         db.add(trip)
         await db.commit()
         await db.refresh(trip)
+
+        # Log audit event for trip creation
+        if audit_client and user_id and tenant_id:
+            try:
+                await audit_client.log_trip_created(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    trip_id=trip_id,
+                    truck_plate=trip.truck_plate,
+                    driver_name=trip.driver_name,
+                    metadata={
+                        "origin": trip.origin,
+                        "capacity_total": trip.capacity_total
+                    }
+                )
+            except Exception as audit_error:
+                import logging
+                logging.getLogger(__name__).warning(f"Audit logging failed: {audit_error}")
 
         return trip
 

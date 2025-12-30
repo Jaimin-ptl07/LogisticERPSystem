@@ -63,25 +63,35 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if self._should_skip_path(request.url.path):
             return await call_next(request)
 
-        # Extract token from Authorization header
+        # Extract token from Authorization header or cookie
         authorization = request.headers.get("Authorization")
-        if not authorization:
+        token = None
+
+        if authorization:
+            # Extract token from header
+            token = extract_token_from_header(authorization)
+        else:
+            # Try to get token from cookie (for frontend requests)
+            access_token = request.cookies.get("access_token")
+            if access_token:
+                # Decode URI-encoded token
+                from urllib.parse import unquote
+                token = unquote(access_token)
+
+        if not token:
             log_authentication_event(
                 "MISSING_TOKEN",
                 request=request,
                 success=False,
-                reason="Missing Authorization header"
+                reason="Missing token (Authorization header or cookie required)"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authorization header required",
+                detail="Authorization header or access_token cookie required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
         try:
-            # Extract token from header
-            token = extract_token_from_header(authorization)
-
             # Verify token and get user data
             token_data = verify_token(token)
 

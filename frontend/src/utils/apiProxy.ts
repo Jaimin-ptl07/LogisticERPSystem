@@ -52,6 +52,8 @@ export async function proxyRequest(
       method: request.method,
       headers,
       body,
+      // Forward cookies for authentication
+      credentials: 'include',
     })
 
     // Handle 204 No Content responses (must be before JSON parsing)

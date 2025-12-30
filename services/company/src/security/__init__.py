@@ -75,6 +75,12 @@ from .dependencies import (
     # Report permissions
     COMPANY_REPORTS_READ,
     COMPANY_REPORTS_EXPORT,
+    # Audit permissions
+    AUDIT_CREATE,
+    AUDIT_READ,
+    AUDIT_READ_ALL,
+    AUDIT_STATS,
+    AUDIT_DELETE,
 )
 from .permissions import (
     Permission,
@@ -186,6 +192,12 @@ __all__ = [
     # Report permissions
     "COMPANY_REPORTS_READ",
     "COMPANY_REPORTS_EXPORT",
+    # Audit permissions
+    "AUDIT_CREATE",
+    "AUDIT_READ",
+    "AUDIT_READ_ALL",
+    "AUDIT_STATS",
+    "AUDIT_DELETE",
 
     # Permissions
     "Permission",

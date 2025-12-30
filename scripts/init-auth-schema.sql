@@ -1227,6 +1227,33 @@ VALUES
     'Export finance data'
 ),
 
+-- Audit log permissions
+(
+    'audit',
+    'create',
+    'Create audit log entries'
+),
+(
+    'audit',
+    'read',
+    'View audit log entries'
+),
+(
+    'audit',
+    'read_all',
+    'View all audit log entries'
+),
+(
+    'audit',
+    'stats',
+    'View audit log statistics'
+),
+(
+    'audit',
+    'delete',
+    'Delete audit log entries'
+),
+
 -- Superuser permission
 ( 'superuser', 'access', 'Full system access' ) ON CONFLICT (resource, action) DO NOTHING;
 
@@ -1338,10 +1365,11 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers', 'shipping',
-                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles')
+                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles', 'audit')
   AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'manage_all', 'manage_own',
                    'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own',
-                   'approve', 'approve_bulk', 'reports', 'export', 'invite', 'activate', 'upload_avatar')
+                   'approve', 'approve_bulk', 'reports', 'export', 'invite', 'activate', 'upload_avatar',
+                   'stats', 'delete')
   AND p.resource != 'orders'  -- Exclude orders as they are handled above
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -1734,6 +1762,37 @@ VALUES
                 resource = 'branches'
                 AND action = 'read_all'
         )
+    ),
+    -- Audit permissions for Branch Manager (create, read, and stats)
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'create'
+        )
+    ),
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'read'
+        )
+    ),
+    (
+        3,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'stats'
+        )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Assign finance manager permissions (ID = 4)
@@ -2065,6 +2124,37 @@ VALUES
             WHERE
                 resource = 'branches'
                 AND action = 'read_all'
+        )
+    ),
+    -- Audit permissions for Finance Manager (create, read, and stats)
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'create'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'read'
+        )
+    ),
+    (
+        4,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'stats'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -2647,6 +2737,37 @@ VALUES
             WHERE
                 resource = 'users'
                 AND action = 'read_all'
+        )
+    ),
+    -- Audit permissions for Logistics Manager (create, read, and stats)
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'create'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'read'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'audit'
+                AND action = 'stats'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 

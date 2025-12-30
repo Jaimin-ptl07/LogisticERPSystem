@@ -1119,3 +1119,82 @@ class ProfileChangeHistory(BaseSchema):
 ProductCategory.model_rebuild()
 CompanyRole.model_rebuild()
 EmployeeProfile.model_rebuild()
+
+
+# Audit Log Schemas
+class AuditLogBase(BaseSchema):
+    """Base audit log schema"""
+    user_id: str
+    user_name: Optional[str] = None
+    user_role: Optional[str] = None
+    user_email: Optional[str] = None
+    entity_type: str
+    entity_id: str
+    entity_name: Optional[str] = None
+    action: str
+    module: str
+    sub_module: Optional[str] = None
+    old_status: Optional[str] = None
+    new_status: Optional[str] = None
+    status_changed: bool = False
+    description: Optional[str] = None
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+    meta_data: Optional[Dict[str, Any]] = None  # Renamed from metadata (reserved in SQLAlchemy)
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    request_id: Optional[str] = None
+
+
+class AuditLogCreate(AuditLogBase):
+    """Schema for creating an audit log entry"""
+    tenant_id: str
+
+
+class AuditLogUpdate(BaseSchema):
+    """Schema for updating an audit log entry"""
+    description: Optional[str] = None
+    notes: Optional[str] = None
+    meta_data: Optional[Dict[str, Any]] = None  # Renamed from metadata (reserved in SQLAlchemy)
+
+
+class AuditLogInDB(AuditLogBase):
+    """Schema for audit log in database"""
+    id: UUID
+    tenant_id: str
+    action_timestamp: datetime
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class AuditLog(AuditLogInDB):
+    """Schema for audit log response"""
+    pass
+
+
+class AuditLogQueryParams(BaseSchema):
+    """Schema for audit log query parameters"""
+    tenant_id: str
+    user_id: Optional[str] = None
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    module: Optional[str] = None
+    action: Optional[str] = None
+    new_status: Optional[str] = None
+    status_changed: Optional[bool] = None
+    search: Optional[str] = None  # Search in entity_name, description, notes
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=50, ge=1, le=200)
+    sort_by: str = Field(default="action_timestamp", max_length=50)
+    sort_order: str = Field(default="desc", pattern="^(asc|desc)$")
+
+
+class AuditLogResponse(BaseSchema):
+    """Schema for paginated audit log response"""
+    items: List[AuditLog]
+    total: int
+    page: int
+    per_page: int
+    pages: int

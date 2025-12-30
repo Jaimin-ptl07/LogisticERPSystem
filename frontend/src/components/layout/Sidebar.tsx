@@ -21,6 +21,7 @@ import {
   Menu,
   UserCircle,
   UserCheck,
+  Shield,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -69,11 +70,11 @@ const navigationStructure: NavItem[] = [
         href: "/company-admin/masters",
         icon: LayoutDashboard,
       },
-      // {
-      //   label: "Dashboard",
-      //   href: "/company-admin/masters",
-      //   icon: LayoutDashboard,
-      // },
+      {
+        label: "Audit Logs",
+        href: "/company-admin/audit-logs",
+        icon: Shield,
+      },
     ],
   },
   {

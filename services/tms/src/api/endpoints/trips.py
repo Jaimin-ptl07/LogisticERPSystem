@@ -23,6 +23,7 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id
 )
+from src.audit_client import AuditClient
 
 router = APIRouter(
     dependencies=[Depends(HTTPBearer())],
@@ -343,12 +344,17 @@ async def get_trip(
 @router.post("", response_model=TripResponse)
 async def create_trip(
     trip_data: TripCreate,
+    request: Request,
     token_data: TokenData = Depends(require_permissions(["trips:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new trip"""
+    # Get auth token for audit client
+    auth_token = request.headers.get("authorization", "").replace("Bearer ", "") if request.headers.get("authorization") else None
+    audit_client = AuditClient(auth_token=auth_token)
+
     # Create new trip
     trip = Trip(
         user_id=user_id,
@@ -374,6 +380,26 @@ async def create_trip(
     db.add(trip)
     await db.commit()
     await db.refresh(trip)
+
+    # Log audit event for trip creation (synchronous)
+    try:
+        await audit_client.log_trip_created(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            trip_id=trip.id,
+            truck_plate=trip.truck_plate,
+            driver_name=trip.driver_name,
+            user_name=token_data.user_name if hasattr(token_data, 'user_name') else None,
+            user_role=token_data.role if hasattr(token_data, 'role') else None,
+            meta_data={
+                "origin": trip.origin,
+                "capacity_total": trip.capacity_total,
+                "trip_date": str(trip.trip_date) if trip.trip_date else None
+            },
+            background=False  # Use synchronous mode to ensure audit log is created
+        )
+    except Exception as audit_error:
+        logger.warning(f"Audit logging failed: {audit_error}")
 
     return TripResponse(
         id=trip.id,
@@ -405,12 +431,17 @@ async def create_trip(
 async def update_trip(
     trip_id: str,
     trip_data: TripUpdate,
+    request: Request,
     token_data: TokenData = Depends(require_permissions(["trips:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """Update trip"""
+    # Get auth token for audit client
+    auth_token = request.headers.get("authorization", "").replace("Bearer ", "") if request.headers.get("authorization") else None
+    audit_client = AuditClient(auth_token=auth_token)
+
     # Get existing trip
     query = select(Trip).where(
         and_(
@@ -424,6 +455,9 @@ async def update_trip(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
+    # Track old status for audit logging
+    old_status = trip.status
+
     # Update trip fields
     update_data = trip_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -431,6 +465,26 @@ async def update_trip(
 
     await db.commit()
     await db.refresh(trip)
+
+    # Log audit event for status change (synchronous)
+    if "status" in update_data and old_status != trip.status:
+        try:
+            await audit_client.log_trip_status_change(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                trip_id=trip.id,
+                old_status=old_status,
+                new_status=trip.status,
+                user_name=token_data.user_name if hasattr(token_data, 'user_name') else None,
+                user_role=token_data.role if hasattr(token_data, 'role') else None,
+                meta_data={
+                    "truck_plate": trip.truck_plate,
+                    "driver_name": trip.driver_name
+                },
+                background=False  # Use synchronous mode to ensure audit log is created
+            )
+        except Exception as audit_error:
+            logger.warning(f"Audit logging failed: {audit_error}")
 
     # Fetch orders for this trip to avoid lazy loading issues
     orders_query = select(TripOrder).where(
