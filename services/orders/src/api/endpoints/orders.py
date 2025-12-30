@@ -98,22 +98,13 @@ async def list_orders(
     logger.info(f"ORDERS SERVICE - Request params: status={status}, branch_id={branch_id}, page={page}, per_page={per_page}")
 
     # Get authorization header from the request and forward it
-    # Also check cookies for token (for frontend requests)
     auth_headers = {}
     auth_header = request.headers.get("authorization")
     if auth_header:
         auth_headers["Authorization"] = auth_header
         logger.info(f"ORDERS SERVICE - Auth header present, will forward to company service")
     else:
-        # Try to get token from cookie
-        access_token = request.cookies.get("access_token")
-        if access_token:
-            from urllib.parse import unquote
-            token = unquote(access_token)
-            auth_headers["Authorization"] = f"Bearer {token}"
-            logger.info(f"ORDERS SERVICE - Token extracted from cookie, will forward to company service")
-        else:
-            logger.warning(f"ORDERS SERVICE - No auth header or cookie found!")
+        logger.warning(f"ORDERS SERVICE - No auth header found!")
 
     order_service = OrderService(db, auth_headers, tenant_id)
 
@@ -409,18 +400,10 @@ async def create_order(
 ):
     """Create a new order"""
     # Get authorization header from the request and forward it
-    # Also check cookies for token (for frontend requests)
     auth_headers = {}
     auth_header = request.headers.get("authorization")
     if auth_header:
         auth_headers["Authorization"] = auth_header
-    else:
-        # Try to get token from cookie
-        access_token = request.cookies.get("access_token")
-        if access_token:
-            from urllib.parse import unquote
-            token = unquote(access_token)
-            auth_headers["Authorization"] = f"Bearer {token}"
 
     order_service = OrderService(db, auth_headers, tenant_id)
 

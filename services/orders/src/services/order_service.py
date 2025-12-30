@@ -18,7 +18,6 @@ from src.schemas import (
     OrderQueryParams,
 )
 from src.config_local import OrdersSettings
-from src.audit_client import AuditClient
 
 settings = OrdersSettings()
 
@@ -30,20 +29,6 @@ class OrderService:
         self.db = db
         self.auth_headers = auth_headers or {}
         self.tenant_id = tenant_id
-        # Initialize audit client with auth token
-        # Headers dictionary key is case-sensitive, try both variations
-        auth_token = None
-        if auth_headers:
-            # Try "Authorization" (standard) first, then "authorization" (lowercase)
-            auth_token = auth_headers.get("Authorization", "").replace("Bearer ", "")
-            if not auth_token:
-                auth_token = auth_headers.get("authorization", "").replace("Bearer ", "")
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"DEBUG: OrderService.__init__ - auth_headers keys: {list(auth_headers.keys()) if auth_headers else 'None'}")
-        logger.info(f"DEBUG: OrderService.__init__ - auth_token present: {bool(auth_token)}")
-        logger.info(f"DEBUG: OrderService.__init__ - auth_token length: {len(auth_token) if auth_token else 0}")
-        self.audit_client = AuditClient(auth_token=auth_token if auth_token else None)
 
     async def get_orders_paginated(
         self,
@@ -338,26 +323,6 @@ class OrderService:
             # Commit transaction
             await self.db.commit()
 
-            # Log audit event for order creation (synchronous)
-            try:
-                await self.audit_client.log_order_created(
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    order_id=str(order.id),
-                    customer_name=order_data.customer_id,  # You may want to fetch customer name
-                    meta_data={
-                        "order_number": order.order_number,
-                        "total_amount": float(total_amount),
-                        "total_weight": float(total_weight),
-                        "items_count": len(order_items)
-                    },
-                    background=False  # Use synchronous mode to ensure audit log is created
-                )
-            except Exception as audit_error:
-                # Don't fail the order creation if audit logging fails
-                import logging
-                logging.getLogger(__name__).warning(f"Audit logging failed: {audit_error}")
-
             # Query the order back with all relationships loaded
             result = await self.db.execute(
                 select(Order)
@@ -445,22 +410,6 @@ class OrderService:
         await self.db.commit()
         await self.db.refresh(order)
 
-        # Log audit event for order submission (synchronous)
-        try:
-            await self.audit_client.log_order_submitted(
-                tenant_id=tenant_id,
-                user_id=user_id,
-                order_id=str(order.id),
-                meta_data={
-                    "order_number": order.order_number,
-                    "customer_id": order.customer_id
-                },
-                background=False  # Use synchronous mode to ensure audit log is created
-            )
-        except Exception as audit_error:
-            import logging
-            logging.getLogger(__name__).warning(f"Audit logging failed: {audit_error}")
-
         # TODO: Send notification to finance manager
 
         return order
@@ -505,37 +454,6 @@ class OrderService:
 
         await self.db.commit()
         await self.db.refresh(order)
-
-        # Log audit event for finance approval/rejection (synchronous)
-        try:
-            if approved:
-                await self.audit_client.log_finance_approved(
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    order_id=str(order.id),
-                    amount=float(order.total_amount) if order.total_amount else None,
-                    meta_data={
-                        "order_number": order.order_number,
-                        "customer_id": order.customer_id,
-                        "payment_type": payment_type.value if payment_type else None
-                    },
-                    background=False  # Use synchronous mode to ensure audit log is created
-                )
-            else:
-                await self.audit_client.log_finance_rejected(
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    order_id=str(order.id),
-                    reason=reason or "No reason provided",
-                    meta_data={
-                        "order_number": order.order_number,
-                        "customer_id": order.customer_id
-                    },
-                    background=False  # Use synchronous mode to ensure audit log is created
-                )
-        except Exception as audit_error:
-            import logging
-            logging.getLogger(__name__).warning(f"Audit logging failed: {audit_error}")
 
         # TODO: Send notification to relevant parties
 

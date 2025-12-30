@@ -427,10 +427,3 @@ PRODUCT_STOCK_ADJUST = ["products:stock_adjust"]
 
 COMPANY_REPORTS_READ = ["company_reports:read"]
 COMPANY_REPORTS_EXPORT = ["company_reports:export"]
-
-# Audit permissions
-AUDIT_CREATE = ["audit:create"]
-AUDIT_READ = ["audit:read"]
-AUDIT_READ_ALL = ["audit:read_all"]
-AUDIT_STATS = ["audit:stats"]
-AUDIT_DELETE = ["audit:delete"]
