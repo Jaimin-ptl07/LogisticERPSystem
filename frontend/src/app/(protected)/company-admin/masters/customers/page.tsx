@@ -532,9 +532,64 @@ export default function CustomersPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="whitespace-nowrap">Customer Code</TableHead>
+                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Contact</TableHead>
+                    <TableHead className="whitespace-nowrap">Location</TableHead>
+                    <TableHead className="whitespace-nowrap">Business Type</TableHead>
+                    <TableHead className="whitespace-nowrap">Branches</TableHead>
+                    <TableHead className="whitespace-nowrap">Credit Limit</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <TableRow key={index} className="animate-pulse">
+                      <TableCell className="font-medium">
+                        <div className="h-4 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-2">
+                          <div className="h-3 bg-gray-200 rounded w-28" />
+                          <div className="h-3 bg-gray-200 rounded w-36" />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
           ) : customers.length === 0 ? (
             <div className="text-center py-8">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />

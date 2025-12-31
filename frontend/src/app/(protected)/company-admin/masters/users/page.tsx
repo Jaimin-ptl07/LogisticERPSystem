@@ -585,9 +585,59 @@ export default function UsersPage() {
         </CardHeader>
         <CardContent className="overflow-visible">
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12 whitespace-nowrap">
+                      <div className="h-4 w-4 bg-gray-200 rounded" />
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Email</TableHead>
+                    <TableHead className="whitespace-nowrap">Role</TableHead>
+                    <TableHead className="whitespace-nowrap">Branch</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="whitespace-nowrap">Last Login</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <TableRow key={index} className="animate-pulse">
+                      <TableCell>
+                        <div className="h-4 w-4 bg-gray-200 rounded" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-28" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-36" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
           ) : error ? (
             <div className="text-center py-8">
               <p className="text-red-600">

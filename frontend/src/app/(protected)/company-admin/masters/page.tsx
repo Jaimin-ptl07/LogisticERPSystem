@@ -133,13 +133,13 @@ export default function MastersPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Masters Management</h1>
-        <p className="text-gray-500 mt-2">
+        {/* <p className="text-gray-500 mt-2">
           Manage all master data and configurations for your logistics business
-        </p>
+        </p> */}
       </div>
 
       {/* Quick Stats */}
@@ -226,7 +226,7 @@ export default function MastersPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <div className="shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">
           Quick Actions
         </h2>
@@ -258,7 +258,7 @@ export default function MastersPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {modules.map((module) => (
             <Link key={module.href} href={module.href} className="group block">
-              <div className="bg-white rounded-xl border-2 border-gray-200 p-5 hover:border-[#1f40ae] hover:shadow-lg transition-all duration-300 h-full">
+              <div className="bg-white rounded-xl border-2 border-gray-200 p-5 shadow-sm hover:shadow-xl transition-shadow duration-300 h-full">
                 <div className="flex items-start gap-4">
                   <div
                     className={`p-3 ${module.color} rounded-xl group-hover:scale-110 transition-transform duration-200`}
