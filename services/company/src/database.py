@@ -617,3 +617,45 @@ class EmployeeBranch(Base):
     # Relationships
     employee = relationship("EmployeeProfile", back_populates="assigned_branches")
     branch = relationship("Branch")
+
+
+class AuditLog(Base):
+    """Audit Log model - centralized audit tracking for all company operations"""
+    __tablename__ = "audit_logs"
+
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(255), nullable=False, index=True)
+
+    # Who performed the action
+    user_id = Column(String(255), nullable=False, index=True, comment="User who performed the action")
+    user_name = Column(String(200), comment="Name of the user (denormalized for query)")
+    user_email = Column(String(255), comment="Email of the user (denormalized for query)")
+    user_role = Column(String(50), comment="Role of the user")
+
+    # What was done
+    action = Column(String(50), nullable=False, index=True, comment="Action performed: create, update, delete, status_change, approve, reject, etc.")
+    module = Column(String(50), nullable=False, index=True, comment="Module: orders, trips, customers, vehicles, etc.")
+    entity_type = Column(String(50), nullable=False, index=True, comment="Type of entity: order, trip, customer, etc.")
+    entity_id = Column(String(255), nullable=False, index=True, comment="ID of the affected entity")
+
+    # Action details
+    description = Column(Text, nullable=False, comment="Human-readable description of the action")
+    old_values = Column(JSON, comment="Previous values (for updates)")
+    new_values = Column(JSON, comment="New values (for updates/creates)")
+
+    # Status change specific
+    from_status = Column(String(50), comment="Previous status")
+    to_status = Column(String(50), comment="New status")
+
+    # Approval specific
+    approval_status = Column(String(20), comment="approved/rejected for approval actions")
+    reason = Column(Text, comment="Reason for rejection/status change")
+
+    # Metadata
+    ip_address = Column(String(50), comment="IP address of the user")
+    user_agent = Column(String(500), comment="Browser/client info")
+    service_name = Column(String(50), comment="Service that created this log (orders, tms, driver, etc.)")
+
+    # Timestamp
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

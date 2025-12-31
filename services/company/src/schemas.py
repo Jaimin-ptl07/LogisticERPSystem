@@ -1131,6 +1131,89 @@ class ProfileChangeHistory(BaseSchema):
     changes: List[ProfileAuditLog]
 
 
+# Audit Log schemas
+class AuditLogCreate(BaseSchema):
+    """Schema for creating audit log (called by other services)"""
+    tenant_id: str
+    user_id: str
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_role: Optional[str] = None
+    action: str
+    module: str
+    entity_type: str
+    entity_id: str
+    description: str
+    old_values: Optional[Dict[str, Any]] = None
+    new_values: Optional[Dict[str, Any]] = None
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    approval_status: Optional[str] = None
+    reason: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    service_name: str
+
+
+class AuditLogResponse(BaseSchema):
+    """Schema for audit log response"""
+    id: UUID
+    tenant_id: str
+    user_id: str
+    user_name: Optional[str]
+    user_email: Optional[str]
+    user_role: Optional[str]
+    action: str
+    module: str
+    entity_type: str
+    entity_id: str
+    description: str
+    old_values: Optional[Dict[str, Any]]
+    new_values: Optional[Dict[str, Any]]
+    from_status: Optional[str]
+    to_status: Optional[str]
+    approval_status: Optional[str]
+    reason: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    service_name: Optional[str]
+    created_at: datetime
+
+
+class AuditLogQueryParams(BaseSchema):
+    """Schema for audit log query parameters"""
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+    user_id: Optional[str] = None
+    module: Optional[str] = None
+    action: Optional[str] = None
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=50, ge=1, le=100)
+
+
+class AuditLogListResponse(BaseSchema):
+    """Schema for paginated audit log list"""
+    items: List[AuditLogResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class AuditLogSummaryResponse(BaseSchema):
+    """Schema for audit log summary statistics"""
+    total_logs: int
+    unique_users: int
+    unique_modules: List[Dict[str, Any]]
+    unique_actions: List[Dict[str, Any]]
+    logs_by_module: Dict[str, int]
+    logs_by_action: Dict[str, int]
+    logs_by_date: List[Dict[str, Any]]
+    top_users: List[Dict[str, Any]]
+
+
 # Update forward references
 ProductCategory.model_rebuild()
 CompanyRole.model_rebuild()
