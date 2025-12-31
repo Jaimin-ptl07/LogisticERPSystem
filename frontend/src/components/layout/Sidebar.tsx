@@ -21,6 +21,7 @@ import {
   Menu,
   UserCircle,
   UserCheck,
+  FileClock,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -69,11 +70,11 @@ const navigationStructure: NavItem[] = [
         href: "/company-admin/masters",
         icon: LayoutDashboard,
       },
-      // {
-      //   label: "Dashboard",
-      //   href: "/company-admin/masters",
-      //   icon: LayoutDashboard,
-      // },
+      {
+        label: "Audit Logs",
+        href: "/company-admin/masters/audit-logs",
+        icon: FileClock,
+      },
     ],
   },
   {
@@ -319,9 +320,10 @@ export function Sidebar({
                     <ul className="mt-1 ml-4 space-y-1">
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon || ChevronRight;
+                        // More precise active check: exact match OR starts with followed by slash (not just containing)
                         const isActive =
                           pathname === subItem.href ||
-                          pathname.startsWith(subItem.href + "/");
+                          (pathname.startsWith(subItem.href) && pathname[subItem.href.length] === '/');
 
                         return (
                           <li key={subItem.href}>

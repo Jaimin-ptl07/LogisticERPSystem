@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
 from starlette.responses import Response as StarletteResponse
 
-from src.api.endpoints import branches, customers, vehicles, products, product_categories, business_types, vehicle_types, users, roles, profiles
+from src.api.endpoints import branches, customers, vehicles, products, product_categories, business_types, vehicle_types, users, roles, profiles, audit
 from src.config_local import settings
 from src.database import engine, Base
 from src.security import (
@@ -280,6 +280,12 @@ app.include_router(
     profiles.router,
     prefix="/profiles",
     tags=["Profile Management"]
+)
+
+app.include_router(
+    audit.router,
+    prefix="/audit",
+    tags=["Audit Logs"]
 )
 
 

@@ -231,9 +231,6 @@ async def get_branch(
     query = select(Branch).where(
         Branch.id == branch_id,
         Branch.tenant_id == tenant_id
-    ).options(
-        selectinload(Branch.customers),
-        selectinload(Branch.vehicles)
     )
 
     result = await db.execute(query)

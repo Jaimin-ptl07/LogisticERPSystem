@@ -1228,7 +1228,18 @@ VALUES
 ),
 
 -- Superuser permission
-( 'superuser', 'access', 'Full system access' ) ON CONFLICT (resource, action) DO NOTHING;
+( 'superuser', 'access', 'Full system access' ),
+-- Audit Log permissions
+(
+    'audit',
+    'read',
+    'View audit logs'
+),
+(
+    'audit',
+    'export',
+    'Export audit logs'
+) ON CONFLICT (resource, action) DO NOTHING;
 
 -- Assign all permissions to super admin role (ID = 1)
 INSERT INTO
@@ -1338,7 +1349,7 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers', 'shipping',
-                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles')
+                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles', 'audit')
   AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'manage_all', 'manage_own',
                    'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own',
                    'approve', 'approve_bulk', 'reports', 'export', 'invite', 'activate', 'upload_avatar')
