@@ -409,7 +409,7 @@ export default function SuperAdmin() {
         <TabsContent value="companies">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              {/* <div className="flex justify-between items-center">
                 <CardTitle>All Companies</CardTitle>
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex items-center gap-2">
@@ -417,7 +417,7 @@ export default function SuperAdmin() {
                     Create Company
                   </Button>
                 </div>
-              </div>
+              </div> */}
             </CardHeader>
             <CardContent>
               {/* Toolbar */}
