@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS orders (
     order_type VARCHAR(20) NOT NULL DEFAULT 'delivery',
     status VARCHAR(50) NOT NULL DEFAULT 'draft',
     priority VARCHAR(20) NOT NULL DEFAULT 'normal',
+    tms_order_status VARCHAR(50) DEFAULT 'available' CHECK (
+        tms_order_status IN ('available', 'partial', 'fully_assigned')
+    ),
 
     -- Pickup information
     pickup_address TEXT,
@@ -139,6 +142,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_tenant_id ON orders(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_branch_id ON orders(branch_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_tms_order_status ON orders(tms_order_status);
 CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders(order_number);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_driver_id ON orders(driver_id);

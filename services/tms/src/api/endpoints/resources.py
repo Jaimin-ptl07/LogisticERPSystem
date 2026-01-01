@@ -304,43 +304,51 @@ async def get_orders(
             # Build query parameters for orders service
             params = {
                 "tenant_id": tenant_id,
-                "per_page": 100  # Get up to 100 orders
+                "per_page": 100  # Max per_page value
             }
 
-            # Add status filter if provided
+            # Fetch all pages of orders
+            all_orders = []
+            current_page = 1
+            total_pages = 1
+
+            while current_page <= total_pages:
+                params["page"] = current_page
+
+                # Call Orders service
+                logger.info(f"Calling orders service with params: {params}")
+                response = await client.get(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/",
+                    params=params,
+                    headers=headers
+                )
+
+                if response.status_code != 200:
+                    logger.error(f"Failed to fetch orders from Orders service: {response.status_code}")
+                    logger.error(f"Response text: {response.text}")
+                    break
+
+                data = response.json()
+                orders = data.get("items", [])
+                all_orders.extend(orders)
+
+                # Update pagination info
+                total_pages = data.get("pages", 1)
+                current_page += 1
+
+            logger.info(f"Total orders fetched: {len(all_orders)}")
+            orders = all_orders
+
+            # Apply filters locally after fetching all orders
             if status:
-                params["status"] = status
+                orders = [o for o in orders if o.get("status") == status]
 
-            # Add priority filter if provided
             if priority:
-                params["priority"] = priority
-
-            # Call Orders service
-            logger.info(f"Calling orders service with params: {params}")
-            response = await client.get(
-                f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/",
-                params=params,
-                headers=headers
-            )
-
-            logger.info(f"Orders service response status: {response.status_code}")
-
-            if response.status_code != 200:
-                logger.error(f"Failed to fetch orders from Orders service: {response.status_code}")
-                logger.error(f"Response text: {response.text}")
-                # Return empty list if orders service is unavailable
-                return []
-
-            data = response.json()
-            logger.info(f"Orders service response data: {data}")
-            orders = data.get("items", [])
-            logger.info(f"Extracted orders count: {len(orders)}")
+                orders = [o for o in orders if o.get("priority") == priority]
 
             # Transform orders to match TMS Order schema format
             transformed_orders = []
             for order in orders:
-                logger.info(f"Processing order: {order}")
-
                 # Handle the created_at field - it might be a string or datetime object
                 created_at = order.get("created_at")
                 if isinstance(created_at, str):
@@ -355,21 +363,59 @@ async def get_orders(
                 else:
                     date_obj = date.today()
 
+                # Transform items to include full item data
+                items_data = order.get("items")
+                transformed_items = []
+                # Check if items is a list/array, if not, skip it
+                if isinstance(items_data, list):
+                    for item in items_data:
+                        transformed_items.append({
+                            "id": item.get("id"),
+                            "product_id": item.get("product_id"),
+                            "product_name": item.get("product_name"),
+                            "product_code": item.get("product_code"),
+                            "description": item.get("description"),
+                            "quantity": item.get("quantity"),
+                            "unit": item.get("unit"),
+                            "unit_price": item.get("unit_price"),
+                            "total_price": item.get("total_price"),
+                            "weight": item.get("weight"),
+                            "total_weight": item.get("total_weight"),
+                            "volume": item.get("volume"),
+                            "weight_type": item.get("weight_type"),
+                            "fixed_weight": item.get("fixed_weight"),
+                            "weight_unit": item.get("weight_unit"),
+                        })
+
+                # Calculate weight and volume safely
+                items_for_calc = order.get("items", []) if isinstance(order.get("items"), list) else []
+                calculated_weight = sum(item.get("weight", 0) or 0 for item in items_for_calc)
+                calculated_volume = sum(item.get("volume", 0) or 0 for item in items_for_calc)
+
+                # Get items count
+                if isinstance(items_data, list):
+                    items_count = len(items_data)
+                elif isinstance(items_data, int):
+                    items_count = items_data
+                else:
+                    items_count = 0
+
                 transformed_order = {
                     "id": order.get("order_number", order.get("id")),
                     "customer": order.get("customer", {}).get("name", "Unknown Customer") if order.get("customer") else "Unknown Customer",
                     "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
                     "status": order.get("status", "unknown"),
+                    "tms_order_status": order.get("tms_order_status", "available"),
                     "total": order.get("total_amount", 0),
                     # Use order's total_weight directly, or sum item weights if not available
-                    "weight": order.get("total_weight", 0) or sum(item.get("weight", 0) or 0 for item in order.get("items", [])),
-                    "volume": sum(item.get("volume", 0) or 0 for item in order.get("items", [])),
+                    "weight": order.get("total_weight", 0) or calculated_weight,
+                    "volume": order.get("total_volume", 0) or calculated_volume,
                     "date": date_obj,
                     "priority": order.get("priority", "medium"),
-                    "items": len(order.get("items", [])),
+                    "items_count": items_count,
+                    "items": transformed_items,
                     "address": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address"
                 }
-                logger.info(f"Transformed order: {transformed_order}")
                 transformed_orders.append(transformed_order)
 
             logger.info(f"Final transformed orders count: {len(transformed_orders)}")

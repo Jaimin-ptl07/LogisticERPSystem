@@ -1,5 +1,6 @@
 """Trip API endpoints with reordering functionality"""
 
+import os
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer
@@ -23,6 +24,9 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id
 )
+from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     dependencies=[Depends(HTTPBearer())],
@@ -125,6 +129,54 @@ async def get_trips(
 
     # Convert to response models with orders
     trip_responses = []
+
+    # Fetch all orders from Orders service to get items data (with pagination)
+    orders_with_items = {}
+    try:
+        async with AsyncClient(timeout=30.0) as client:
+            # Fetch all pages of orders
+            all_orders = []
+            current_page = 1
+            total_pages = 1
+
+            while current_page <= total_pages:
+                orders_response = await client.get(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/",
+                    params={
+                        "tenant_id": tenant_id,
+                        "per_page": 100,  # Max per_page value
+                        "page": current_page
+                    },
+                    headers=auth_headers
+                )
+                logger.info(f"Orders service response status: {orders_response.status_code}")
+
+                if orders_response.status_code != 200:
+                    logger.error(f"Failed to fetch orders: status {orders_response.status_code}, response: {orders_response.text}")
+                    break
+
+                orders_data = orders_response.json()
+                orders = orders_data.get("items", [])
+                all_orders.extend(orders)
+
+                # Update pagination info
+                total_pages = orders_data.get("pages", 1)
+                current_page += 1
+
+            logger.info(f"Fetched {len(all_orders)} total orders from Orders service")
+
+            # Index orders by order_number for quick lookup
+            for order in all_orders:
+                order_key = order.get("order_number") or order.get("id")
+                orders_with_items[order_key] = order
+                # Also index by 'id' in case order_id matches the UUID
+                if order.get("id"):
+                    orders_with_items[order["id"]] = order
+            logger.info(f"Fetched {len(orders_with_items)} orders with items data")
+            logger.info(f"Sample orders_with_items keys: {list(orders_with_items.keys())[:5]}")
+    except Exception as e:
+        logger.error(f"Error fetching orders with items: {str(e)}", exc_info=True)
+
     for trip in trips:
         # Get orders for this trip ordered by sequence_number
         orders_query = select(TripOrder).where(
@@ -138,9 +190,22 @@ async def get_trips(
         orders_result = await db.execute(orders_query)
         orders = orders_result.scalars().all()
 
-        # Convert orders to TripOrderResponse format
-        order_responses = [
-            TripOrderResponse(
+        # Convert orders to TripOrderResponse format with items_data
+        order_responses = []
+        for order in orders:
+            # Get items data from the orders_with_items dictionary
+            order_with_items = orders_with_items.get(order.order_id, {})
+            items_data = order_with_items.get("items", [])
+
+            # Use items_json if available (for split orders), otherwise use items_data from Orders service
+            display_items = order.items_json if order.items_json else items_data
+
+            # Debug logging
+            if order.order_id not in orders_with_items:
+                logger.warning(f"Order {order.order_id} not found in orders_with_items. Available keys: {list(orders_with_items.keys())[:10]}")
+            logger.info(f"Trip order_id: {order.order_id}, items_data length: {len(items_data)}, items_json length: {len(order.items_json) if order.items_json else 0}")
+
+            order_response = TripOrderResponse(
                 id=order.id,
                 trip_id=order.trip_id,
                 user_id=order.user_id,
@@ -152,10 +217,14 @@ async def get_trips(
                 customer_phone=order.customer_phone,
                 product_name=order.product_name,
                 status=order.status,
+                tms_order_status=order.tms_order_status,
                 total=order.total,
                 weight=order.weight,
                 volume=order.volume,
                 items=order.items,
+                items_data=display_items,  # Use items_json if available, otherwise items_data from Orders service
+                items_json=order.items_json,
+                remaining_items_json=order.remaining_items_json,
                 quantity=order.quantity,
                 priority=order.priority,
                 delivery_status=order.delivery_status,
@@ -168,8 +237,7 @@ async def get_trips(
                 original_weight=order.original_weight,
                 assigned_at=order.assigned_at
             )
-            for order in orders
-        ]
+            order_responses.append(order_response)
 
         trip_response = TripResponse(
             id=trip.id,
@@ -199,6 +267,14 @@ async def get_trips(
         # Add orders to the response
         trip_response.orders = order_responses
         trip_responses.append(trip_response)
+
+    # Log sample response for debugging
+    if trip_responses:
+        sample_trip = trip_responses[0]
+        logger.info(f"Sample trip response: id={sample_trip.id}, orders_count={len(sample_trip.orders)}")
+        if sample_trip.orders:
+            sample_order = sample_trip.orders[0]
+            logger.info(f"Sample order: order_id={sample_order.order_id}, items={sample_order.items}, items_data_length={len(sample_order.items_data) if sample_order.items_data else 0}")
 
     return trip_responses
 
@@ -317,10 +393,14 @@ async def get_trip(
                 customer_phone=order.customer_phone,
                 product_name=order.product_name,
                 status=order.status,
+                tms_order_status=order.tms_order_status,
                 total=order.total,
                 weight=order.weight,
                 volume=order.volume,
                 items=order.items,
+                items_data=order.items_json or [],  # Use items_json if available
+                items_json=order.items_json,
+                remaining_items_json=order.remaining_items_json,
                 quantity=order.quantity or 1,  # Default to 1 if null
                 priority=order.priority,
                 delivery_status=order.delivery_status or "pending",
@@ -564,13 +644,19 @@ async def get_trip_orders(
 @router.post("/{trip_id}/orders", response_model=MessageResponse)
 async def assign_orders_to_trip(
     trip_id: str,
-    request: AssignOrdersRequest,
+    request: Request,
+    order_request: AssignOrdersRequest,
     token_data: TokenData = Depends(require_permissions(["trips:assign"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """Assign orders to a trip"""
+    # Get the authorization header for forwarding to Orders service
+    auth_header = request.headers.get("authorization")
+    headers = {}
+    if auth_header:
+        headers["Authorization"] = auth_header
     # Verify trip exists and belongs to tenant
     trip_query = select(Trip).where(
         and_(
@@ -591,7 +677,7 @@ async def assign_orders_to_trip(
         )
 
     # Calculate total weight for new orders
-    total_new_weight = sum(order.weight for order in request.orders)
+    total_new_weight = sum(order.weight for order in order_request.orders)
     new_capacity_used = (trip.capacity_used or 0) + total_new_weight
 
     # Check capacity
@@ -601,6 +687,24 @@ async def assign_orders_to_trip(
             detail=f"Orders exceed trip capacity. Current: {trip.capacity_used}kg, New: {total_new_weight}kg, Max: {trip.capacity_total}kg"
         )
 
+    # Check if any orders are already assigned to another trip (not split orders)
+    for order_data in order_request.orders:
+        if not order_data.original_order_id:  # Only check non-split orders
+            existing_query = select(TripOrder).where(
+                and_(
+                    TripOrder.order_id == order_data.order_id,
+                    TripOrder.tms_order_status == "fully_assigned",
+                    TripOrder.trip_id != trip_id  # Exclude current trip
+                )
+            )
+            existing_result = await db.execute(existing_query)
+            existing = existing_result.scalar_one_or_none()
+            if existing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Order {order_data.order_id} is already assigned to trip {existing.trip_id} and cannot be reassigned"
+                )
+
     # Get the current highest sequence number for this trip
     max_seq_query = select(TripOrder.sequence_number).where(
         TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number.desc()).limit(1)
@@ -609,20 +713,62 @@ async def assign_orders_to_trip(
 
     # Add orders to trip with sequential sequence numbers
     created_orders = []
-    for idx, order_data in enumerate(request.orders):
-        # Get order data dict without user_id and company_id to avoid conflicts
+
+    for idx, order_data in enumerate(order_request.orders):
+        # Get order data dict without user_id, company_id, and json fields to avoid conflicts
         # Use model_dump(mode='json') to properly serialize enum values to strings
-        order_dict = order_data.model_dump(mode='json', exclude={'user_id', 'company_id'})
+        order_dict = order_data.model_dump(mode='json', exclude={'user_id', 'company_id', 'items_json', 'remaining_items_json'})
+
+        # Determine TMS order status based on whether this is a split order
+        tms_status = "available"
+        if order_data.original_order_id:
+            # This is a split order - check if there are remaining items
+            if order_data.remaining_items_json and len(order_data.remaining_items_json) > 0:
+                tms_status = "partial"
+            else:
+                tms_status = "fully_assigned"
+        elif order_data.items_json and len(order_data.items_json) < (order_data.original_items or order_data.items):
+            # Partial assignment
+            tms_status = "partial"
+        else:
+            # Full assignment
+            tms_status = "fully_assigned"
 
         trip_order = TripOrder(
             trip_id=trip_id,
             sequence_number=max_seq + idx + 1,  # Assign sequential sequence numbers
             user_id=user_id,
             company_id=tenant_id,  # Use tenant_id as company_id for multi-tenancy
+            tms_order_status=tms_status,
+            items_json=order_data.items_json,  # Only store assigned items in trip_orders
             **order_dict
         )
         created_orders.append(trip_order)
         db.add(trip_order)
+
+        # Update order status in Orders service for non-split orders
+        if not order_data.original_order_id:
+            try:
+                # Update the order's tms_order_status, items_json, and remaining_items_json via Orders service
+                async with AsyncClient(timeout=10.0) as client:
+                    update_response = await client.patch(
+                        f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/tms-status",
+                        headers=headers,
+                        json={
+                            "order_id": order_data.order_id,
+                            "tms_order_status": tms_status,
+                            "items_json": order_data.items_json,
+                            "remaining_items_json": order_data.remaining_items_json
+                        }
+                    )
+                    if update_response.status_code != 200:
+                        logger.error(f"Failed to update TMS status for order {order_data.order_id}: {update_response.text}")
+                        logger.error(f"Response status: {update_response.status_code}")
+                    else:
+                        logger.info(f"Successfully updated order {order_data.order_id} to tms_status={tms_status}")
+            except Exception as e:
+                logger.error(f"Error updating TMS status for order {order_data.order_id}: {str(e)}", exc_info=True)
+                # Don't fail the assignment if status update fails
 
     # Update trip capacity_used
     total_weight = sum(order.weight for order in created_orders)
@@ -631,7 +777,7 @@ async def assign_orders_to_trip(
 
     await db.commit()
 
-    return MessageResponse(message=f"Successfully assigned {len(request.orders)} orders to trip {trip_id}")
+    return MessageResponse(message=f"Successfully assigned {len(order_request.orders)} orders to trip {trip_id}")
 
 
 @router.put("/{trip_id}/orders/reorder", response_model=MessageResponse)

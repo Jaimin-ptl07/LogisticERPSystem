@@ -4,10 +4,10 @@ Order model definitions
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
-    String, Text, DateTime, Numeric, Integer, Boolean, ForeignKey
+    String, Text, DateTime, Numeric, Integer, Boolean, ForeignKey, JSON
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 import enum
 
@@ -97,6 +97,15 @@ class Order(Base):
         nullable=False,
         default="normal"
     )
+    tms_order_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        default="available",
+        index=True
+    )
+    # JSON columns for TMS partial assignment tracking
+    items_json: Mapped[Optional[object]] = mapped_column(JSONB, nullable=True)
+    remaining_items_json: Mapped[Optional[object]] = mapped_column(JSONB, nullable=True)
 
     # Pickup and delivery addresses
     pickup_address: Mapped[str] = mapped_column(Text, nullable=True)

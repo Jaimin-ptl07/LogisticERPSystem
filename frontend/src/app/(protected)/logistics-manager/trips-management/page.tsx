@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
-import { AppLayout } from "@/components/layout/AppLayout";
 import {
   tmsAPI,
   tmsResourcesAPI,
@@ -23,17 +22,14 @@ import {
   XCircle,
   X,
   Phone,
+  Play,
+  RotateCcw,
+  ChevronDown,
+  GripVertical,
+  Search,
   Award,
   CreditCard,
-  Play,
-  Square,
-  Flag,
-  AlertTriangle,
-  RotateCcw,
-  Search,
-  ChevronDown,
-  ChevronUp,
-  GripVertical,
+  Scissors,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -71,6 +67,8 @@ export default function Trips() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [orderSearchTerm, setOrderSearchTerm] = useState("");
   const [orderPriorityFilter, setOrderPriorityFilter] = useState("all");
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+  const [tmsOrderStatusFilter, setTmsOrderStatusFilter] = useState<"all" | "available" | "partial" | "fully_assigned">("all");
 
   // Search states for trip creation
   const [branchSearchTerm, setBranchSearchTerm] = useState("");
@@ -78,8 +76,8 @@ export default function Trips() {
   const [driverSearchTerm, setDriverSearchTerm] = useState("");
   const [showSplitOptions, setShowSplitOptions] = useState(false);
   const [splitOrder, setSplitOrder] = useState<any | null>(null);
-  const [splitItemsCount, setSplitItemsCount] = useState(0);
-  const [splitWeight, setSplitWeight] = useState(0);
+  const [selectedSplitItems, setSelectedSplitItems] = useState<string[]>([]);
+  const [splitItemQuantities, setSplitItemQuantities] = useState<Record<string, number>>({});
 
   // Resource data from API
   const [availableTrucks, setAvailableTrucks] = useState<any[]>([]);
@@ -95,6 +93,7 @@ export default function Trips() {
   const [draggedOrder, setDraggedOrder] = useState<any>(null);
   const [dragOverTrip, setDragOverTrip] = useState<string | null>(null);
   const [expandedTrips, setExpandedTrips] = useState<Set<string>>(new Set());
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
   // Fetch data on component mount
   useEffect(() => {
@@ -428,11 +427,17 @@ export default function Trips() {
     }
   };
 
-  const getApprovedOrders = () =>
-    availableOrders.filter(
+  const getApprovedOrders = () => {
+    const filtered = availableOrders.filter(
       (order) =>
-        order.status === "submitted" || order.status === "finance_approved"
+        (order.status === "submitted" || order.status === "finance_approved") &&
+        order.tms_order_status !== "fully_assigned" // Exclude fully_assigned orders (undefined/null means available)
     );
+    console.log("getApprovedOrders - total orders:", availableOrders.length);
+    console.log("getApprovedOrders - filtered orders:", filtered.length);
+    console.log("getApprovedOrders - sample tms statuses:", availableOrders.slice(0, 10).map(o => ({ id: o.id, status: o.status, tms_status: o.tms_order_status })));
+    return filtered;
+  };
   const getTrucksAvailable = () =>
     availableTrucks.filter((truck) => truck.status === "available");
   const getDriversAvailable = () => {
@@ -622,6 +627,7 @@ export default function Trips() {
           weight: draggedOrder.weight,
           volume: draggedOrder.volume,
           items: draggedOrder.items,
+          items_json: draggedOrder.items_data || draggedOrder.items || [], // Include full items array
           priority: draggedOrder.priority,
           address: draggedOrder.address,
         };
@@ -662,7 +668,7 @@ export default function Trips() {
     }
   };
 
-  // Split order logic (same as original)
+  // Split order logic - open item selection modal
   const handleSplitOrder = (order: any) => {
     if (!selectedTripForOrders) return;
 
@@ -675,65 +681,74 @@ export default function Trips() {
       return;
     }
 
-    // Set the order and initialize with maximum possible items
-    const itemsPerWeight = order.weight / order.items;
-    const maxItemsThatFit = Math.floor(availableCapacity / itemsPerWeight);
-    const maxItems = Math.min(maxItemsThatFit, order.items);
-
+    // Set the order and initialize split state
     setSplitOrder(order);
-    setSplitItemsCount(maxItems > 0 ? maxItems : 1);
-    setSplitWeight(
-      Math.round((order.weight / order.items) * (maxItems > 0 ? maxItems : 1))
-    );
+    setSelectedSplitItems([]);
+    setSplitItemQuantities({});
     setShowSplitOptions(true);
   };
 
   const handleConfirmSplit = async () => {
-    if (!splitOrder || !selectedTripForOrders) return;
+    if (!splitOrder || !selectedTripForOrders || selectedSplitItems.length === 0) return;
 
     try {
-      // Create split order data
-      const splitOrderData = {
-        order_id: `${splitOrder.id}-SPLIT`,
+      // Get the order items
+      const orderItems = (splitOrder.items_data || splitOrder.items);
+      const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+
+      // Filter selected items
+      const selectedItemsData = itemsArray.filter((item: any) =>
+        selectedSplitItems.includes(item.id || String(item.product_id))
+      );
+
+      // Calculate totals for selected items
+      const selectedWeight = selectedItemsData.reduce((sum: number, item: any) => sum + (item.weight || 0), 0);
+      const selectedVolume = selectedItemsData.reduce((sum: number, item: any) => sum + (item.volume || 0), 0);
+      const selectedTotal = selectedItemsData.reduce((sum: number, item: any) => sum + (item.total_price || 0), 0);
+
+      // Create split order data with selected items
+      const splitOrderData: OrderAssignData = {
+        order_id: `${splitOrder.id}-SPLIT-${Date.now()}`,
         customer: splitOrder.customer,
         customerAddress: splitOrder.customerAddress,
-        total: Math.round(
-          (splitOrder.total / splitOrder.items) * splitItemsCount
-        ),
-        weight: splitWeight,
-        volume: Math.round(
-          (splitOrder.volume / splitOrder.items) * splitItemsCount
-        ),
-        items: splitItemsCount,
+        total: selectedTotal,
+        weight: Math.round(selectedWeight),
+        volume: Math.round(selectedVolume),
+        items: selectedSplitItems.length,
         priority: splitOrder.priority,
         address: splitOrder.address,
         original_order_id: splitOrder.id,
-        original_items: splitOrder.items,
+        original_items: itemsArray.length,
         original_weight: splitOrder.weight,
+        items_json: selectedItemsData, // Store selected items
+        remaining_items_json: itemsArray.filter((item: any) =>
+          !selectedSplitItems.includes(item.id || String(item.product_id))
+        ), // Store remaining items
       };
 
       // Assign split order to trip
-      await tmsAPI.assignOrdersToTrip(selectedTripForOrders.id, [
-        splitOrderData,
-      ]);
+      await tmsAPI.assignOrdersToTrip(selectedTripForOrders.id, [splitOrderData]);
 
       // Show success message
-      const remainingItems = splitOrder.items - splitItemsCount;
+      const remainingItemsCount = itemsArray.length - selectedSplitItems.length;
+      const remainingWeight = splitOrder.weight - selectedWeight;
       alert(
-        `Successfully assigned split order with ${splitItemsCount} items. ${remainingItems} items remaining from original order ${splitOrder.id}.`
+        `Successfully assigned ${selectedSplitItems.length} items (${selectedWeight}kg) to trip. ` +
+        `${remainingItemsCount} items (${remainingWeight}kg) remaining from order ${splitOrder.id}.`
       );
 
       // Reset split state and close modals
       setSplitOrder(null);
-      setSplitItemsCount(0);
-      setSplitWeight(0);
+      setSelectedSplitItems([]);
       setShowSplitOptions(false);
       setShowOrderModal(false);
+      setExpandedOrderIds(new Set());
       setSelectedTripForOrders(null);
       setSelectedOrders([]);
 
-      // Refresh trips
+      // Refresh trips and orders
       fetchTrips();
+      fetchResources();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to split order");
     }
@@ -787,7 +802,8 @@ export default function Trips() {
             total: order.total,
             weight: order.weight,
             volume: order.volume,
-            items: order.items,
+            items: Array.isArray(order.items) ? order.items.length : (order.items_count || order.items || 0),
+            items_json: order.items || [], // Include full items array
             priority: order.priority,
             address: order.address,
           });
@@ -1199,9 +1215,9 @@ export default function Trips() {
                           onDragLeave={handleDragLeave}
                           onDrop={(e) => handleDrop(e, trip.id)}
                         >
-                          {/* Trip Header */}
-                          <div className="p-4 border-b border-gray-200">
-                            <div className="flex items-start justify-between mb-3">
+                          {/* Trip Header with ID and Status */}
+                          <div className="p-4 border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-start justify-between">
                               <div className="flex items-center gap-4">
                                 <div>
                                   <h3 className="font-bold text-lg text-gray-900">
@@ -1273,73 +1289,120 @@ export default function Trips() {
                                 )}
                               </div>
                             </div>
+                          </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                              <div>
-                                <p className="text-gray-600 mb-1">Route</p>
-                                <p className="font-medium text-gray-900">
-                                  {trip.origin} → {trip.destination}
-                                </p>
+                          {/* Two Column Layout */}
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
+                            {/* Left Column - Trip Details */}
+                            <div className="lg:col-span-1 border-r border-gray-200 bg-white">
+                              {/* Route Section */}
+                              <div className="p-4 border-b border-gray-200">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                  <MapPin className="w-4 h-4 text-gray-500" />
+                                  ROUTE
+                                </h4>
+                                <div className="space-y-2">
+                                  <div className="flex items-start gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-green-500 mt-2"></div>
+                                    <div>
+                                      <p className="text-xs text-gray-500">Origin</p>
+                                      <p className="text-sm font-medium text-gray-900">{trip.origin || "Not set"}</p>
+                                    </div>
+                                  </div>
+                                  <div className="ml-1 border-l-2 border-dashed border-gray-300 h-4"></div>
+                                  <div className="flex items-start gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-red-500 mt-2"></div>
+                                    <div>
+                                      <p className="text-xs text-gray-500">Destination</p>
+                                      <p className="text-sm font-medium text-gray-900">{trip.destination || "To be determined"}</p>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
-                              <div>
-                                <p className="text-gray-600 mb-1">Truck</p>
-                                <p className="font-medium text-gray-900">
-                                  {trip.truck
-                                    ? `${trip.truck.plate} (${trip.truck.model})`
-                                    : "Not assigned"}
-                                </p>
+
+                              {/* Truck Section */}
+                              <div className="p-4 border-b border-gray-200">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                  <Truck className="w-4 h-4 text-gray-500" />
+                                  TRUCK
+                                </h4>
+                                {trip.truck ? (
+                                  <div className="space-y-2 text-sm">
+                                    <div>
+                                      <p className="text-xs text-gray-500">Plate Number</p>
+                                      <p className="font-medium text-gray-900">{trip.truck.plate}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500">Model</p>
+                                      <p className="font-medium text-gray-900">{trip.truck.model}</p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500 italic">Not assigned</p>
+                                )}
                               </div>
-                              <div>
-                                <p className="text-gray-600 mb-1">Driver</p>
-                                <p className="font-medium text-gray-900">
-                                  {trip.driver
-                                    ? trip.driver.name
-                                    : "Not assigned"}
-                                </p>
+
+                              {/* Driver Section */}
+                              <div className="p-4 border-b border-gray-200">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                  <User className="w-4 h-4 text-gray-500" />
+                                  DRIVER
+                                </h4>
+                                {trip.driver ? (
+                                  <div className="space-y-2 text-sm">
+                                    <div>
+                                      <p className="text-xs text-gray-500">Name</p>
+                                      <p className="font-medium text-gray-900">{trip.driver.name}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500">Phone</p>
+                                      <p className="font-medium text-gray-900 flex items-center gap-1">
+                                        <Phone className="w-3 h-3" />
+                                        {trip.driver.phone}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500 italic">Not assigned</p>
+                                )}
                               </div>
-                              <div>
-                                <p className="text-gray-600 mb-1">Capacity</p>
-                                <div className="space-y-1">
-                                  <p className="font-medium text-gray-900">
-                                    {trip.capacityUsed}/{trip.capacityTotal} kg
-                                  </p>
-                                  {trip.capacityTotal &&
-                                    trip.capacityTotal > 0 && (
-                                      <div className="relative">
-                                        <div className="w-full bg-gray-200 rounded-full h-2">
-                                          <div
-                                            className={`h-2 rounded-full transition-all ${getCapacityColor(
-                                              getCapacityPercentage(
-                                                trip.capacityUsed || 0,
-                                                trip.capacityTotal
-                                              )
-                                            )}`}
-                                            style={{
-                                              width: `${Math.min(
-                                                getCapacityPercentage(
-                                                  trip.capacityUsed || 0,
-                                                  trip.capacityTotal
-                                                ),
-                                                100
-                                              )}%`,
-                                            }}
-                                          />
-                                        </div>
-                                        <span
-                                          className={`text-xs font-medium ${
+
+                              {/* Capacity Section */}
+                              <div className="p-4">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                  <Weight className="w-4 h-4 text-gray-500" />
+                                  CAPACITY
+                                </h4>
+                                <div className="space-y-3">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600">Weight</span>
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {trip.capacityUsed || 0} / {trip.capacityTotal || 0} kg
+                                    </span>
+                                  </div>
+                                  {trip.capacityTotal && trip.capacityTotal > 0 && (
+                                    <div>
+                                      <div className="w-full bg-gray-200 rounded-full h-2">
+                                        <div
+                                          className={`h-2 rounded-full transition-all ${getCapacityColor(
                                             getCapacityPercentage(
                                               trip.capacityUsed || 0,
                                               trip.capacityTotal
-                                            ) >= 100
-                                              ? "text-red-600"
-                                              : getCapacityPercentage(
-                                                  trip.capacityUsed || 0,
-                                                  trip.capacityTotal
-                                                ) >= 80
-                                              ? "text-yellow-600"
-                                              : "text-green-600"
-                                          }`}
-                                        >
+                                            )
+                                          )}`}
+                                          style={{
+                                            width: `${Math.min(
+                                              getCapacityPercentage(
+                                                trip.capacityUsed || 0,
+                                                trip.capacityTotal
+                                              ),
+                                              100
+                                            )}%`,
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="flex justify-between mt-1">
+                                        <span className="text-xs font-medium text-gray-600">
                                           {getCapacityPercentage(
                                             trip.capacityUsed || 0,
                                             trip.capacityTotal
@@ -1350,276 +1413,216 @@ export default function Trips() {
                                           trip.capacityUsed || 0,
                                           trip.capacityTotal
                                         ) > 100 && (
-                                          <span className="text-xs text-red-600 ml-1">
-                                            ⚠️ Overloaded
+                                          <span className="text-xs text-red-600 font-medium">
+                                            Overloaded
                                           </span>
                                         )}
                                       </div>
-                                    )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Trip Details */}
-                          <div className="p-4 bg-white">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                              {/* Assignment Details */}
-                              <div>
-                                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                                  <User className="w-4 h-4" />
-                                  Assignment Details
-                                </h4>
-                                <div className="space-y-2 text-sm">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Total Orders:
-                                    </span>
-                                    <span className="font-medium text-gray-900">
-                                      {trip.orders.length}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Total Weight:
-                                    </span>
-                                    <span className="font-medium text-gray-900">
-                                      {trip.orders.reduce(
-                                        (sum, order) => sum + order.weight,
-                                        0
-                                      )}{" "}
-                                      kg
-                                    </span>
-                                  </div>
-                                  {trip.driver && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Driver Phone:
-                                      </span>
-                                      <span className="font-medium text-gray-900">
-                                        {trip.driver.phone}
-                                      </span>
                                     </div>
                                   )}
+                                  <div className="pt-2 border-t border-gray-100">
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-gray-500">Total Orders:</span>
+                                      <span className="font-medium text-gray-900">{trip.orders.length}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs mt-1">
+                                      <span className="text-gray-500">Total Weight:</span>
+                                      <span className="font-medium text-gray-900">
+                                        {trip.orders.reduce((sum, order) => sum + (order.weight || 0), 0)} kg
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Orders Section */}
-                            <div className="mt-6 pt-4 border-t border-gray-200">
-                              <div className="flex items-center justify-between mb-3">
-                                <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                                  <Package className="w-4 h-4" />
-                                  Orders ({trip.orders.length})
-                                  {trip.orders.length > 3 && (
-                                    <span className="text-sm text-gray-500 font-normal">
-                                      (Showing{" "}
-                                      {expandedTrips.has(trip.id)
-                                        ? "all"
-                                        : "first 3"}
-                                      )
-                                    </span>
-                                  )}
+                            {/* Right Column - Orders with Items */}
+                            <div className="lg:col-span-2 bg-white">
+                              {/* Orders Header */}
+                              <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                                  <Package className="w-4 h-4 text-gray-500" />
+                                  ORDERS ({trip.orders.length})
                                 </h4>
                                 {trip.status === "planning" && (
                                   <Button
                                     size="sm"
                                     onClick={() => handleAddOrderClick(trip)}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
                                   >
                                     <Plus className="w-4 h-4 mr-1" />
                                     Add Order
                                   </Button>
                                 )}
                               </div>
-                              {trip.orders.length > 0 && (
-                                <div
-                                  className="space-y-2"
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleDragOver(e, trip.id, 0);
-                                  }}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleDrop(e, trip.id, 0);
-                                  }}
-                                >
-                                  {(expandedTrips.has(trip.id)
-                                    ? trip.orders
-                                    : trip.orders.slice(0, 3)
-                                  ).map((order, index) => (
+
+                              {/* Orders List */}
+                              <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
+                                {trip.orders.length > 0 ? (
+                                  trip.orders.map((order, orderIndex) => (
                                     <div
                                       key={order.id}
-                                      draggable={trip.status === "planning"}
-                                      onDragStart={(e) =>
-                                        handleDragStart(
-                                          e,
-                                          order,
-                                          trip.id,
-                                          index
-                                        )
-                                      }
-                                      onDragOver={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleDragOver(e, trip.id, index);
-                                      }}
-                                      onDrop={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleDrop(e, trip.id, index);
-                                      }}
-                                      className={`flex items-center justify-between p-3 rounded-lg transition-all ${
-                                        trip.status === "planning"
-                                          ? "cursor-move"
-                                          : ""
-                                      } ${
-                                        draggedOrder?.id === order.id
-                                          ? "opacity-50"
-                                          : ""
-                                      } ${
+                                      className={`group ${
                                         !isTripLocked(trip.status)
-                                          ? "bg-gray-50 border border-gray-200 hover:border-blue-300 hover:bg-blue-50"
-                                          : "bg-gray-100 border border-gray-300 cursor-not-allowed"
-                                      } ${
-                                        dragOverTrip === trip.id &&
-                                        draggedOrder?.id !== order.id &&
-                                        draggedOrder?.sourceTripId === trip.id
-                                          ? "border-t-4 border-t-blue-500"
+                                          ? "hover:bg-gray-50"
                                           : ""
                                       }`}
                                     >
-                                      <div className="flex items-center gap-3">
-                                        {trip.status === "planning" && (
-                                          <GripVertical className="w-4 h-4 text-gray-400" />
+                                      {/* Order Header - Always Visible */}
+                                      <div className="p-4">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-3 flex-1">
+                                            {trip.status === "planning" && (
+                                              <GripVertical className="w-4 h-4 text-gray-400 cursor-move" />
+                                            )}
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                                                #{order.sequence_number !== undefined ? order.sequence_number + 1 : orderIndex + 1}
+                                              </span>
+                                              <span className="font-semibold text-gray-900">{order.id}</span>
+                                            </div>
+                                            <span className="text-gray-700">{order.customer || "Unknown Customer"}</span>
+                                            {order.priority && (
+                                              <Badge
+                                                variant={getPriorityVariant(order.priority)}
+                                                                className="text-xs"
+                                              >
+                                                                {order.priority.toUpperCase()}
+                                                              </Badge>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-4">
+                                            <div className="text-right">
+                                              <p className="text-sm text-gray-600">{Array.isArray(order.items) ? order.items.length : (order.items_count || order.items || 0)} items</p>
+                                              <p className="text-sm font-medium text-gray-900">{order.weight || 0}kg</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        {order.address && (
+                                          <div className="mt-2 ml-7">
+                                            <p className="text-xs text-gray-500 flex items-center gap-1">
+                                              <MapPin className="w-3 h-3" />
+                                              {order.address}
+                                            </p>
+                                          </div>
                                         )}
-                                        <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                                          #
-                                          {order.sequence_number !== undefined
-                                            ? order.sequence_number + 1
-                                            : index + 1}
-                                        </span>
-                                        <span className="font-medium text-gray-900">
-                                          {order.id}
-                                        </span>
-                                        <span className="text-gray-900">
-                                          {order.customer}
-                                        </span>
-                                        <Badge
-                                          variant={getPriorityVariant(
-                                            order.priority
-                                          )}
-                                          className="text-xs"
-                                        >
-                                          {order.priority.toUpperCase()}
-                                        </Badge>
-                                        {trip.status === "on-route" &&
-                                          order.delivery_status && (
-                                            <Badge
-                                              variant={getDeliveryStatusVariant(
-                                                order.delivery_status
-                                              )}
-                                              className="text-xs"
-                                            >
-                                              {order.delivery_status
-                                                .replace("-", " ")
-                                                .toUpperCase()}
-                                            </Badge>
-                                          )}
                                       </div>
-                                      <div className="flex items-center gap-4 text-sm">
-                                        <span className="text-gray-900">
-                                          {order.items} items
-                                        </span>
-                                        <span className="font-medium text-gray-900">
-                                          {order.weight}kg
-                                        </span>
-                                        {!isTripLocked(trip.status) && (
-                                          <div className="flex gap-1">
-                                            <Button size="sm" variant="outline">
-                                              Edit
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={async (e) => {
-                                                e.stopPropagation();
-                                                // Handle remove from trip
-                                                if (
-                                                  confirm(
-                                                    `Remove order ${order.id} from this trip?`
-                                                  )
-                                                ) {
-                                                  try {
-                                                    await tmsAPI.removeOrderFromTrip(
-                                                      trip.id,
-                                                      order.id
-                                                    );
-                                                    fetchTrips();
-                                                  } catch (err) {
-                                                    alert(
-                                                      err instanceof Error
-                                                        ? err.message
-                                                        : "Failed to remove order"
-                                                    );
-                                                  }
-                                                }
-                                              }}
-                                            >
-                                              Remove
-                                            </Button>
+
+                                      {/* Order Items - Always Visible */}
+                                      <div className="border-t border-gray-200 bg-gray-50 px-4 pb-4">
+                                        <h5 className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">
+                                          Order Items
+                                        </h5>
+                                        {(order.items_data && order.items_data.length > 0) || (order.items && Array.isArray(order.items) && order.items.length > 0) ? (
+                                          <div className="space-y-2">
+                                            {(order.items_data || order.items).map((item: any, itemIndex: number) => (
+                                              <div
+                                                key={item.id || itemIndex}
+                                                className="bg-white border border-gray-200 rounded-lg p-3 hover:border-blue-300 transition-colors"
+                                              >
+                                                <div className="flex items-start justify-between">
+                                                  <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                      <span className="text-xs font-medium text-gray-500">#{itemIndex + 1}</span>
+                                                      <span className="font-medium text-gray-900">{item.product_name || "Unknown Product"}</span>
+                                                      {item.product_code && (
+                                                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                                          {item.product_code}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    {item.description && (
+                                                      <p className="text-xs text-gray-500 ml-5">{item.description}</p>
+                                                    )}
+                                                    <div className="mt-2 ml-5 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                                      <div>
+                                                        <span className="text-gray-500">Quantity:</span>
+                                                        <span className="ml-1 font-medium text-gray-900">{item.quantity} {item.unit || "pcs"}</span>
+                                                      </div>
+                                                      <div>
+                                                        <span className="text-gray-500">Weight:</span>
+                                                        <span className="ml-1 font-medium text-gray-900">
+                                                          {item.weight ?? 0} {item.weight_unit || "kg"}
+                                                          {item.weight_type && (
+                                                            <span className="text-gray-400">({item.weight_type})</span>
+                                                          )}
+                                                        </span>
+                                                      </div>
+                                                      <div>
+                                                        <span className="text-gray-500">Volume:</span>
+                                                        <span className="ml-1 font-medium text-gray-900">{item.volume ?? 0} m³</span>
+                                                      </div>
+                                                      <div>
+                                                        <span className="text-gray-500">Price:</span>
+                                                        <span className="ml-1 font-medium text-gray-900">
+                                                          {item.unit_price ? `${item.unit_price}/${item.unit || "unit"}` : "N/A"}
+                                                        </span>
+                                                      </div>
+                                                    </div>
+                                                    {item.total_weight && (
+                                                      <div className="ml-5 mt-1 text-xs">
+                                                        <span className="text-gray-500">Total Weight:</span>
+                                                        <span className="ml-1 font-semibold text-gray-900">{item.total_weight} kg</span>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  {!isTripLocked(trip.status) && (
+                                                    <div className="ml-4 flex gap-1">
+                                                      <Button size="sm" variant="outline" className="text-xs h-7 px-2">
+                                                        Edit
+                                                      </Button>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-center py-4 text-gray-500 text-sm">
+                                            No items found for this order
                                           </div>
                                         )}
                                       </div>
                                     </div>
-                                  ))}
-                                </div>
-                              )}
-                              {trip.orders.length === 0 && (
-                                <div className="text-center py-8 text-gray-500">
-                                  <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                                  <p>No orders assigned to this trip yet</p>
-                                  {trip.status === "planning" ? (
-                                    <p className="text-sm mt-1">
-                                      Click &quot;Add Order&quot; to assign
-                                      orders to this trip
-                                    </p>
-                                  ) : (
-                                    <p className="text-sm mt-1 text-yellow-600">
-                                      Orders cannot be added to trips that are{" "}
-                                      {trip.status.replace("-", " ")}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
+                                  ))
+                                ) : (
+                                  <div className="p-8 text-center text-gray-500">
+                                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                                    <p className="text-sm">No orders assigned to this trip yet</p>
+                                    {trip.status === "planning" && (
+                                      <p className="text-xs mt-1 text-gray-400">
+                                        Click &quot;Add Order&quot; to assign orders to this trip
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
+                          </div>
 
-                            {/* Drag Instructions */}
-                            {trip.status === "planning" &&
-                              trip.orders.length > 0 && (
-                                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                  <p className="text-sm text-blue-800">
-                                    <strong>Drag & Drop:</strong> You can drag
-                                    orders to reorder them within this trip or
-                                    move them to another trip in planning
-                                    status.
-                                  </p>
-                                </div>
-                              )}
-
-                            {/* Lock Status Message */}
-                            {isTripLocked(trip.status) && (
-                              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <p className="text-sm text-yellow-800">
-                                  <strong>Trip is locked:</strong> Order details
-                                  cannot be modified when trip is{" "}
-                                  {trip.status.replace("-", " ")}.
+                          {/* Drag Instructions */}
+                          {trip.status === "planning" &&
+                            trip.orders.length > 0 && (
+                              <div className="p-4 bg-blue-50 border-t border-blue-200">
+                                <p className="text-sm text-blue-800">
+                                  <strong>Drag & Drop:</strong> You can drag
+                                  orders to reorder them within this trip or
+                                  move them to another trip in planning
+                                  status.
                                 </p>
                               </div>
                             )}
-                          </div>
+
+                          {/* Lock Status Message */}
+                          {isTripLocked(trip.status) && (
+                            <div className="p-4 bg-yellow-50 border-t border-yellow-200">
+                              <p className="text-sm text-yellow-800">
+                                <strong>Trip is locked:</strong> Order details
+                                cannot be modified when trip is{" "}
+                                {trip.status.replace("-", " ")}.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       ))
                     )}
@@ -1641,77 +1644,144 @@ export default function Trips() {
                     {getApprovedOrders().map((order) => (
                       <div
                         key={order.id}
-                        className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                        className="border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                         draggable
                         onDragStart={(e) => handleDragStart(e, order)}
                       >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-4">
-                            <h3 className="font-semibold text-gray-900">
-                              {order.id}
-                            </h3>
-                            <Badge
-                              variant={getPriorityVariant(order.priority)}
-                              className="mt-1"
-                            >
-                              {order.priority}
-                            </Badge>
-                            <Badge
-                              variant={getOrderStatusVariant(order.status)}
-                            >
-                              {getOrderStatusDisplay(order.status)}
-                            </Badge>
+                        {/* Order Header */}
+                        <div className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-4">
+                              <h3 className="font-semibold text-gray-900">
+                                {order.id}
+                              </h3>
+                              <Badge
+                                variant={getPriorityVariant(order.priority)}
+                                className="mt-1"
+                              >
+                                {order.priority}
+                              </Badge>
+                              <Badge
+                                variant={getOrderStatusVariant(order.status)}
+                              >
+                                {getOrderStatusDisplay(order.status)}
+                              </Badge>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-sm text-gray-500">
+                                {order.date}
+                              </span>
+                              <p className="text-lg font-semibold text-gray-900">
+                                ₹{order.total.toLocaleString()}
+                              </p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <span className="text-sm text-gray-500">
-                              {order.date}
-                            </span>
-                            <p className="text-lg font-semibold text-gray-900">
-                              ₹{order.total.toLocaleString()}
+
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                              <p className="text-sm text-gray-600">Customer</p>
+                              <p className="font-medium text-gray-900">
+                                {order.customer}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">Items</p>
+                              <p className="font-medium text-gray-900">
+                                {Array.isArray(order.items) ? order.items.length : (order.items_count || order.items || 0)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">Weight</p>
+                              <p className="font-medium text-gray-900 flex items-center gap-1">
+                                <Weight className="w-4 h-4" />
+                                {order.weight} kg
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">Volume</p>
+                              <p className="font-medium text-gray-900">
+                                {order.volume} L
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <p className="text-sm text-gray-900">
+                              <MapPin className="w-4 h-4 inline mr-1 text-gray-400" />
+                              {order.address}
                             </p>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                          <div>
-                            <p className="text-sm text-gray-600">Customer</p>
-                            <p className="font-medium text-gray-900">
-                              {order.customer}
-                            </p>
+                        {/* Order Items - Always Visible */}
+                        {order.items && Array.isArray(order.items) && order.items.length > 0 && (
+                          <div className="border-t border-gray-200 bg-gray-50 px-4 pb-4">
+                            <h5 className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">
+                              Order Items
+                            </h5>
+                            <div className="space-y-2">
+                              {order.items.map((item: any, itemIndex: number) => (
+                                <div
+                                  key={item.id || itemIndex}
+                                  className="bg-white border border-gray-200 rounded-lg p-3 hover:border-blue-300 transition-colors"
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-xs font-medium text-gray-500">#{itemIndex + 1}</span>
+                                        <span className="font-medium text-gray-900">{item.product_name || "Unknown Product"}</span>
+                                        {item.product_code && (
+                                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                            {item.product_code}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {item.description && (
+                                        <p className="text-xs text-gray-500 ml-5">{item.description}</p>
+                                      )}
+                                      <div className="mt-2 ml-5 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                        <div>
+                                          <span className="text-gray-500">Quantity:</span>
+                                          <span className="ml-1 font-medium text-gray-900">{item.quantity} {item.unit || "pcs"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Weight:</span>
+                                          <span className="ml-1 font-medium text-gray-900">
+                                            {item.weight ?? 0} {item.weight_unit || "kg"}
+                                            {item.weight_type && (
+                                              <span className="text-gray-400">({item.weight_type})</span>
+                                            )}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Volume:</span>
+                                          <span className="ml-1 font-medium text-gray-900">{item.volume ?? 0} m³</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Price:</span>
+                                          <span className="ml-1 font-medium text-gray-900">
+                                            {item.unit_price ? `${item.unit_price}/${item.unit || "unit"}` : "N/A"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {item.total_weight && (
+                                        <div className="ml-5 mt-1 text-xs">
+                                          <span className="text-gray-500">Total Weight:</span>
+                                          <span className="ml-1 font-semibold text-gray-900">{item.total_weight} kg</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Items</p>
-                            <p className="font-medium text-gray-900">
-                              {order.items}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Weight</p>
-                            <p className="font-medium text-gray-900 flex items-center gap-1">
-                              <Weight className="w-4 h-4" />
-                              {order.weight} kg
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Volume</p>
-                            <p className="font-medium text-gray-900">
-                              {order.volume} L
-                            </p>
-                          </div>
-                        </div>
+                        )}
 
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <p className="text-sm text-gray-900">
-                            <MapPin className="w-4 h-4 inline mr-1 text-gray-400" />
-                            {order.address}
-                          </p>
-                        </div>
-
-                        <div className="mt-3 flex gap-2">
-                          <Button size="sm">Assign to Trip</Button>
-                          <Button size="sm" variant="outline">
-                            View Details
-                          </Button>
+                        <div className="px-4 pb-4">
+                          <div className="flex gap-2">
+                            <Button size="sm">Assign to Trip</Button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -2317,7 +2387,7 @@ export default function Trips() {
                         <p>No available orders to assign</p>
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
                         {getAvailableOrders().map((order) => {
                           const wouldExceedCapacity =
                             (selectedTripForOrders.capacityUsed || 0) +
@@ -2326,10 +2396,14 @@ export default function Trips() {
                                 order.id,
                               ]) >
                             (selectedTripForOrders.capacityTotal || 0);
+                          const isExpanded = expandedOrderIds.has(order.id);
+                          const orderItems = (order.items_data || order.items);
+                          const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+
                           return (
                             <div
                               key={order.id}
-                              className={`p-4 border rounded-lg transition-all ${
+                              className={`border rounded-lg transition-all overflow-hidden ${
                                 selectedOrders.includes(order.id)
                                   ? "border-blue-500 bg-blue-50"
                                   : "border-gray-200 hover:border-gray-300"
@@ -2337,63 +2411,152 @@ export default function Trips() {
                                 wouldExceedCapacity ? "border-orange-400" : ""
                               }`}
                             >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedOrders.includes(order.id)}
-                                    onChange={() => {
-                                      if (!wouldExceedCapacity) {
-                                        handleOrderToggle(order.id);
-                                      }
-                                    }}
-                                    disabled={wouldExceedCapacity}
-                                    className="w-4 h-4 text-blue-600 rounded"
-                                  />
-                                  <div>
-                                    <p className="font-medium text-black">
-                                      {order.id}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                      {order.customer}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      {order.address}
-                                    </p>
-                                    {wouldExceedCapacity && (
-                                      <span className="text-xs text-orange-600 font-medium">
-                                        ⚠️ Exceeds capacity!
-                                      </span>
-                                    )}
+                              {/* Order Header - Always Visible */}
+                              <div className="p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-4 flex-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedOrders.includes(order.id)}
+                                      onChange={() => {
+                                        if (!wouldExceedCapacity) {
+                                          handleOrderToggle(order.id);
+                                        }
+                                      }}
+                                      disabled={wouldExceedCapacity}
+                                      className="w-4 h-4 text-blue-600 rounded"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3">
+                                        <p className="font-medium text-black">
+                                          {order.id}
+                                        </p>
+                                        <Badge
+                                          variant={getPriorityVariant(order.priority)}
+                                          className="text-xs"
+                                        >
+                                          {order.priority?.toUpperCase()}
+                                        </Badge>
+                                        {wouldExceedCapacity && (
+                                          <span className="text-xs text-orange-600 font-medium">
+                                            ⚠️ Exceeds capacity!
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        {order.customer}
+                                      </p>
+                                      <p className="text-xs text-gray-500 mt-0.5">
+                                        {order.address}
+                                      </p>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                  <Badge
-                                    variant={getPriorityVariant(order.priority)}
-                                    className="text-xs"
-                                  >
-                                    {order.priority.toUpperCase()}
-                                  </Badge>
-                                  <div className="text-right text-sm">
-                                    <p className="font-medium text-black">
-                                      {order.weight}kg
-                                    </p>
-                                    <p className="text-gray-600">
-                                      {order.items} items
-                                    </p>
-                                  </div>
-                                  {wouldExceedCapacity && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleSplitOrder(order)}
-                                      className="text-xs"
+                                  <div className="flex items-center gap-3">
+                                    <div className="text-right text-sm">
+                                      <p className="font-medium text-black">
+                                        {order.weight}kg
+                                      </p>
+                                      <p className="text-gray-600">
+                                        {itemsArray.length} items
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        setExpandedOrderIds(prev => {
+                                          const newSet = new Set(prev);
+                                          if (newSet.has(order.id)) {
+                                            newSet.delete(order.id);
+                                          } else {
+                                            newSet.add(order.id);
+                                          }
+                                          return newSet;
+                                        });
+                                      }}
+                                      className="p-1 hover:bg-gray-100 rounded"
                                     >
-                                      Split
-                                    </Button>
-                                  )}
+                                      <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
+
+                              {/* Order Items - Expandable */}
+                              {isExpanded && itemsArray.length > 0 && (
+                                <div className="border-t border-gray-200 bg-gray-50 px-4 pb-4">
+                                  <h6 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
+                                    Order Items
+                                  </h6>
+                                  <div className="space-y-2">
+                                    {itemsArray.map((item: any, idx: number) => (
+                                      <div
+                                        key={item.id || idx}
+                                        className="bg-white border border-gray-200 rounded-lg p-3"
+                                      >
+                                        <div className="flex items-start justify-between">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className="text-xs font-medium text-gray-500">#{idx + 1}</span>
+                                              <span className="font-medium text-gray-900 text-sm">
+                                                {item.product_name || "Unknown Product"}
+                                              </span>
+                                              {item.product_code && (
+                                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                                  {item.product_code}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {item.description && (
+                                              <p className="text-xs text-gray-500 ml-5">{item.description}</p>
+                                            )}
+                                            <div className="mt-2 ml-5 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                              <div>
+                                                <span className="text-gray-500">Quantity:</span>
+                                                <span className="ml-1 font-medium text-gray-900">
+                                                  {item.quantity} {item.unit || "pcs"}
+                                                </span>
+                                              </div>
+                                              <div>
+                                                <span className="text-gray-500">Weight:</span>
+                                                <span className="ml-1 font-medium text-gray-900">
+                                                  {item.weight ?? 0} {item.weight_unit || "kg"}
+                                                  {item.weight_type && (
+                                                    <span className="text-gray-400">({item.weight_type})</span>
+                                                  )}
+                                                </span>
+                                              </div>
+                                              <div>
+                                                <span className="text-gray-500">Volume:</span>
+                                                <span className="ml-1 font-medium text-gray-900">
+                                                  {item.volume ?? 0} m³
+                                                </span>
+                                              </div>
+                                              <div>
+                                                <span className="text-gray-500">Price:</span>
+                                                <span className="ml-1 font-medium text-gray-900">
+                                                  {item.unit_price ? `${item.unit_price}/${item.unit || "unit"}` : "N/A"}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {wouldExceedCapacity && (
+                                    <div className="mt-3 flex justify-end">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleSplitOrder(order)}
+                                        className="text-xs"
+                                      >
+                                        <Scissors className="w-4 h-4 mr-1" />
+                                        Split Order Items
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -2406,7 +2569,10 @@ export default function Trips() {
                 <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
                   <div className="flex justify-between">
                     <Button
-                      onClick={() => setShowOrderModal(false)}
+                      onClick={() => {
+                        setShowOrderModal(false);
+                        setExpandedOrderIds(new Set());
+                      }}
                       variant="outline"
                       className="text-gray-700 border-gray-300 hover:bg-gray-50"
                     >
@@ -2426,21 +2592,25 @@ export default function Trips() {
             </div>
           )}
 
-          {/* Split Order Confirmation Modal - Same as original */}
+          {/* Split Order Modal - Item Level Selection */}
           {showSplitOptions && splitOrder && (
             <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-auto">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
                 <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 rounded-t-xl">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-black">
-                      Split Order
-                    </h2>
+                    <div>
+                      <h2 className="text-xl font-bold text-black">
+                        Split Order Items
+                      </h2>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {splitOrder.id} - {splitOrder.customer}
+                      </p>
+                    </div>
                     <Button
                       onClick={() => {
                         setShowSplitOptions(false);
                         setSplitOrder(null);
-                        setSplitItemsCount(0);
-                        setSplitWeight(0);
+                        setSelectedSplitItems([]);
                       }}
                       variant="outline"
                       size="sm"
@@ -2451,223 +2621,226 @@ export default function Trips() {
                   </div>
                 </div>
 
-                <div className="px-6 py-6">
+                <div className="px-6 py-6 overflow-y-auto flex-1">
+                  {/* Capacity Info */}
                   <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
-                    <h3 className="font-semibold text-orange-800 mb-2">
-                      Order Too Large for Trip
-                    </h3>
-                    <p className="text-sm text-orange-700">
-                      This order exceeds the remaining capacity of the trip.
-                      Select how many items to assign to this trip.
-                    </p>
-                  </div>
-
-                  {/* Original Order Details */}
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-black mb-3">
-                      Original Order Details
-                    </h4>
-                    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Order ID:</span>
-                        <span className="font-medium text-black">
-                          {splitOrder.id}
-                        </span>
+                    <div className="flex items-start gap-3">
+                      <Scissors className="w-5 h-5 text-orange-600 mt-0.5" />
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-orange-800 mb-1">
+                          Select Items to Assign
+                        </h3>
+                        <p className="text-sm text-orange-700">
+                          Available Capacity: {(selectedTripForOrders?.capacityTotal || 0) - (selectedTripForOrders?.capacityUsed || 0)} kg
+                        </p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Customer:</span>
-                        <span className="font-medium text-black">
-                          {splitOrder.customer}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Total Items:</span>
-                        <span className="font-medium text-black">
-                          {splitOrder.items} items
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Total Weight:</span>
-                        <span className="font-medium text-black">
-                          {splitOrder.weight} kg
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Total Value:</span>
-                        <span className="font-medium text-black">
-                          EGP {splitOrder.total.toLocaleString()}
-                        </span>
+                      <div className="text-right">
+                        <p className="text-sm text-gray-600">Selected Weight</p>
+                        <p className="text-lg font-bold text-orange-600">
+                          {(() => {
+                            const orderItems = (splitOrder.items_data || splitOrder.items);
+                            const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+                            return itemsArray.reduce((sum: number, item: any) => {
+                              if (selectedSplitItems.includes(item.id || String(item.product_id))) {
+                                return sum + (item.weight || 0);
+                              }
+                              return sum;
+                            }, 0);
+                          })()} kg
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Split Selection */}
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-black mb-3">
-                      Select Split Amount
-                    </h4>
+                  {/* Items List */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-black">Order Items</h4>
+                    {(() => {
+                      const orderItems = (splitOrder.items_data || splitOrder.items);
+                      const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+
+                      if (itemsArray.length === 0) {
+                        return (
+                          <div className="text-center py-8 text-gray-500">
+                            <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                            <p>No items found in this order</p>
+                          </div>
+                        );
+                      }
+
+                      return itemsArray.map((item: any, idx: number) => {
+                        const itemId = item.id || String(item.product_id) || String(idx);
+                        const isSelected = selectedSplitItems.includes(itemId);
+                        const itemWeight = item.weight || 0;
+                        const canSelect = (selectedTripForOrders?.capacityUsed || 0) +
+                          (() => {
+                            const currentWeight = itemsArray.reduce((sum: number, i: any) => {
+                              if (selectedSplitItems.includes(i.id || String(i.product_id) || String(idx))) {
+                                return sum + (i.weight || 0);
+                              }
+                              return sum;
+                            }, 0);
+                            return currentWeight + (isSelected ? 0 : itemWeight);
+                          })() <= (selectedTripForOrders?.capacityTotal || 0);
+
+                        return (
+                          <div
+                            key={itemId}
+                            className={`border rounded-lg overflow-hidden transition-all ${
+                              isSelected
+                                ? 'border-blue-500 bg-blue-50'
+                                : canSelect
+                                ? 'border-gray-200 hover:border-gray-300 bg-white'
+                                : 'border-gray-200 bg-gray-100 opacity-60'
+                            }`}
+                          >
+                            <div className="p-4">
+                              <div className="flex items-start gap-4">
+                                <input
+                                  type="checkbox"
+                                  id={`item-${itemId}`}
+                                  checked={isSelected}
+                                  disabled={!canSelect && !isSelected}
+                                  onChange={() => {
+                                    setSelectedSplitItems(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(itemId)) {
+                                        newSet.delete(itemId);
+                                      } else {
+                                        newSet.add(itemId);
+                                      }
+                                      return Array.from(newSet);
+                                    });
+                                  }}
+                                  className="w-5 h-5 text-blue-600 rounded mt-1"
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                                      #{idx + 1}
+                                    </span>
+                                    <label
+                                      htmlFor={`item-${itemId}`}
+                                      className={`font-medium ${canSelect || isSelected ? 'text-black cursor-pointer' : 'text-gray-500 cursor-not-allowed'}`}
+                                    >
+                                      {item.product_name || "Unknown Product"}
+                                    </label>
+                                    {item.product_code && (
+                                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                        {item.product_code}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {item.description && (
+                                    <p className="text-sm text-gray-600 mb-3">{item.description}</p>
+                                  )}
+
+                                  {/* Quantity Split Input */}
+                                  <div className="mb-3">
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                      Quantity to Assign (Max: {item.quantity || 1})
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max={item.quantity || 1}
+                                      defaultValue={isSelected ? item.quantity : 0}
+                                      disabled={!isSelected}
+                                      onChange={(e) => {
+                                        // TODO: Track split quantities per item
+                                        console.log(`Item ${itemId} quantity:`, e.target.value);
+                                      }}
+                                      className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
+
+                                  <div className="grid grid-cols-4 gap-3 text-xs">
+                                    <div className="bg-gray-50 p-2 rounded">
+                                      <p className="text-gray-500">Quantity</p>
+                                      <p className="font-medium text-black">{item.quantity || 1} {item.unit || 'pcs'}</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded">
+                                      <p className="text-gray-500">Weight</p>
+                                      <p className="font-medium text-black">{itemWeight} kg</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded">
+                                      <p className="text-gray-500">Volume</p>
+                                      <p className="font-medium text-black">{item.volume || 0} m³</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-2 rounded">
+                                      <p className="text-gray-500">Price</p>
+                                      <p className="font-medium text-black">
+                                        {item.unit_price ? `${item.unit_price}/${item.unit || 'unit'}` : 'N/A'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  {/* Summary */}
+                  <div className="mt-6 grid grid-cols-2 gap-4">
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      {(() => {
-                        const availableCapacity =
-                          (selectedTripForOrders?.capacityTotal || 0) -
-                          (selectedTripForOrders?.capacityUsed || 0);
-                        const maxItemsThatFit = Math.floor(
-                          availableCapacity /
-                            (splitOrder.weight / splitOrder.items)
-                        );
-                        const maxPossibleItems = Math.min(
-                          maxItemsThatFit,
-                          splitOrder.items
-                        );
-                        const itemsPerKg = splitOrder.weight / splitOrder.items;
-                        const remainingItems =
-                          splitOrder.items - splitItemsCount;
-                        const remainingWeight = splitOrder.weight - splitWeight;
-                        const splitValue = Math.round(
-                          (splitOrder.total / splitOrder.items) *
-                            splitItemsCount
-                        );
-
-                        return (
-                          <div className="space-y-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Items to Assign (Max: {maxPossibleItems})
-                              </label>
-                              <input
-                                type="number"
-                                min="1"
-                                max={maxPossibleItems}
-                                value={splitItemsCount}
-                                onChange={(e) => {
-                                  const items = Math.min(
-                                    Math.max(1, parseInt(e.target.value) || 1),
-                                    maxPossibleItems
-                                  );
-                                  setSplitItemsCount(items);
-                                  setSplitWeight(
-                                    Math.round(items * itemsPerKg)
-                                  );
-                                }}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div className="bg-white p-3 rounded border">
-                                <p className="text-gray-600 mb-1">This Trip</p>
-                                <p className="font-medium text-black">
-                                  {splitItemsCount} items
-                                </p>
-                                <p className="font-medium text-black">
-                                  {splitWeight} kg
-                                </p>
-                                <p className="font-medium text-black">
-                                  EGP {splitValue.toLocaleString()}
-                                </p>
-                              </div>
-                              <div className="bg-orange-50 p-3 rounded border border-orange-200">
-                                <p className="text-gray-600 mb-1">Remaining</p>
-                                <p className="font-medium text-orange-600">
-                                  {remainingItems} items
-                                </p>
-                                <p className="font-medium text-orange-600">
-                                  {remainingWeight} kg
-                                </p>
-                                <p className="font-medium text-orange-600">
-                                  EGP{" "}
-                                  {(
-                                    splitOrder.total - splitValue
-                                  ).toLocaleString()}
-                                </p>
-                              </div>
-                            </div>
-
-                            {maxPossibleItems >= splitOrder.items && (
-                              <div className="text-sm text-green-600 font-medium">
-                                ✓ Full order can fit in this trip
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
+                      <h5 className="font-semibold text-blue-900 mb-3">This Trip</h5>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Items Selected:</span>
+                          <span className="font-medium text-blue-900">{selectedSplitItems.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Total Weight:</span>
+                          <span className="font-medium text-blue-900">
+                            {(() => {
+                              const orderItems = (splitOrder.items_data || splitOrder.items);
+                              const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+                              return itemsArray.reduce((sum: number, item: any) => {
+                                if (selectedSplitItems.includes(item.id || String(item.product_id))) {
+                                  return sum + (item.weight || 0);
+                                }
+                                return sum;
+                              }, 0);
+                            })()} kg
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                      <h5 className="font-semibold text-orange-900 mb-3">Remaining</h5>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-orange-700">Items Remaining:</span>
+                          <span className="font-medium text-orange-900">
+                            {(() => {
+                              const orderItems = (splitOrder.items_data || splitOrder.items);
+                              const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+                              return itemsArray.length - selectedSplitItems.length;
+                            })()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-orange-700">Total Weight:</span>
+                          <span className="font-medium text-orange-900">
+                            {(() => {
+                              const orderItems = (splitOrder.items_data || splitOrder.items);
+                              const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+                              const selectedWeight = itemsArray.reduce((sum: number, item: any) => {
+                                if (selectedSplitItems.includes(item.id || String(item.product_id))) {
+                                  return sum + (item.weight || 0);
+                                }
+                                return sum;
+                              }, 0);
+                              return (splitOrder.weight || 0) - selectedWeight;
+                            })()} kg
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Trip Capacity After Assignment */}
-                  <div className="mb-6">
-                    <h4 className="font-semibold text-black mb-3">
-                      Trip Capacity After Assignment
-                    </h4>
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      {(() => {
-                        const newCapacityUsed =
-                          (selectedTripForOrders?.capacityUsed || 0) +
-                          splitWeight;
-                        const capacityPercentage =
-                          selectedTripForOrders?.capacityTotal
-                            ? Math.round(
-                                (newCapacityUsed /
-                                  selectedTripForOrders.capacityTotal) *
-                                  100
-                              )
-                            : 0;
-
-                        return (
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">
-                                New Capacity Used:
-                              </span>
-                              <span className="font-medium text-green-600">
-                                {newCapacityUsed} kg
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">
-                                Utilization:
-                              </span>
-                              <span className="font-medium text-green-600">
-                                {capacityPercentage}%
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                              <div
-                                className={`h-2 rounded-full ${
-                                  capacityPercentage >= 100
-                                    ? "bg-red-500"
-                                    : capacityPercentage >= 80
-                                    ? "bg-yellow-500"
-                                    : "bg-green-500"
-                                }`}
-                                style={{
-                                  width: `${Math.min(
-                                    capacityPercentage,
-                                    100
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                            {capacityPercentage > 100 && (
-                              <p className="text-xs text-red-600 mt-1">
-                                ⚠️ Over capacity!
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  {splitItemsCount < splitOrder.items && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                      <p className="text-sm text-yellow-800">
-                        <strong>Note:</strong>{" "}
-                        {splitOrder.items - splitItemsCount} items will remain
-                        for assignment to another trip.
-                      </p>
-                    </div>
-                  )}
                 </div>
 
                 {/* Modal Actions */}
@@ -2677,8 +2850,7 @@ export default function Trips() {
                       onClick={() => {
                         setShowSplitOptions(false);
                         setSplitOrder(null);
-                        setSplitItemsCount(0);
-                        setSplitWeight(0);
+                        setSelectedSplitItems([]);
                       }}
                       variant="outline"
                       className="text-gray-700 border-gray-300 hover:bg-gray-50"
@@ -2686,10 +2858,14 @@ export default function Trips() {
                       Cancel
                     </Button>
                     <Button
-                      onClick={handleConfirmSplit}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => {
+                        // TODO: Implement split assignment with selected items
+                        handleConfirmSplit();
+                      }}
+                      disabled={selectedSplitItems.length === 0}
+                      className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
                     >
-                      Split and Assign {splitItemsCount} Items
+                      Assign {selectedSplitItems.length} Item{selectedSplitItems.length !== 1 ? 's' : ''}
                     </Button>
                   </div>
                 </div>

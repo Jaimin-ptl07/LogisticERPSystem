@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, date
-from sqlalchemy import Column, String, Integer, Float, DateTime, Date, Text, ForeignKey, CheckConstraint
+from sqlalchemy import Column, String, Integer, Float, DateTime, Date, Text, ForeignKey, CheckConstraint, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -83,6 +83,11 @@ class TripOrder(Base):
         nullable=False,
         default="assigned"
     )
+    tms_order_status = Column(
+        String(50),
+        CheckConstraint("tms_order_status IN ('available', 'partial', 'fully_assigned')", name="check_tms_order_status"),
+        default="available"
+    )
     total = Column(Float, nullable=False)
     weight = Column(Integer, nullable=False)
     volume = Column(Integer, nullable=False)
@@ -103,6 +108,8 @@ class TripOrder(Base):
     original_order_id = Column(String(50))  # For split orders
     original_items = Column(Integer)        # For split orders
     original_weight = Column(Integer)       # For split orders
+    items_json = Column(JSON)              # Store assigned items with quantities
+    remaining_items_json = Column(JSON)    # Store remaining items for partial assignments
 
     # Additional order details
     customer_contact = Column(String(200))

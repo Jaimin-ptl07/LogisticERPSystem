@@ -19,6 +19,7 @@ from src.schemas import (
     OrderListResponse,
     OrderListPaginatedResponse,
     OrderStatusUpdate,
+    TmsOrderStatusUpdate,
     FinanceApprovalRequest,
     LogisticsApprovalRequest,
     OrderQueryParams,
@@ -628,6 +629,54 @@ async def get_order_status_history(
         )
         for item in history
     ]
+
+
+@router.patch("/tms-status", response_model=OrderResponse)
+async def update_tms_order_status(
+    status_data: TmsOrderStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Update TMS order status - Called by TMS service when orders are assigned"""
+    from sqlalchemy import update
+
+    # Find order by order_id (not UUID)
+    order_query = select(Order).where(
+        and_(
+            Order.order_number == status_data.order_id,
+            Order.tenant_id == tenant_id
+        )
+    )
+    result = await db.execute(order_query)
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order with number {status_data.order_id} not found"
+        )
+
+    # Update TMS order status
+    order.tms_order_status = status_data.tms_order_status
+
+    # Update items_json and remaining_items_json if provided
+    if status_data.items_json is not None:
+        order.items_json = status_data.items_json
+    if status_data.remaining_items_json is not None:
+        order.remaining_items_json = status_data.remaining_items_json
+
+    db.add(order)
+
+    # Also update the main status if fully assigned
+    if status_data.tms_order_status == "fully_assigned" and order.status == OrderStatus.LOGISTICS_APPROVED:
+        order.status = OrderStatus("assigned")  # You may need to add this to OrderStatus enum
+
+    await db.commit()
+    await db.refresh(order)
+
+    return order
 
 
 @router.post("/{order_id}/cancel", response_model=OrderResponse)

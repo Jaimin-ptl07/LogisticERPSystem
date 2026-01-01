@@ -2,7 +2,7 @@
 Order Pydantic schemas for API requests and responses
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 from src.models.order import OrderStatus, OrderType, PaymentType
@@ -154,6 +154,11 @@ class OrderResponse(OrderBase):
     customer_id: str
     branch_id: str
     status: OrderStatus
+    tms_order_status: Optional[str] = "available"
+
+    # TMS JSON fields
+    items_json: Optional[List[Dict[str, Any]]] = None
+    remaining_items_json: Optional[List[Dict[str, Any]]] = None
 
     # System fields
     created_by: str
@@ -195,6 +200,7 @@ class OrderListResponse(BaseModel):
     status: OrderStatus
     order_type: OrderType
     priority: str
+    tms_order_status: Optional[str] = "available"
     total_amount: Optional[float]
     total_weight: Optional[float] = Field(None, ge=0)
     total_volume: Optional[float] = Field(None, ge=0)
@@ -226,6 +232,14 @@ class OrderStatusUpdate(BaseModel):
     status: OrderStatus
     reason: Optional[str] = None
     notes: Optional[str] = None
+
+
+class TmsOrderStatusUpdate(BaseModel):
+    """Schema for updating TMS order status"""
+    order_id: str
+    tms_order_status: str = Field(..., pattern="^(available|partial|fully_assigned)$")
+    items_json: Optional[List[Dict[str, Any]]] = None
+    remaining_items_json: Optional[List[Dict[str, Any]]] = None
 
 
 class FinanceApprovalRequest(BaseModel):
