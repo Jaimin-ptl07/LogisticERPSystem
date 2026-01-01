@@ -15,6 +15,7 @@ from starlette.responses import Response, JSONResponse
 from src.api.endpoints import auth, users, tenants, admin, permissions, roles
 from src.config_local import AuthSettings
 from src.database import engine, Base, AsyncSessionLocal
+from src.middleware.tenant_status import TenantStatusMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +98,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add tenant status validation middleware
+app.add_middleware(TenantStatusMiddleware)
 
 # Add metrics tracking middleware
 @app.middleware("http")

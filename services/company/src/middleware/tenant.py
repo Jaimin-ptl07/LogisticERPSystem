@@ -31,7 +31,7 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
         Returns:
             HTTP response
         """
-        # Skip tenant isolation for health checks and docs
+        # Skip tenant isolation for health checks, docs, and internal endpoints
         skip_paths = [
             "/health",
             "/ready",
@@ -41,7 +41,12 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
             "/redoc",
         ]
 
+        # Check exact match first
         if request.url.path in skip_paths:
+            return await call_next(request)
+
+        # Skip internal endpoints (prefix match)
+        if request.url.path.startswith("/api/v1/internal"):
             return await call_next(request)
 
         # Ensure request has user context (from authentication middleware)

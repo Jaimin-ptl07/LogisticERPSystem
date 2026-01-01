@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
 from starlette.responses import Response as StarletteResponse
 
-from src.api.endpoints import branches, customers, vehicles, products, product_categories, business_types, vehicle_types, users, roles, profiles, audit
+from src.api.endpoints import branches, customers, vehicles, products, product_categories, business_types, vehicle_types, users, roles, profiles, audit, tenant_cleanup
 from src.config_local import settings
 from src.database import engine, Base
 from src.security import (
@@ -29,6 +29,7 @@ from src.middleware import (
     AuditLoggingMiddleware,
     TenantIsolationMiddleware,
     TenantContextMiddleware,
+    CompanyTenantStatusMiddleware,
 )
 
 # Configure logging
@@ -112,6 +113,9 @@ app.add_middleware(TenantContextMiddleware)
 
 # Authentication middleware (must come before CORS for proper header handling)
 app.add_middleware(AuthenticationMiddleware)
+
+# Tenant status validation middleware
+app.add_middleware(CompanyTenantStatusMiddleware)
 
 # Add standard middleware
 app.add_middleware(
@@ -286,6 +290,13 @@ app.include_router(
     audit.router,
     prefix="/audit",
     tags=["Audit Logs"]
+)
+
+# Internal endpoints for inter-service communication
+app.include_router(
+    tenant_cleanup.router,
+    prefix="/api/v1/internal",
+    tags=["Internal"]
 )
 
 
