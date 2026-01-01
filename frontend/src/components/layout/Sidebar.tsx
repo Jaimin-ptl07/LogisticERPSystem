@@ -71,6 +71,36 @@ const navigationStructure: NavItem[] = [
         icon: LayoutDashboard,
       },
       {
+        label: "Branch Management",
+        href: "/company-admin/masters/branches",
+        icon: Building2,
+      },
+      {
+        label: "Customer Management",
+        href: "/company-admin/masters/customers",
+        icon: Users,
+      },
+      {
+        label: "Vehicle Management",
+        href: "/company-admin/masters/vehicles",
+        icon: Truck,
+      },
+      {
+        label: "Product Management",
+        href: "/company-admin/masters/products",
+        icon: Package,
+      },
+      {
+        label: "User Management",
+        href: "/company-admin/masters/users",
+        icon: UserCheck,
+      },
+      {
+        label: "Pricing Configuration",
+        href: "/company-admin/masters/pricing",
+        icon: DollarSign,
+      },
+      {
         label: "Audit Logs",
         href: "/company-admin/masters/audit-logs",
         icon: FileClock,
@@ -282,8 +312,8 @@ export function Sidebar({
                   className={cn(
                     "w-full flex items-center cursor-pointer px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                     hasActiveChild
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-700 hover:bg-gray-100",
+                      ? "bg-[#E6ECFF] text-[#1F40AE]"
+                      : "text-gray-700 hover:bg-[#F1F4FF]",
                     isCollapsed ? "justify-center" : "justify-between"
                   )}
                   title={isCollapsed ? item.label : undefined}
@@ -320,10 +350,12 @@ export function Sidebar({
                     <ul className="mt-1 ml-4 space-y-1">
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon || ChevronRight;
-                        // More precise active check: exact match OR starts with followed by slash (not just containing)
+                        // More precise active check: exact match OR starts with followed by slash
+                        // Special handling for Dashboard to not match other routes under /company-admin/masters
+                        const isDashboard = subItem.href === "/company-admin/masters";
                         const isActive =
                           pathname === subItem.href ||
-                          (pathname.startsWith(subItem.href) && pathname[subItem.href.length] === '/');
+                          (!isDashboard && pathname.startsWith(subItem.href + "/"));
 
                         return (
                           <li key={subItem.href}>
@@ -332,8 +364,8 @@ export function Sidebar({
                               className={cn(
                                 "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
                                 isActive
-                                  ? "bg-blue-100 text-blue-700 font-medium"
-                                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                  ? "bg-[#D4DEFF] text-[#1F40AE] font-medium"
+                                  : "text-gray-600 hover:bg-[#F1F4FF] hover:text-gray-900"
                               )}
                             >
                               <SubIcon className="w-4 h-4 shrink-0" />
