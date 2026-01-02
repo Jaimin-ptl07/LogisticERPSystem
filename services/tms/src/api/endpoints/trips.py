@@ -25,6 +25,7 @@ from src.security import (
     get_current_user_id
 )
 from src.config import settings
+from src.services.audit_client import AuditClient
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,6 @@ router = APIRouter(
     },
     tags=["trips"]
 )
-
-logger = logging.getLogger(__name__)
 
 # Company service URL
 COMPANY_SERVICE_URL = "http://company-service:8002"
@@ -422,6 +421,7 @@ async def get_trip(
 
 @router.post("", response_model=TripResponse)
 async def create_trip(
+    request: Request,
     trip_data: TripCreate,
     token_data: TokenData = Depends(require_permissions(["trips:create"])),
     tenant_id: str = Depends(get_current_tenant_id),
@@ -429,6 +429,12 @@ async def create_trip(
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new trip"""
+    # Get authorization header for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
     # Create new trip
     trip = Trip(
         user_id=user_id,
@@ -454,6 +460,27 @@ async def create_trip(
     db.add(trip)
     await db.commit()
     await db.refresh(trip)
+
+    # Send audit log
+    audit_client = AuditClient(auth_headers)
+    await audit_client.log_event(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        user_role=token_data.role,
+        action="create",
+        module="trips",
+        entity_type="trip",
+        entity_id=str(trip.id),
+        description=f"Trip {trip.id} created for driver {trip.driver_name}",
+        new_values={
+            "driver_id": trip.driver_id,
+            "truck_plate": trip.truck_plate,
+            "status": trip.status,
+            "origin": trip.origin,
+            "destination": trip.destination
+        }
+    )
+    await audit_client.close()
 
     return TripResponse(
         id=trip.id,
@@ -652,11 +679,12 @@ async def assign_orders_to_trip(
     db: AsyncSession = Depends(get_db)
 ):
     """Assign orders to a trip"""
-    # Get the authorization header for forwarding to Orders service
+    # Get authorization header for both Orders service and audit client
+    auth_headers = {}
     auth_header = request.headers.get("authorization")
-    headers = {}
     if auth_header:
-        headers["Authorization"] = auth_header
+        auth_headers["Authorization"] = auth_header
+
     # Verify trip exists and belongs to tenant
     trip_query = select(Trip).where(
         and_(
@@ -753,7 +781,7 @@ async def assign_orders_to_trip(
                 async with AsyncClient(timeout=10.0) as client:
                     update_response = await client.patch(
                         f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/tms-status",
-                        headers=headers,
+                        headers=auth_headers,
                         json={
                             "order_id": order_data.order_id,
                             "tms_order_status": tms_status,
@@ -776,6 +804,25 @@ async def assign_orders_to_trip(
     db.add(trip)
 
     await db.commit()
+
+    # Send audit log
+    audit_client = AuditClient(auth_headers)
+    await audit_client.log_event(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        user_role=token_data.role,
+        action="assign",
+        module="trips",
+        entity_type="trip_order",
+        entity_id=f"{trip_id}:{len(order_request.orders)}",
+        description=f"Assigned {len(order_request.orders)} orders to trip {trip_id}",
+        new_values={
+            "trip_id": trip_id,
+            "order_count": len(order_request.orders),
+            "total_weight": total_weight
+        }
+    )
+    await audit_client.close()
 
     return MessageResponse(message=f"Successfully assigned {len(order_request.orders)} orders to trip {trip_id}")
 

@@ -196,14 +196,6 @@ export default function CustomerDetailsPage() {
           <CardContent className="space-y-3">
             <div>
               <label className="text-sm font-medium text-gray-500">
-                Home Branch
-              </label>
-              <p className="text-gray-900">
-                {customer.home_branch?.name || "Not assigned"}
-              </p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">
                 Address
               </label>
               <p className="text-gray-900">{customer.address || "N/A"}</p>

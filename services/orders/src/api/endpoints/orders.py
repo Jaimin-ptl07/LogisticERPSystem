@@ -418,13 +418,20 @@ async def create_order(
 async def update_order(
     order_id: str,
     order_data: OrderUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_any_permission(["orders:update", "orders:update_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
     """Update an order"""
-    order_service = OrderService(db)
+    # Get auth headers for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers=auth_headers)
 
     # Check if order exists and belongs to tenant
     existing_order = await order_service.get_order_by_id(str(order_id), tenant_id)
@@ -497,13 +504,20 @@ async def delete_order(
 @router.post("/{order_id}/submit", response_model=OrderResponse)
 async def submit_order(
     order_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_any_permission(["orders:update", "orders:update_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
     """Submit order for finance approval"""
-    order_service = OrderService(db)
+    # Get auth headers for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers=auth_headers)
 
     # Check if order exists and belongs to tenant
     existing_order = await order_service.get_order_by_id(order_id, tenant_id)
@@ -530,13 +544,20 @@ async def submit_order(
 async def finance_approval(
     order_id: str,
     approval_data: FinanceApprovalRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["orders:approve_finance"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
     """Approve or reject order in finance - Requires finance approval permission"""
-    order_service = OrderService(db)
+    # Get auth headers for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers=auth_headers)
 
     order = await order_service.finance_approval(
         order_id,
@@ -554,13 +575,20 @@ async def finance_approval(
 async def logistics_approval(
     order_id: str,
     approval_data: LogisticsApprovalRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["orders:approve_logistics"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
 ):
     """Approve or reject order in logistics - Requires logistics approval permission"""
-    order_service = OrderService(db)
+    # Get auth headers for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers=auth_headers)
 
     order = await order_service.logistics_approval(
         order_id,
@@ -682,6 +710,7 @@ async def update_tms_order_status(
 @router.post("/{order_id}/cancel", response_model=OrderResponse)
 async def cancel_order(
     order_id: str,
+    request: Request,
     reason: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["orders:cancel"])),
@@ -689,7 +718,13 @@ async def cancel_order(
     user_id: str = Depends(get_current_user_id),
 ):
     """Cancel an order - Requires order cancel permission"""
-    order_service = OrderService(db)
+    # Get auth headers for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers=auth_headers)
 
     order = await order_service.cancel_order(
         str(order_id),

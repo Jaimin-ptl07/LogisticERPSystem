@@ -113,8 +113,6 @@ class Branch(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    customers = relationship("Customer", back_populates="home_branch")
-    vehicles = relationship("Vehicle", back_populates="branch")
 
 
 class BusinessTypeModel(Base):
@@ -157,7 +155,6 @@ class Customer(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
-    home_branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     code = Column(String(20), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
     phone = Column(String(20))
@@ -180,12 +177,13 @@ class Customer(Base):
     credit_limit = Column(Float, default=0)
     pricing_tier = Column(String(20), default="standard")
     is_active = Column(Boolean, default=True)
+    available_for_all_branches = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    home_branch = relationship("Branch", back_populates="customers")
     business_type_relation = relationship("BusinessTypeModel", back_populates="customers")
+    branches = relationship("CustomerBranch", back_populates="customer")
 
 
 class Vehicle(Base):
@@ -194,7 +192,6 @@ class Vehicle(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
-    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id"))
     plate_number = Column(String(20), unique=True, nullable=False)
     make = Column(String(50))
     model = Column(String(50))
@@ -225,12 +222,13 @@ class Vehicle(Base):
     last_maintenance = Column(DateTime(timezone=True))
     next_maintenance = Column(DateTime(timezone=True))
     is_active = Column(Boolean, default=True)
+    available_for_all_branches = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    branch = relationship("Branch", back_populates="vehicles")
     vehicle_type_relation = relationship("VehicleTypeModel", back_populates="vehicles")
+    branches = relationship("VehicleBranch", back_populates="vehicle")
 
 
 class ProductCategory(Base):
@@ -311,6 +309,36 @@ class ProductBranch(Base):
 
     # Relationships
     product = relationship("Product", back_populates="branches")
+    branch = relationship("Branch")
+
+
+class CustomerBranch(Base):
+    """Junction table for customer-branch relationships"""
+    __tablename__ = "customer_branches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"))
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="CASCADE"))
+    tenant_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    customer = relationship("Customer", back_populates="branches")
+    branch = relationship("Branch")
+
+
+class VehicleBranch(Base):
+    """Junction table for vehicle-branch relationships"""
+    __tablename__ = "vehicle_branches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"))
+    branch_id = Column(UUID(as_uuid=True), ForeignKey("branches.id", ondelete="CASCADE"))
+    tenant_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    vehicle = relationship("Vehicle", back_populates="branches")
     branch = relationship("Branch")
 
 
@@ -589,3 +617,45 @@ class EmployeeBranch(Base):
     # Relationships
     employee = relationship("EmployeeProfile", back_populates="assigned_branches")
     branch = relationship("Branch")
+
+
+class AuditLog(Base):
+    """Audit Log model - centralized audit tracking for all company operations"""
+    __tablename__ = "audit_logs"
+
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(255), nullable=False, index=True)
+
+    # Who performed the action
+    user_id = Column(String(255), nullable=False, index=True, comment="User who performed the action")
+    user_name = Column(String(200), comment="Name of the user (denormalized for query)")
+    user_email = Column(String(255), comment="Email of the user (denormalized for query)")
+    user_role = Column(String(50), comment="Role of the user")
+
+    # What was done
+    action = Column(String(50), nullable=False, index=True, comment="Action performed: create, update, delete, status_change, approve, reject, etc.")
+    module = Column(String(50), nullable=False, index=True, comment="Module: orders, trips, customers, vehicles, etc.")
+    entity_type = Column(String(50), nullable=False, index=True, comment="Type of entity: order, trip, customer, etc.")
+    entity_id = Column(String(255), nullable=False, index=True, comment="ID of the affected entity")
+
+    # Action details
+    description = Column(Text, nullable=False, comment="Human-readable description of the action")
+    old_values = Column(JSON, comment="Previous values (for updates)")
+    new_values = Column(JSON, comment="New values (for updates/creates)")
+
+    # Status change specific
+    from_status = Column(String(50), comment="Previous status")
+    to_status = Column(String(50), comment="New status")
+
+    # Approval specific
+    approval_status = Column(String(20), comment="approved/rejected for approval actions")
+    reason = Column(Text, comment="Reason for rejection/status change")
+
+    # Metadata
+    ip_address = Column(String(50), comment="IP address of the user")
+    user_agent = Column(String(500), comment="Browser/client info")
+    service_name = Column(String(50), comment="Service that created this log (orders, tms, driver, etc.)")
+
+    # Timestamp
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

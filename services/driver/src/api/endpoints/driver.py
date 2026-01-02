@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from src.services.driver_service import DriverService
+from src.services.audit_client import AuditClient
 from src.config import settings
 from src.security import (
     TokenData,
@@ -232,6 +233,7 @@ async def get_order_status(
 
 @router.post("/trips/{trip_id}/orders/{order_id}/deliver")
 async def mark_order_delivered(
+    request: Request,
     trip_id: str,
     order_id: str,
     token_data: TokenData = Depends(require_permissions(["driver:update"])),
@@ -244,12 +246,39 @@ async def mark_order_delivered(
 
     This is a convenience endpoint to quickly mark an order as delivered.
     """
+    # Get authorization header for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
     try:
         result = await driver_service.mark_order_delivered(
             trip_id=trip_id,
             order_id=order_id,
             company_id=tenant_id  # Use tenant_id as company_id
         )
+
+        # Send audit log
+        audit_client = AuditClient(auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="deliver",
+            module="trips",
+            entity_type="trip_order",
+            entity_id=f"{trip_id}:{order_id}",
+            description=f"Order {order_id} delivered by driver {user_id}",
+            from_status="on-route",
+            to_status="delivered",
+            new_values={
+                "trip_id": trip_id,
+                "order_id": order_id,
+                "delivery_status": "delivered"
+            }
+        )
+        await audit_client.close()
+
         return {
             "success": True,
             "message": "Order marked as delivered successfully",

@@ -346,6 +346,18 @@ class TenantService:
         return result.rowcount > 0
 
     @staticmethod
+    async def deactivate_tenant(db: AsyncSession, tenant_id: str) -> bool:
+        """Deactivate a tenant"""
+        query = update(Tenant).where(Tenant.id == tenant_id).values(
+            is_active=False,
+            updated_at=datetime.utcnow()
+        )
+        result = await db.execute(query)
+        await db.commit()
+
+        return result.rowcount > 0
+
+    @staticmethod
     async def get_all_tenants(db: AsyncSession) -> List[Tenant]:
         """Get all tenants (Super Admin only)"""
         query = select(Tenant).options(
@@ -462,33 +474,101 @@ class TenantService:
         return await TenantService.get_tenant_by_id(db, tenant_id)
 
     @staticmethod
-    async def delete_tenant(db: AsyncSession, tenant_id: str) -> bool:
-        """Delete a tenant (hard delete)"""
+    async def delete_tenant(db: AsyncSession, tenant_id: str, auth_token: str = None) -> bool:
+        """
+        Hard delete a tenant with cascade to all services
+        """
         from sqlalchemy import delete
-        from ..database import Role, RolePermission
+        from ..database import Role, RolePermission, RefreshToken
+        import httpx
+        import logging
 
-        # First delete all role permissions for roles in this tenant
-        delete_role_perms_query = delete(RolePermission).where(
-            RolePermission.role_id.in_(
-                select(Role.id).where(Role.tenant_id == tenant_id)
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Step 1: Delete refresh tokens for users in this tenant
+            delete_refresh_tokens_query = delete(RefreshToken).where(
+                RefreshToken.user_id.in_(
+                    select(User.id).where(User.tenant_id == tenant_id)
+                )
             )
-        )
-        await db.execute(delete_role_perms_query)
+            await db.execute(delete_refresh_tokens_query)
 
-        # Delete ALL users for this tenant (including admin)
-        delete_users_query = delete(User).where(User.tenant_id == tenant_id)
-        await db.execute(delete_users_query)
+            # Step 2: Delete role permissions
+            delete_role_perms_query = delete(RolePermission).where(
+                RolePermission.role_id.in_(
+                    select(Role.id).where(Role.tenant_id == tenant_id)
+                )
+            )
+            await db.execute(delete_role_perms_query)
 
-        # Now delete all roles for this tenant (no users reference them anymore)
-        delete_roles_query = delete(Role).where(Role.tenant_id == tenant_id)
-        await db.execute(delete_roles_query)
+            # Step 3: Delete all users
+            delete_users_query = delete(User).where(User.tenant_id == tenant_id)
+            await db.execute(delete_users_query)
 
-        # Finally delete the tenant
-        delete_tenant_query = delete(Tenant).where(Tenant.id == tenant_id)
-        result = await db.execute(delete_tenant_query)
-        await db.commit()
+            # Step 4: Delete all roles
+            delete_roles_query = delete(Role).where(Role.tenant_id == tenant_id)
+            await db.execute(delete_roles_query)
 
-        return result.rowcount > 0
+            # Step 5: Commit the auth service deletions first
+            await db.commit()
+
+            # Step 6: Notify other services to delete their data BEFORE deleting tenant record
+            # This ensures other services can still reference the tenant_id
+            await TenantService._notify_services_of_deletion(tenant_id, auth_token)
+
+            # Step 7: Now delete the tenant record last
+            delete_tenant_query = delete(Tenant).where(Tenant.id == tenant_id)
+            result = await db.execute(delete_tenant_query)
+            await db.commit()
+
+            return result.rowcount > 0
+
+        except Exception as e:
+            logger.error(f"Error deleting tenant {tenant_id}: {e}")
+            await db.rollback()
+            raise
+
+    @staticmethod
+    async def _notify_services_of_deletion(tenant_id: str, auth_token: str = None):
+        """
+        Notify all other services to delete data for this tenant
+        """
+        import httpx
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        services = [
+            {"name": "company", "url": "http://company-service:8002"},
+            {"name": "orders", "url": "http://orders-service:8003"},
+            {"name": "tms", "url": "http://tms-service:8004"},
+            {"name": "finance", "url": "http://finance-service:8005"},
+            {"name": "driver", "url": "http://driver-service:8006"},
+        ]
+
+        headers = {"Content-Type": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+
+        for service in services:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.delete(
+                        f"{service['url']}/api/v1/internal/tenant/{tenant_id}",
+                        headers=headers
+                    )
+
+                    if response.status_code == 200:
+                        logger.info(f"Successfully deleted from {service['name']} service")
+                    else:
+                        logger.error(
+                            f"Failed to delete from {service['name']} service: "
+                            f"{response.status_code}"
+                        )
+            except Exception as e:
+                logger.error(f"Error notifying {service['name']} service: {e}")
+                # Continue with other services even if one fails
 
     @staticmethod
     async def get_tenant_stats(db: AsyncSession, tenant_id: str) -> dict:

@@ -132,7 +132,8 @@ class VehicleTypeModel(VehicleTypeInDB):
 # Customer schemas
 class CustomerBase(BaseSchema):
     """Base customer schema"""
-    home_branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: bool = True
     code: str = Field(..., min_length=2, max_length=20)
     name: str = Field(..., min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
@@ -166,7 +167,8 @@ class CustomerCreate(CustomerBase):
 
 class CustomerUpdate(BaseSchema):
     """Schema for updating a customer"""
-    home_branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: Optional[bool] = None
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=100)
@@ -192,14 +194,21 @@ class CustomerInDB(CustomerBase):
 
 class Customer(CustomerInDB):
     """Schema for customer response"""
-    home_branch: Optional[Branch] = None
     business_type_relation: Optional[BusinessTypeModel] = None
+    available_for_all_branches: bool = True
+    branches: Optional[List["CustomerBranch"]] = None
+
+
+class CustomerBranch(BaseSchema):
+    """Schema for customer-branch relationship"""
+    branch: Optional[Branch] = None
 
 
 # Vehicle schemas
 class VehicleBase(BaseSchema):
     """Base vehicle schema"""
-    branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: bool = True
     plate_number: str = Field(..., min_length=2, max_length=20)
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
@@ -232,7 +241,8 @@ class VehicleCreate(VehicleBase):
 
 class VehicleUpdate(BaseSchema):
     """Schema for updating a vehicle"""
-    branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: Optional[bool] = None
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
@@ -257,8 +267,14 @@ class VehicleInDB(VehicleBase):
 
 class Vehicle(VehicleInDB):
     """Schema for vehicle response"""
-    branch: Optional[Branch] = None
     vehicle_type_relation: Optional[VehicleTypeModel] = None
+    available_for_all_branches: bool = True
+    branches: Optional[List["VehicleBranch"]] = None
+
+
+class VehicleBranch(BaseSchema):
+    """Schema for vehicle-branch relationship"""
+    branch: Optional[Branch] = None
 
 
 # Product Category schemas
@@ -1113,6 +1129,89 @@ class ProfileChangeHistory(BaseSchema):
     profile_id: str
     profile_type: str
     changes: List[ProfileAuditLog]
+
+
+# Audit Log schemas
+class AuditLogCreate(BaseSchema):
+    """Schema for creating audit log (called by other services)"""
+    tenant_id: str
+    user_id: str
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_role: Optional[str] = None
+    action: str
+    module: str
+    entity_type: str
+    entity_id: str
+    description: str
+    old_values: Optional[Dict[str, Any]] = None
+    new_values: Optional[Dict[str, Any]] = None
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    approval_status: Optional[str] = None
+    reason: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    service_name: str
+
+
+class AuditLogResponse(BaseSchema):
+    """Schema for audit log response"""
+    id: UUID
+    tenant_id: str
+    user_id: str
+    user_name: Optional[str]
+    user_email: Optional[str]
+    user_role: Optional[str]
+    action: str
+    module: str
+    entity_type: str
+    entity_id: str
+    description: str
+    old_values: Optional[Dict[str, Any]]
+    new_values: Optional[Dict[str, Any]]
+    from_status: Optional[str]
+    to_status: Optional[str]
+    approval_status: Optional[str]
+    reason: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    service_name: Optional[str]
+    created_at: datetime
+
+
+class AuditLogQueryParams(BaseSchema):
+    """Schema for audit log query parameters"""
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+    user_id: Optional[str] = None
+    module: Optional[str] = None
+    action: Optional[str] = None
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=50, ge=1, le=100)
+
+
+class AuditLogListResponse(BaseSchema):
+    """Schema for paginated audit log list"""
+    items: List[AuditLogResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class AuditLogSummaryResponse(BaseSchema):
+    """Schema for audit log summary statistics"""
+    total_logs: int
+    unique_users: int
+    unique_modules: List[Dict[str, Any]]
+    unique_actions: List[Dict[str, Any]]
+    logs_by_module: Dict[str, int]
+    logs_by_action: Dict[str, int]
+    logs_by_date: List[Dict[str, Any]]
+    top_users: List[Dict[str, Any]]
 
 
 # Update forward references
