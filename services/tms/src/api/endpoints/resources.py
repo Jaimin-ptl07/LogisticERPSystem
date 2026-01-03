@@ -363,8 +363,14 @@ async def get_orders(
                 else:
                     date_obj = date.today()
 
-                # Transform items to include full item data
-                items_data = order.get("items")
+                # Get TMS order status and determine which items to use
+                tms_order_status = order.get("tms_order_status", "available")
+                items_data = order.get("items", [])
+                items_json = order.get("items_json")
+                remaining_items_json = order.get("remaining_items_json")
+
+                # For partial orders, the items array already contains remaining items from Orders service
+                # We just need to transform them
                 transformed_items = []
                 # Check if items is a list/array, if not, skip it
                 if isinstance(items_data, list):
@@ -387,10 +393,14 @@ async def get_orders(
                             "weight_unit": item.get("weight_unit"),
                         })
 
-                # Calculate weight and volume safely
-                items_for_calc = order.get("items", []) if isinstance(order.get("items"), list) else []
-                calculated_weight = sum(item.get("weight", 0) or 0 for item in items_for_calc)
-                calculated_volume = sum(item.get("volume", 0) or 0 for item in items_for_calc)
+                # Calculate weight and volume safely from the items
+                # For partial orders, items_data already contains remaining items with correct weights
+                # Use total_weight if available (for items with quantities), otherwise use weight
+                calculated_weight = sum(
+                    (item.get("total_weight") or (item.get("weight", 0) or 0))
+                    for item in items_data if isinstance(item, dict)
+                )
+                calculated_volume = sum(item.get("volume", 0) or 0 for item in items_data if isinstance(item, dict))
 
                 # Get items count
                 if isinstance(items_data, list):
@@ -400,20 +410,31 @@ async def get_orders(
                 else:
                     items_count = 0
 
+                # For partial orders, use the calculated values from remaining items
+                # For available/fully_assigned orders, use the order's values
+                if tms_order_status == "partial":
+                    display_weight = calculated_weight
+                    display_volume = calculated_volume
+                else:
+                    display_weight = order.get("total_weight", 0) or calculated_weight
+                    display_volume = order.get("total_volume", 0) or calculated_volume
+
                 transformed_order = {
                     "id": order.get("order_number", order.get("id")),
                     "customer": order.get("customer", {}).get("name", "Unknown Customer") if order.get("customer") else "Unknown Customer",
                     "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
                     "status": order.get("status", "unknown"),
-                    "tms_order_status": order.get("tms_order_status", "available"),
+                    "tms_order_status": tms_order_status,
                     "total": order.get("total_amount", 0),
-                    # Use order's total_weight directly, or sum item weights if not available
-                    "weight": order.get("total_weight", 0) or calculated_weight,
-                    "volume": order.get("total_volume", 0) or calculated_volume,
+                    # Use calculated weight for partial orders, otherwise use order's weight
+                    "weight": display_weight,
+                    "volume": display_volume,
                     "date": date_obj,
                     "priority": order.get("priority", "medium"),
                     "items_count": items_count,
                     "items": transformed_items,
+                    "items_json": items_json,
+                    "remaining_items_json": remaining_items_json,
                     "address": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address"
                 }
                 transformed_orders.append(transformed_order)

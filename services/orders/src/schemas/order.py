@@ -242,6 +242,14 @@ class TmsOrderStatusUpdate(BaseModel):
     remaining_items_json: Optional[List[Dict[str, Any]]] = None
 
 
+class ItemStatusUpdate(BaseModel):
+    """Schema for updating item status from TMS service"""
+    order_id: str
+    trip_id: str
+    item_status: str = Field(..., pattern="^(pending_to_assign|planning|loading|on_route|delivered|failed|returned)$")
+    item_ids: Optional[List[str]] = None  # If provided, only update specific items
+
+
 class FinanceApprovalRequest(BaseModel):
     """Schema for finance approval/rejection"""
     approved: bool

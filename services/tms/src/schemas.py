@@ -143,10 +143,11 @@ class TripOrderResponse(BaseSchema):
     product_name: Optional[str] = None
     status: OrderStatus
     tms_order_status: Optional[str] = "available"
+    item_status: Optional[str] = "pending_to_assign"  # Item-level status tracking
     total: float
     weight: int
     volume: int
-    items: int
+    items: Optional[List[Dict[str, Any]]] = None  # Changed from int to list to support split orders
     items_data: Optional[List[Dict[str, Any]]] = None  # Items array with full product details
     items_json: Optional[List[Dict[str, Any]]] = None
     remaining_items_json: Optional[List[Dict[str, Any]]] = None

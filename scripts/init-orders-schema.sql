@@ -99,6 +99,10 @@ CREATE TABLE IF NOT EXISTS order_items (
     dimensions_length NUMERIC(8, 2),
     dimensions_width NUMERIC(8, 2),
     dimensions_height NUMERIC(8, 2),
+    item_status VARCHAR(50) DEFAULT 'pending_to_assign' CHECK (
+        item_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned')
+    ),
+    trip_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -151,6 +155,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_is_active ON orders(is_active);
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_item_status ON order_items(item_status);
+CREATE INDEX IF NOT EXISTS idx_order_items_trip_id ON order_items(trip_id);
 
 CREATE INDEX IF NOT EXISTS idx_order_documents_order_id ON order_documents(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_documents_uploaded_by ON order_documents(uploaded_by);

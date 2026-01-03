@@ -20,6 +20,7 @@ from src.schemas import (
     OrderListPaginatedResponse,
     OrderStatusUpdate,
     TmsOrderStatusUpdate,
+    ItemStatusUpdate,
     FinanceApprovalRequest,
     LogisticsApprovalRequest,
     OrderQueryParams,
@@ -233,9 +234,42 @@ async def list_orders(
 
     # Enrich each order with customer data and items details
     for order in orders:
-        # Prepare items data
+        # Prepare items data - handle split orders with remaining items
         items_data = []
-        if hasattr(order, 'items') and order.items:
+
+        # Check if this is a partial order with remaining items
+        is_partial_order = (
+            hasattr(order, 'tms_order_status') and
+            order.tms_order_status == "partial" and
+            hasattr(order, 'remaining_items_json') and
+            order.remaining_items_json is not None
+        )
+
+        if is_partial_order:
+            # For partial orders, use remaining_items_json instead of original items
+            logger.info(f"Order {order.order_number} is partial with remaining items")
+            for item in order.remaining_items_json:
+                # remaining_items_json contains stored item data directly
+                item_dict = {
+                    'id': item.get('id'),
+                    'product_id': item.get('product_id'),
+                    'product_name': item.get('product_name'),
+                    'product_code': item.get('product_code'),
+                    'description': item.get('description'),
+                    'quantity': item.get('quantity'),
+                    'unit': item.get('unit'),
+                    'unit_price': float(item.get('unit_price')) if item.get('unit_price') else None,
+                    'total_price': float(item.get('total_price')) if item.get('total_price') else None,
+                    'weight': float(item.get('weight')) if item.get('weight') else None,
+                    'weight_type': item.get('weight_type', 'fixed'),
+                    'fixed_weight': float(item.get('fixed_weight', 0)) if item.get('fixed_weight') else None,
+                    'weight_unit': item.get('weight_unit', 'kg'),
+                    'total_weight': float(item.get('total_weight')) if item.get('total_weight') else None,
+                    'volume': float(item.get('volume')) if item.get('volume') else None,
+                }
+                items_data.append(item_dict)
+        elif hasattr(order, 'items') and order.items:
+            # For non-partial orders, use the original items from the relationship
             for item in order.items:
                 # Get real product data if available, otherwise fall back to stored data
                 product_data = products_data.get(item.product_id, {})
@@ -259,6 +293,14 @@ async def list_orders(
                 }
                 items_data.append(item_dict)
 
+        # Calculate actual weight and volume based on returned items
+        # Use total_weight if available (for items with quantities), otherwise use weight
+        calculated_weight = sum(
+            (item.get('total_weight') or (item.get('weight', 0) or 0)) for item in items_data
+        )
+        calculated_volume = sum(item.get('volume', 0) or 0 for item in items_data)
+        calculated_total = sum(item.get('total_price', 0) or 0 for item in items_data)
+
         order_dict = {
             'id': order.id,
             'order_number': order.order_number,
@@ -267,10 +309,12 @@ async def list_orders(
             'status': order.status,
             'order_type': order.order_type,
             'priority': order.priority,
-            'total_amount': float(order.total_amount) if order.total_amount else 0,
-            'total_weight': float(order.total_weight) if order.total_weight else 0,
-            'total_volume': float(order.total_volume) if order.total_volume else 0,
-            'package_count': order.package_count if order.package_count else 0,
+            'tms_order_status': getattr(order, 'tms_order_status', 'available'),
+            'total_amount': float(order.total_amount) if order.total_amount else calculated_total,
+            # For partial orders, use calculated weight from remaining items
+            'total_weight': calculated_weight if is_partial_order else (float(order.total_weight) if order.total_weight else 0),
+            'total_volume': calculated_volume if is_partial_order else (float(order.total_volume) if order.total_volume else 0),
+            'package_count': len(items_data) if is_partial_order else (order.package_count if order.package_count else 0),
             'payment_type': order.payment_type,
             'pickup_date': order.pickup_date,
             'delivery_date': order.delivery_date,
@@ -278,7 +322,10 @@ async def list_orders(
             'updated_at': order.updated_at,
             'customer': customers_data.get(order.customer_id),
             'items': items_data,
-            'items_count': len(items_data)
+            'items_count': len(items_data),
+            # Include TMS JSON fields for reference
+            'items_json': getattr(order, 'items_json', None),
+            'remaining_items_json': getattr(order, 'remaining_items_json', None),
         }
         enriched_orders.append(OrderListResponse(**order_dict))
 
@@ -705,6 +752,64 @@ async def update_tms_order_status(
     await db.refresh(order)
 
     return order
+
+
+@router.post("/item-status", response_model=dict)
+async def update_item_status(
+    status_data: ItemStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+):
+    """
+    Update item status for all items in an order (called by TMS service)
+    This endpoint is called when trip status changes in TMS
+    """
+    from src.models.order_item import OrderItem
+    import json
+
+    logger.info(f"Updating item status for order {status_data.order_id} to {status_data.item_status}")
+
+    # Build the query for updating items
+    if status_data.item_ids:
+        # Update specific items
+        query = select(OrderItem).where(
+            and_(
+                OrderItem.id.in_(status_data.item_ids),
+                OrderItem.order_id == status_data.order_id
+            )
+        )
+    else:
+        # Update all items in the order
+        query = select(OrderItem).where(OrderItem.order_id == status_data.order_id)
+
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    if not items:
+        logger.warning(f"No items found for order {status_data.order_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No items found for order {status_data.order_id}"
+        )
+
+    # Update each item
+    updated_count = 0
+    for item in items:
+        item.item_status = status_data.item_status
+        item.trip_id = status_data.trip_id
+        updated_count += 1
+
+    await db.commit()
+
+    logger.info(f"Updated {updated_count} items for order {status_data.order_id} to status {status_data.item_status}")
+
+    return {
+        "message": f"Updated {updated_count} items to status {status_data.item_status}",
+        "updated_count": updated_count,
+        "order_id": status_data.order_id,
+        "trip_id": status_data.trip_id,
+        "item_status": status_data.item_status
+    }
 
 
 @router.post("/{order_id}/cancel", response_model=OrderResponse)

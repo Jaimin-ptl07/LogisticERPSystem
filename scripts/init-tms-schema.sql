@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     tms_order_status VARCHAR(50) DEFAULT 'available' CHECK (
         tms_order_status IN ('available', 'partial', 'fully_assigned')
     ),
+    item_status VARCHAR(50) DEFAULT 'pending_to_assign' CHECK (
+        item_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned')
+    ),
     total DECIMAL(12,2) NOT NULL,
     weight INTEGER NOT NULL,
     volume INTEGER NOT NULL,
@@ -67,7 +70,7 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     original_order_id VARCHAR(50), -- For split orders
     original_items INTEGER,        -- For split orders
     original_weight INTEGER,       -- For split orders
-    items_json JSONB,              -- Store assigned items with quantities
+    items_json JSONB,              -- Store assigned items with quantities and statuses
     remaining_items_json JSONB     -- Store remaining items for partial assignments
 );
 

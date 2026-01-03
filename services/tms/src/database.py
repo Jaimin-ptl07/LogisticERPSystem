@@ -88,6 +88,11 @@ class TripOrder(Base):
         CheckConstraint("tms_order_status IN ('available', 'partial', 'fully_assigned')", name="check_tms_order_status"),
         default="available"
     )
+    item_status = Column(
+        String(50),
+        CheckConstraint("item_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned')", name="check_item_status"),
+        default="pending_to_assign"
+    )
     total = Column(Float, nullable=False)
     weight = Column(Integer, nullable=False)
     volume = Column(Integer, nullable=False)
