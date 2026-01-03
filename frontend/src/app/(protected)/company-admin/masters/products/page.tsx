@@ -51,6 +51,7 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { toast } from "react-hot-toast";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 
 export default function ProductsPage() {
   const router = useRouter();
@@ -608,11 +609,11 @@ export default function ProductsPage() {
                         <TableCell>
                           <div>
                             <p className="font-medium">
-                              ${product.unit_price.toFixed(2)}
+                              <CurrencyDisplay amount={product.unit_price} />
                             </p>
                             {product.special_price && (
                               <p className="text-sm text-green-600">
-                                ${product.special_price.toFixed(2)} (special)
+                                <CurrencyDisplay amount={product.special_price} /> (special)
                               </p>
                             )}
                           </div>

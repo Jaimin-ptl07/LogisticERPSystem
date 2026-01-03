@@ -6,7 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select
 import logging
 
-from ...database import get_db, Order, OrderItem, OrderDocument
+from ...database import get_db
+from ...models.order import Order
+from ...models.order_item import OrderItem
+from ...models.order_document import OrderDocument
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

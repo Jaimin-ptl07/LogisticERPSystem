@@ -44,30 +44,8 @@ import {
   useGetAuditSummaryQuery,
 } from "@/services/api/companyApi";
 import { AuditLog } from "@/services/api/companyApi";
+import { DateDisplay } from "@/components/DateDisplay";
 
-// Date formatting helper
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-
-const formatTime = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-};
-
-const formatFullDateTime = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short'
-  });
-};
 
 // Action type configurations
 const ACTION_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -184,7 +162,7 @@ function DetailModal({ log, onClose }: { log: AuditLog; onClose: () => void }) {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Audit Log Details</h2>
             <p className="text-sm text-gray-500 mt-1">
-              {formatFullDateTime(log.created_at)}
+              <DateDisplay date={log.created_at} format="full" />
             </p>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
@@ -795,10 +773,10 @@ export default function AuditLogsPage() {
                         <TableCell className="text-sm">
                           <div className="flex flex-col">
                             <span className="font-medium">
-                              {formatDate(log.created_at)}
+                              <DateDisplay date={log.created_at} format="short" />
                             </span>
                             <span className="text-gray-500 text-xs">
-                              {formatTime(log.created_at)}
+                              <DateDisplay date={log.created_at} format="time" />
                             </span>
                           </div>
                         </TableCell>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
+import { CurrencyDisplay } from '@/components/CurrencyDisplay';
 import {
   ArrowLeft,
   Edit,
@@ -470,21 +471,21 @@ export default function VehicleDetailsPage() {
                       <TableCell>2023-12-15</TableCell>
                       <TableCell>Scheduled</TableCell>
                       <TableCell>Regular service - Oil change, filter replacement</TableCell>
-                      <TableCell>$250</TableCell>
+                      <TableCell><CurrencyDisplay amount={250} /></TableCell>
                       <TableCell>2024-03-15</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>2023-10-20</TableCell>
                       <TableCell>Repair</TableCell>
                       <TableCell>Brake pad replacement</TableCell>
-                      <TableCell>$450</TableCell>
+                      <TableCell><CurrencyDisplay amount={450} /></TableCell>
                       <TableCell>-</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>2023-08-10</TableCell>
                       <TableCell>Scheduled</TableCell>
                       <TableCell>Full service - Comprehensive check</TableCell>
-                      <TableCell>$600</TableCell>
+                      <TableCell><CurrencyDisplay amount={600} /></TableCell>
                       <TableCell>-</TableCell>
                     </TableRow>
                   </TableBody>
@@ -505,24 +506,24 @@ export default function VehicleDetailsPage() {
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Fuel</span>
-                        <span className="font-medium">$1,200</span>
+                        <span className="font-medium"><CurrencyDisplay amount={1200} /></span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Maintenance</span>
-                        <span className="font-medium">$250</span>
+                        <span className="font-medium"><CurrencyDisplay amount={250} /></span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Insurance</span>
-                        <span className="font-medium">$300</span>
+                        <span className="font-medium"><CurrencyDisplay amount={300} /></span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Taxes & Fees</span>
-                        <span className="font-medium">$150</span>
+                        <span className="font-medium"><CurrencyDisplay amount={150} /></span>
                       </div>
                       <div className="pt-3 border-t">
                         <div className="flex justify-between font-semibold">
                           <span>Total</span>
-                          <span>$1,900</span>
+                          <span><CurrencyDisplay amount={1900} /></span>
                         </div>
                       </div>
                     </div>
@@ -533,7 +534,7 @@ export default function VehicleDetailsPage() {
                       <div>
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-gray-600">Revenue</span>
-                          <span className="font-medium">$8,500</span>
+                          <span className="font-medium"><CurrencyDisplay amount={8500} /></span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div className="bg-green-600 h-2 rounded-full" style={{ width: '100%' }}></div>
@@ -542,7 +543,7 @@ export default function VehicleDetailsPage() {
                       <div>
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-gray-600">Expenses</span>
-                          <span className="font-medium">$1,900</span>
+                          <span className="font-medium"><CurrencyDisplay amount={1900} /></span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div className="bg-red-600 h-2 rounded-full" style={{ width: '22%' }}></div>
@@ -551,7 +552,7 @@ export default function VehicleDetailsPage() {
                       <div className="pt-3">
                         <div className="flex justify-between font-semibold text-lg">
                           <span>Net Profit</span>
-                          <span className="text-green-600">$6,600</span>
+                          <span className="text-green-600"><CurrencyDisplay amount={6600} /></span>
                         </div>
                       </div>
                     </div>

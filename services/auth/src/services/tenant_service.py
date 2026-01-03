@@ -4,12 +4,14 @@ Tenant service for managing tenants/companies
 from typing import Optional, List
 from datetime import datetime
 from uuid import uuid4
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 
 from ..database import Tenant, User, Role, Permission, RolePermission
 from ..auth import get_password_hash
+from ..config_local import Settings
 
 
 async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> dict:
@@ -97,6 +99,8 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "dashboard:read", "dashboard:read_all",
                 # Finance
                 "finance:read", "finance:approve", "finance:approve_bulk", "finance:reports", "finance:export",
+                # Audit
+                "audit:read", "audit:export",
             ]
         },
         {
@@ -232,14 +236,90 @@ class TenantService:
     """Service for tenant management operations"""
 
     @staticmethod
-    async def create_tenant_with_admin(db: AsyncSession, name: str, domain: str, admin_data: dict) -> Tenant:
-        """Create a new tenant with admin user and default roles"""
-        # Create tenant first
+    async def create_tenant_with_admin(
+        db: AsyncSession,
+        name: str,
+        domain: str,
+        admin_data: dict,
+        currency_code: str = None,
+        timezone_iana: str = None,
+        timezone_enabled: bool = True
+    ) -> Tenant:
+        """
+        Create a new tenant with admin user and default roles
+
+        Args:
+            db: Database session
+            name: Tenant name
+            domain: Tenant domain
+            admin_data: Admin user data
+            currency_code: ISO 4217 currency code (defaults to settings.DEFAULT_CURRENCY)
+            timezone_iana: IANA timezone identifier (defaults to settings.DEFAULT_TIMEZONE)
+            timezone_enabled: Whether timezone conversion is enabled
+        """
+        # Set defaults from settings
+        if currency_code is None:
+            currency_code = getattr(Settings, 'DEFAULT_CURRENCY', 'TZS')
+        if timezone_iana is None:
+            timezone_iana = getattr(Settings, 'DEFAULT_TIMEZONE', 'Africa/Dar_es_Salaam')
+
+        # Import pycountry to get currency symbol
+        try:
+            import pycountry
+
+            # Get currency symbol
+            currency_symbols = {
+                "TZS": "TSh", "KES": "KSh", "UGX": "USh", "RWF": "RF",
+                "USD": "$", "EUR": "€", "GBP": "£", "INR": "₹",
+                "JPY": "¥", "AED": "د.إ", "SAR": "ر.س", "EGP": "Egp"
+            }
+            symbol = currency_symbols.get(currency_code, currency_code)
+
+            # Get currency info
+            currency_obj = pycountry.currencies.get(alpha_3=currency_code)
+            currency_name = currency_obj.name if currency_obj else currency_code
+
+            # Build tenant settings JSON
+            tenant_settings = {
+                "currency": {
+                    "code": currency_code,
+                    "symbol": symbol,
+                    "name": currency_name,
+                    "position": "before" if currency_code in ["USD", "EUR", "GBP", "TZS", "KES", "INR"] else "after",
+                    "decimal_places": 0 if currency_code == "JPY" else 2,
+                    "thousands_separator": ",",
+                    "decimal_separator": "."
+                },
+                "timezone": {
+                    "iana": timezone_iana,
+                    "enabled": timezone_enabled
+                }
+            }
+        except ImportError:
+            # Fallback if pycountry not available
+            tenant_settings = {
+                "currency": {
+                    "code": currency_code,
+                    "symbol": currency_code,
+                    "name": currency_code,
+                    "position": "before",
+                    "decimal_places": 2,
+                    "thousands_separator": ",",
+                    "decimal_separator": "."
+                },
+                "timezone": {
+                    "iana": timezone_iana,
+                    "enabled": timezone_enabled
+                }
+            }
+
+        # Create tenant first with settings
         tenant_id = str(uuid4())
         tenant = Tenant(
             id=tenant_id,
             name=name,
             domain=domain,
+            settings=json.dumps(tenant_settings),
             is_active=False,  # Inactive by default until admin is created
             admin_id=None,  # Will be set after admin user is created
             created_at=datetime.utcnow(),

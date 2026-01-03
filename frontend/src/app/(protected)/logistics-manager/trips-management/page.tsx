@@ -11,6 +11,7 @@ import {
   TripCreateData,
 } from "@/lib/api";
 import { Driver, Trip } from "@/types";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import {
   Truck,
   MapPin,
@@ -1671,7 +1672,458 @@ export default function Trips() {
                             )}
                           </div>
                         </div>
-                      ))
+                      ))}
+                    ) : (
+                      <div className="text-center py-12 text-gray-500">
+                        <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                        <p className="text-lg font-medium">No orders assigned</p>
+                        <p className="text-sm">Drag orders here to assign them to this trip</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Resources Tab */}
+            <TabsContent value="resources">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Available Trucks */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-black">
+                      Available Trucks ({getTrucksAvailable().length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {getTrucksAvailable().map((truck) => (
+                        <div
+                          key={truck.id}
+                          className="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
+                        >
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {truck.plate}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {truck.model} • {truck.capacity}kg
+                            </p>
+                          </div>
+                          <Badge variant="success">Available</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Available Drivers */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-black">
+                      Available Drivers ({availableDrivers.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {availableDrivers.map((driver) => (
+                        <div
+                          key={driver.id}
+                          className="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
+                        >
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {driver.name}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {driver.phone} • {driver.experience}
+                            </p>
+                          </div>
+                          <Badge variant="success">Available</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* Create Trip Modal - Same as original */}
+          {showCreateTrip && (
+            <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold text-black">
+                      Create New Trip
+                    </h2>
+                    <Button
+                      onClick={handleCloseModal}
+                      variant="outline"
+                      size="sm"
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Progress Steps */}
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                          currentStep >= 1
+                            ? "bg-green-600 text-white"
+                            : "bg-gray-200 text-gray-600"
+                        }`}
+                      >
+                        1
+                      </div>
+                      <span
+                        className={`ml-2 text-sm font-medium ${
+                          currentStep >= 1 ? "text-green-600" : "text-gray-500"
+                        }`}
+                      >
+                        Select Branch
+                      </span>
+                    </div>
+                    <div
+                      className={`flex-1 h-1 mx-4 ${
+                        currentStep >= 2 ? "bg-green-600" : "bg-gray-200"
+                      }`}
+                    ></div>
+                    <div className="flex items-center">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                          currentStep >= 2
+                            ? "bg-green-600 text-white"
+                            : "bg-gray-200 text-gray-600"
+                        }`}
+                      >
+                        2
+                      </div>
+                      <span
+                        className={`ml-2 text-sm font-medium ${
+                          currentStep >= 2 ? "text-green-600" : "text-gray-500"
+                        }`}
+                      >
+                        Select Truck
+                      </span>
+                    </div>
+                    <div
+                      className={`flex-1 h-1 mx-4 ${
+                        currentStep >= 3 ? "bg-green-600" : "bg-gray-200"
+                      }`}
+                    ></div>
+                    <div className="flex items-center">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                          currentStep >= 3
+                            ? "bg-green-600 text-white"
+                            : "bg-gray-200 text-gray-600"
+                        }`}
+                      >
+                        3
+                      </div>
+                      <span
+                        className={`ml-2 text-sm font-medium ${
+                          currentStep >= 3 ? "text-green-600" : "text-gray-500"
+                        }`}
+                      >
+                        Select Driver
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step Content - Same as original */}
+                <div className="px-6 py-6">
+                  {/* Step 1: Select Branch */}
+                  {currentStep === 1 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-black mb-4">
+                        Select Branch
+                      </h3>
+                      <p className="text-gray-600 mb-4">
+                        Choose the branch for this trip
+                      </p>
+
+                      {/* Search Input */}
+                      <div className="relative mb-6">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                        <input
+                          type="text"
+                          placeholder="Search branches by name or location..."
+                          value={branchSearchTerm}
+                          onChange={(e) => setBranchSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                        />
+                      </div>
+
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {getFilteredBranches().map((branch) => (
+                          <div
+                            key={branch.id}
+                            onClick={() => handleBranchSelect(branch.id)}
+                            className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                              selectedBranch === branch.id
+                                ? "border-green-500 bg-green-50"
+                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-medium text-black">
+                                  {branch.name}
+                                </h4>
+                                <p className="text-sm text-gray-600">
+                                  {branch.location}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Manager: {branch.manager}
+                                </p>
+                              </div>
+                              <div
+                                className={`w-5 h-5 rounded-full border-2 ${
+                                  selectedBranch === branch.id
+                                    ? "border-green-500 bg-green-500"
+                                    : "border-gray-300"
+                                }`}
+                              >
+                                {selectedBranch === branch.id && (
+                                  <div className="w-full h-full rounded-full bg-white"></div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 2: Select Truck */}
+                  {currentStep === 2 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-black mb-4">
+                        Select Truck
+                      </h3>
+                      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-sm text-gray-600">
+                              Selected Branch:
+                            </p>
+                            <p className="font-medium text-black">
+                              {branches.find(b => b.id === selectedBranch)?.name || "Not selected"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600">
+                              Available Trucks:
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {getFilteredTrucks().length} trucks found
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Search Input */}
+                      <div className="relative mb-6">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                        <input
+                          type="text"
+                          placeholder="Search trucks by plate, model, or capacity..."
+                          value={truckSearchTerm}
+                          onChange={(e) => setTruckSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                        />
+                      </div>
+
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {getFilteredTrucks().map((truck) => (
+                          <div
+                            key={truck.id}
+                            onClick={() => setSelectedTruck(truck.id)}
+                            className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                              selectedTruck === truck.id
+                                ? "border-green-500 bg-green-50"
+                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className="p-2 bg-gray-100 rounded-lg">
+                                  <Truck className="w-6 h-6 text-gray-600" />
+                                </div>
+                                <div>
+                                  <h4 className="font-medium text-black">
+                                    {truck.plate}
+                                  </h4>
+                                  <p className="text-sm text-gray-600">
+                                    {truck.model}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    Capacity: {truck.capacity}kg
+                                  </p>
+                                </div>
+                              </div>
+                              <div
+                                className={`w-5 h-5 rounded-full border-2 ${
+                                  selectedTruck === truck.id
+                                    ? "border-green-500 bg-green-500"
+                                    : "border-gray-300"
+                                }`}
+                              >
+                                {selectedTruck === truck.id && (
+                                  <div className="w-full h-full rounded-full bg-white"></div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3: Select Driver */}
+                  {currentStep === 3 && (
+                    <div className="space-y-6">
+                      <div>
+                        <h3 className="text-lg font-semibold text-black mb-2">
+                          Select Driver
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                          Choose a driver for the trip
+                        </p>
+                      </div>
+
+                      {/* Previous Selections Summary */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+                        <h4 className="font-medium text-black mb-2">
+                          Trip Configuration:
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-gray-500" />
+                            <span className="text-gray-600">
+                              Selected Branch:
+                            </span>
+                            <span className="font-medium text-black">
+                              {branches.find(b => b.id === selectedBranch)?.name || selectedBranch}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Truck className="h-4 w-4 text-gray-500" />
+                            <span className="text-gray-600">
+                              Selected Truck:
+                            </span>
+                            <span className="font-medium text-black">
+                              {selectedTruck
+                                ? availableTrucks.find(
+                                    (t) => t.id === selectedTruck
+                                  )?.plate
+                                : "Not selected"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-sm text-gray-600 border-t pt-2">
+                          Available Drivers:{" "}
+                          <span className="font-medium text-black">
+                            {getFilteredDrivers().length} drivers found
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Search Input */}
+                      <div className="relative mb-6">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                        <input
+                          type="text"
+                          placeholder="Search drivers by name, phone, or license..."
+                          value={driverSearchTerm}
+                          onChange={(e) => setDriverSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                        {getFilteredDrivers().map((driver) => (
+                          <div
+                            key={driver.id}
+                            onClick={() => setSelectedDriver(driver)}
+                            className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                              selectedDriver?.id === driver.id
+                                ? "border-blue-500 bg-blue-50 shadow-sm"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-black">
+                                {driver.name}
+                              </span>
+                              {selectedDriver?.id === driver.id && (
+                                <CheckCircle className="h-5 w-5 text-blue-500" />
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <div className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {driver.phone}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Award className="h-3 w-3" />
+                                {driver.experience}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <CreditCard className="h-3 w-3" />
+                                {driver.license}
+                              </div>
+                            </div>
+                            <div className="mt-2">
+                              <span
+                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                  driver.status === "active"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {driver.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
+                  <div className="flex justify-between">
+                    <Button
+                      onClick={handlePrevStep}
+                      variant="outline"
+                      disabled={currentStep === 1}
+                      className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                    >
+                      Previous
+                    </Button>
+                    {currentStep < 3 ? (
+                      <Button
+                        onClick={handleNextStep}
+                        disabled={
+                          (currentStep === 1 && !selectedBranch) ||
+                          (currentStep === 2 && !selectedTruck)
+                        }
+                        className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </Button>
+>>>>>>> staging
                     ) : (
                       <div className="text-center py-16 bg-white border border-gray-200 rounded-lg">
                         <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
@@ -3218,155 +3670,176 @@ export default function Trips() {
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  {/* Items List */}
-                  <div className="space-y-3">
-                    <h4 className="font-semibold text-black">Order Items</h4>
-                    {(() => {
-                      const orderItems = splitOrder.items;
-                      const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                  <div className="flex justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600">Customer:</span>
+                      <span className="font-medium text-black">{splitOrder.customer}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-gray-600">Total:</span>
+                      <span className="font-bold text-black">
+                        <CurrencyDisplay amount={splitOrder.total} />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                      if (itemsArray.length === 0) {
-                        return (
-                          <div className="text-center py-8 text-gray-500">
-                            <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                            <p>No items found in this order</p>
-                          </div>
-                        );
+            {/* Right Side - Items List */}
+            <div className="flex flex-col flex-1 min-w-0">
+              <div className="px-6 py-4 border-b border-gray-200 bg-white">
+                <h3 className="font-bold text-lg text-black">Order Items</h3>
+              </div>
+              <div className="flex-1 px-6 py-6 overflow-y-auto">
+                {(() => {
+                  const orderItems = splitOrder.items;
+                  const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+
+                  if (itemsArray.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-gray-500">
+                        <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                        <p>No items found in this order</p>
+                      </div>
+                    );
+                  }
+
+                  return itemsArray.map((item: any, idx: number) => {
+                    const itemId = item.id || String(item.product_id) || String(idx);
+                    const isSelected = selectedSplitItems.includes(itemId);
+
+                    // Calculate available capacity
+                    const usedCapacity = selectedTripForOrders?.capacityUsed || 0;
+                    const totalCapacity = selectedTripForOrders?.capacityTotal || 0;
+                    const availableCapacity = totalCapacity - usedCapacity;
+
+                    // Calculate total weight of all currently selected items (using quantities)
+                    const currentSelectedWeight = itemsArray.reduce((sum: number, i: any) => {
+                      const iid = i.id || String(i.product_id) || String(idx);
+                      if (selectedSplitItems.includes(iid)) {
+                        const qty = splitItemQuantities[iid] || i.quantity || 1;
+                        const originalQty = i.quantity || 1;
+                        const totalWeight = i.total_weight || i.weight || 0;
+                        const weightPerUnit = totalWeight / originalQty;
+                        return sum + (weightPerUnit * qty);
                       }
+                      return sum;
+                    }, 0);
 
-                      return itemsArray.map((item: any, idx: number) => {
-                        const itemId = item.id || String(item.product_id) || String(idx);
-                        const isSelected = selectedSplitItems.includes(itemId);
+                    // Calculate weight per unit for this item
+                    const originalQuantity = item.quantity || 1;
+                    const totalItemWeight = item.total_weight || item.weight || 0;
+                    const weightPerUnit = totalItemWeight / originalQuantity;
 
-                        // Calculate available capacity
-                        const usedCapacity = selectedTripForOrders?.capacityUsed || 0;
-                        const totalCapacity = selectedTripForOrders?.capacityTotal || 0;
-                        const availableCapacity = totalCapacity - usedCapacity;
+                    // Calculate max quantity that can fit for this item
+                    const remainingCapacity = availableCapacity - currentSelectedWeight;
+                    const maxQuantityForItem = isSelected ? originalQuantity : Math.floor(remainingCapacity / weightPerUnit);
+                    const clampedMaxQuantity = Math.max(0, Math.min(maxQuantityForItem, originalQuantity));
 
-                        // Calculate total weight of all currently selected items (using quantities)
-                        const currentSelectedWeight = itemsArray.reduce((sum: number, i: any) => {
-                          const iid = i.id || String(i.product_id) || String(idx);
-                          if (selectedSplitItems.includes(iid)) {
-                            const qty = splitItemQuantities[iid] || i.quantity || 1;
-                            const originalQty = i.quantity || 1;
-                            const totalWeight = i.total_weight || i.weight || 0;
-                            const weightPerUnit = totalWeight / originalQty;
-                            return sum + (weightPerUnit * qty);
-                          }
-                          return sum;
-                        }, 0);
+                    const canSelect = remainingCapacity >= 0 && clampedMaxQuantity > 0;
 
-                        // Calculate weight per unit for this item
-                        const originalQuantity = item.quantity || 1;
-                        const totalItemWeight = item.total_weight || item.weight || 0;
-                        const weightPerUnit = totalItemWeight / originalQuantity;
-
-                        // Calculate max quantity that can fit for this item
-                        const remainingCapacity = availableCapacity - currentSelectedWeight;
-                        const maxQuantityForItem = isSelected ? originalQuantity : Math.floor(remainingCapacity / weightPerUnit);
-                        const clampedMaxQuantity = Math.max(0, Math.min(maxQuantityForItem, originalQuantity));
-
-                        const canSelect = remainingCapacity >= 0 && clampedMaxQuantity > 0;
-
-                        return (
-                          <div
-                            key={itemId}
-                            className={`border rounded-lg overflow-hidden transition-all ${
-                              isSelected
-                                ? 'border-blue-500 bg-blue-50'
-                                : canSelect
-                                ? 'border-gray-200 hover:border-gray-300 bg-white'
-                                : 'border-gray-200 bg-gray-100 opacity-60'
-                            }`}
-                          >
-                            <div className="p-4">
-                              <div className="flex items-start gap-4">
-                                <input
-                                  type="checkbox"
-                                  id={`item-${itemId}`}
-                                  checked={isSelected}
-                                  disabled={!canSelect && !isSelected}
-                                  onChange={() => {
-                                    setSelectedSplitItems(prev => {
-                                      const newSet = new Set(prev);
-                                      if (newSet.has(itemId)) {
-                                        newSet.delete(itemId);
-                                        // Clear quantity when unselecting
-                                        setSplitItemQuantities(prevQty => {
-                                          const newQty = { ...prevQty };
-                                          delete newQty[itemId];
-                                          return newQty;
-                                        });
-                                      } else {
-                                        newSet.add(itemId);
-                                        // Automatically set quantity to maximum that fits
-                                        setSplitItemQuantities(prev => ({
-                                          ...prev,
-                                          [itemId]: clampedMaxQuantity
-                                        }));
-                                      }
-                                      return Array.from(newSet);
+                    return (
+                      <div
+                        key={itemId}
+                        className={`border rounded-lg overflow-hidden transition-all ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50'
+                            : canSelect
+                            ? 'border-gray-200 hover:border-gray-300 bg-white'
+                            : 'border-gray-200 bg-gray-100 opacity-60'
+                        }`}
+                      >
+                        <div className="p-4">
+                          <div className="flex items-start gap-4">
+                            <input
+                              type="checkbox"
+                              id={`item-${itemId}`}
+                              checked={isSelected}
+                              disabled={!canSelect && !isSelected}
+                              onChange={() => {
+                                setSelectedSplitItems(prev => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(itemId)) {
+                                    newSet.delete(itemId);
+                                    // Clear quantity when unselecting
+                                    setSplitItemQuantities(prevQty => {
+                                      const newQty = { ...prevQty };
+                                      delete newQty[itemId];
+                                      return newQty;
                                     });
+                                  } else {
+                                    newSet.add(itemId);
+                                    // Automatically set quantity to maximum that fits
+                                    setSplitItemQuantities(prev => ({
+                                      ...prev,
+                                      [itemId]: clampedMaxQuantity
+                                    }));
+                                  }
+                                  return Array.from(newSet);
+                                });
+                              }}
+                              className="w-5 h-5 text-blue-600 rounded mt-1"
+                            />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                                  #{idx + 1}
+                                </span>
+                                <label
+                                  htmlFor={`item-${itemId}`}
+                                  className={`font-medium ${canSelect || isSelected ? 'text-black cursor-pointer' : 'text-gray-500 cursor-not-allowed'}`}
+                                >
+                                  {item.product_name || "Unknown Product"}
+                                </label>
+                                {item.product_code && (
+                                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                    {item.product_code}
+                                  </span>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-sm text-gray-600 mb-3">{item.description}</p>
+                              )}
+
+                              {/* Quantity Split Input */}
+                              <div className="mb-3">
+                                <label className="block text-xs font-medium text-black mb-1">
+                                  Quantity to Assign (Max: {clampedMaxQuantity} {clampedMaxQuantity < originalQuantity ? `- Limited by capacity` : ''})
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={clampedMaxQuantity}
+                                  value={isSelected ? (splitItemQuantities[itemId] || clampedMaxQuantity) : 0}
+                                  disabled={!isSelected}
+                                  onChange={(e) => {
+                                    let newQuantity = parseInt(e.target.value) || 0;
+                                    // Clamp to the maximum that fits in capacity
+                                    newQuantity = Math.max(0, Math.min(newQuantity, clampedMaxQuantity));
+                                    setSplitItemQuantities(prev => ({
+                                      ...prev,
+                                      [itemId]: newQuantity
+                                    }));
                                   }}
-                                  className="w-5 h-5 text-blue-600 rounded mt-1"
+                                  className="w-32 px-2 py-1 text-sm text-black border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500"
                                 />
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                                      #{idx + 1}
-                                    </span>
-                                    <label
-                                      htmlFor={`item-${itemId}`}
-                                      className={`font-medium ${canSelect || isSelected ? 'text-black cursor-pointer' : 'text-gray-500 cursor-not-allowed'}`}
-                                    >
-                                      {item.product_name || "Unknown Product"}
-                                    </label>
-                                    {item.product_code && (
-                                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                                        {item.product_code}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {item.description && (
-                                    <p className="text-sm text-gray-600 mb-3">{item.description}</p>
-                                  )}
+                                {clampedMaxQuantity < originalQuantity && (
+                                  <p className="text-xs text-orange-600 mt-1">
+                                    ⚠️ Only {clampedMaxQuantity} units can fit in remaining capacity ({remainingCapacity.toFixed(2)} kg available)
+                                  </p>
+                                )}
+                              </div>
 
-                                  {/* Quantity Split Input */}
-                                  <div className="mb-3">
-                                    <label className="block text-xs font-medium text-black mb-1">
-                                      Quantity to Assign (Max: {clampedMaxQuantity} {clampedMaxQuantity < originalQuantity ? `- Limited by capacity` : ''})
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max={clampedMaxQuantity}
-                                      value={isSelected ? (splitItemQuantities[itemId] || clampedMaxQuantity) : 0}
-                                      disabled={!isSelected}
-                                      onChange={(e) => {
-                                        let newQuantity = parseInt(e.target.value) || 0;
-                                        // Clamp to the maximum that fits in capacity
-                                        newQuantity = Math.max(0, Math.min(newQuantity, clampedMaxQuantity));
-                                        setSplitItemQuantities(prev => ({
-                                          ...prev,
-                                          [itemId]: newQuantity
-                                        }));
-                                      }}
-                                      className="w-32 px-2 py-1 text-sm text-black border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500"
-                                    />
-                                    {clampedMaxQuantity < originalQuantity && (
-                                      <p className="text-xs text-orange-600 mt-1">
-                                        ⚠️ Only {clampedMaxQuantity} units can fit in remaining capacity ({remainingCapacity.toFixed(2)} kg available)
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  <div className="grid grid-cols-4 gap-3 text-xs">
-                                    <div className="bg-gray-50 p-2 rounded">
-                                      <p className="text-black">Total Qty</p>
-                                      <p className="font-medium text-black">{item.quantity || 1} {item.unit || 'pcs'}</p>
-                                    </div>
-                                    <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                              <div className="grid grid-cols-4 gap-3 text-xs">
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <p className="text-black">Total Qty</p>
+                                  <p className="font-medium text-black">{item.quantity || 1} {item.unit || 'pcs'}</p>
+                                </div>
+                                <div className="bg-blue-50 p-2 rounded border border-blue-200">
                                       <p className="text-black">Assigning</p>
                                       <p className="font-medium text-black">
                                         {isSelected ? (splitItemQuantities[itemId] || item.quantity || 1) : 0} {item.unit || 'pcs'}

@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete
 import logging
 
-from ...database import get_db, ApprovalAction, ApprovalAudit
+from ...database import get_db
+from ...models.approval import ApprovalAction, ApprovalAudit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

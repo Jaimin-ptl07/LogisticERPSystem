@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { driverAPI } from "@/lib/api";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import { Truck, AlertTriangle, RefreshCw } from "lucide-react";
 
 // Type definitions
@@ -276,8 +277,8 @@ export default function DriverDashboard() {
                           {order.weight || 0} kg
                         </p>
                         <p>
-                          <span className="font-medium">Total:</span> ₹
-                          {order.total?.toLocaleString() || "0"}
+                          <span className="font-medium">Total:</span>{" "}
+                          <CurrencyDisplay amount={order.total || 0} />
                         </p>
                       </div>
                       {order.address && (

@@ -12,7 +12,7 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
-from src.api.endpoints import auth, users, tenants, admin, permissions, roles
+from src.api.endpoints import auth, users, tenants, admin, permissions, roles, currencies, timezones
 from src.config_local import AuthSettings
 from src.database import engine, Base, AsyncSessionLocal
 from src.middleware.tenant_status import TenantStatusMiddleware
@@ -203,6 +203,18 @@ app.include_router(
     roles.router,
     prefix="/api/v1/roles",
     tags=["Roles"]
+)
+
+app.include_router(
+    currencies.router,
+    prefix="/api/v1",
+    tags=["Currencies"]
+)
+
+app.include_router(
+    timezones.router,
+    prefix="/api/v1",
+    tags=["Timezones"]
 )
 
 
