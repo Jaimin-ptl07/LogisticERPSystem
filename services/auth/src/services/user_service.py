@@ -364,6 +364,8 @@ class UserService:
                 "id": user.tenant.id,
                 "name": user.tenant.name,
                 "domain": user.tenant.domain,
+                "settings": user.tenant.settings,  # Include tenant settings (currency, timezone)
+                "is_active": user.tenant.is_active,
                 "created_at": user.tenant.created_at
             } if user.tenant else None
         }

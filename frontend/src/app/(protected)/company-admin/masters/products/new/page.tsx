@@ -25,9 +25,12 @@ import {
 } from "@/services/api/companyApi";
 import { ProductCreate, ProductCategory } from "@/services/api/companyApi";
 import { toast } from "react-hot-toast";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
+import { useTenantSettings } from "@/contexts/TenantSettingsContext";
 
 export default function NewProductPage() {
   const router = useRouter();
+  const { currency } = useTenantSettings();
   const { data: categoriesData } = useGetProductCategoriesQuery({});
   const categories = Array.isArray(categoriesData)
     ? categoriesData
@@ -443,7 +446,7 @@ export default function NewProductPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="unit_price">Unit Price ($) *</Label>
+                  <Label htmlFor="unit_price">Unit Price ({currency.symbol}) *</Label>
                   <Input
                     id="unit_price"
                     type="number"
@@ -464,7 +467,7 @@ export default function NewProductPage() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="special_price">Special Price ($)</Label>
+                  <Label htmlFor="special_price">Special Price ({currency.symbol})</Label>
                   <Input
                     id="special_price"
                     type="number"

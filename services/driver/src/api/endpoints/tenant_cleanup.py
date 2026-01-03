@@ -1,12 +1,8 @@
 """
 Internal endpoint for tenant data cleanup in Driver service
 """
-from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete
+from fastapi import APIRouter, HTTPException
 import logging
-
-from ...database import get_db, Driver
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -15,18 +11,14 @@ logger = logging.getLogger(__name__)
 @router.delete("/tenant/{tenant_id}")
 async def delete_tenant_data(
     tenant_id: str,
-    db: AsyncSession = Depends(get_db)
 ):
     """Delete all driver data for a tenant"""
     try:
-        # Delete drivers
-        await db.execute(delete(Driver).where(Driver.tenant_id == tenant_id))
-
-        await db.commit()
-        logger.info(f"Deleted driver data for tenant {tenant_id}")
-        return {"message": "Tenant driver data deleted"}
+        # Driver service is a client-only service that doesn't store data
+        # All driver data is stored in TMS service
+        logger.info(f"Driver service has no local data to delete for tenant {tenant_id}")
+        return {"message": "Driver service has no local data - TMS service handles driver data"}
 
     except Exception as e:
-        logger.error(f"Error deleting tenant driver data: {e}")
-        await db.rollback()
+        logger.error(f"Error in tenant cleanup for driver service: {e}")
         raise HTTPException(status_code=500, detail=str(e))

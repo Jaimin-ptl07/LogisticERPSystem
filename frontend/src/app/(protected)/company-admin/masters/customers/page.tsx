@@ -41,6 +41,7 @@ import {
   X,
   ChevronDown,
   GitBranch,
+  DollarSign,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -56,6 +57,7 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { toast } from "react-hot-toast";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 
 // Type guard function to check if response is paginated
 function isPaginatedBusinessTypesResponse(
@@ -375,17 +377,19 @@ export default function CustomersPage() {
             </p>
             <div className="p-2 bg-amber-100 rounded-lg">
               <div className="w-5 h-5 md:w-6 md:h-6 bg-amber-500 rounded-full flex items-center justify-center">
-                <span className="text-xs font-bold text-white">$</span>
+                <DollarSign className="w-3 h-3 md:w-4 md:h-4 text-white" />
               </div>
             </div>
           </div>
           <div className="flex items-end justify-between mt-3">
             <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-              {isLoading
-                ? "..."
-                : `$${customers
-                    .reduce((sum, c) => sum + (c.credit_limit || 0), 0)
-                    .toLocaleString()}`}
+              {isLoading ? (
+                "..."
+              ) : (
+                <CurrencyDisplay
+                  amount={customers.reduce((sum, c) => sum + (c.credit_limit || 0), 0)}
+                />
+              )}
             </p>
           </div>
         </div>
@@ -687,9 +691,7 @@ export default function CustomersPage() {
                       <TableCell>{getBusinessTypeBadge(customer)}</TableCell>
                       <TableCell>{getBranchesDisplay(customer)}</TableCell>
                       <TableCell>
-                        <span className="text-sm font-medium text-gray-900">
-                          ${customer.credit_limit?.toLocaleString() || 0}
-                        </span>
+                        <CurrencyDisplay amount={customer.credit_limit || 0} />
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(customer.is_active)}
