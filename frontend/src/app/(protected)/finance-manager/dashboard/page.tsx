@@ -23,6 +23,8 @@ import {
   Building2,
   Search,
 } from "lucide-react";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
+import { DateDisplay } from "@/components/DateDisplay";
 
 interface OrderItem {
   id: string;
@@ -464,12 +466,12 @@ export default function FinanceManager() {
                       <div className="mb-6 pb-6 border-b border-gray-200">
                         <div className="flex items-center gap-2 text-sm text-gray-700 mb-2">
                           <Calendar className="w-4 h-4 text-gray-500" />
-                          <span>{new Date(order.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                          <span><DateDisplay date={order.created_at} format="short" /></span>
                         </div>
                         {order.updated_at && order.updated_at !== order.created_at && (
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Clock className="w-4 h-4" />
-                            <span>Last updated: {new Date(order.updated_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                            <span>Last updated: <DateDisplay date={order.updated_at} format="short" /></span>
                           </div>
                         )}
                       </div>
@@ -576,7 +578,7 @@ export default function FinanceManager() {
                             <p className="font-bold text-green-900 text-sm">Order Approved</p>
                           </div>
                           <p className="text-xs text-green-700">
-                            {order.finance_approved_at && `Approved on ${new Date(order.finance_approved_at).toLocaleDateString()}`}
+                            {order.finance_approved_at && <>Approved on <DateDisplay date={order.finance_approved_at} format="short" /></>}
                           </p>
                           {order.finance_approved_by && (
                             <p className="text-xs text-green-700">By {order.finance_approved_by}</p>
@@ -596,7 +598,7 @@ export default function FinanceManager() {
                             </p>
                           )}
                           <p className="text-xs text-red-700">
-                            {order.finance_approved_at && `Rejected on ${new Date(order.finance_approved_at).toLocaleDateString()}`}
+                            {order.finance_approved_at && <>Rejected on <DateDisplay date={order.finance_approved_at} format="short" /></>}
                           </p>
                         </div>
                       )}
@@ -657,10 +659,10 @@ export default function FinanceManager() {
                                         {totalItemWeight > 0 ? totalItemWeight.toFixed(2) : '0.00'}
                                       </td>
                                       <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                        {item.unit_price ? `${item.unit_price.toFixed(2)}` : 'N/A'}
+                                        {item.unit_price ? <CurrencyDisplay amount={item.unit_price} /> : 'N/A'}
                                       </td>
                                       <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                        {item.total_price ? `${item.total_price.toFixed(2)}` : item.unit_price ? `${(item.unit_price * item.quantity).toFixed(2)}` : 'N/A'}
+                                        {item.total_price ? <CurrencyDisplay amount={item.total_price} /> : item.unit_price ? <CurrencyDisplay amount={item.unit_price * item.quantity} /> : 'N/A'}
                                       </td>
                                     </tr>
                                   );
@@ -674,7 +676,7 @@ export default function FinanceManager() {
                         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                           <div className="flex items-center justify-between">
                             <h5 className="text-sm font-bold text-gray-700">Total Amount</h5>
-                            <p className="text-xl font-bold text-blue-700">{order.total_amount ? `${order.total_amount.toFixed(2)}` : 'N/A'}</p>
+                            <p className="text-xl font-bold text-blue-700">{order.total_amount ? <CurrencyDisplay amount={order.total_amount} /> : 'N/A'}</p>
                           </div>
                         </div>
                       </div>

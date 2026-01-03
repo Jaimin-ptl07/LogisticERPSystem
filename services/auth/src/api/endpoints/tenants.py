@@ -60,6 +60,42 @@ async def create_tenant(
                 detail=f"Missing required field: {field}"
             )
 
+    # Extract currency and timezone (optional)
+    currency_code = tenant_data.get("currency")
+    timezone_iana = tenant_data.get("timezone")
+    timezone_enabled = tenant_data.get("timezone_enabled", True)
+
+    # Validate currency code if provided
+    if currency_code:
+        try:
+            import pycountry
+            if pycountry.currencies.get(alpha_3=currency_code.upper()) is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid currency code: {currency_code}"
+                )
+            currency_code = currency_code.upper()
+        except ImportError:
+            # If pycountry not available, accept any 3-letter code
+            if len(currency_code) != 3:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid currency code format: {currency_code}"
+                )
+
+    # Validate timezone if provided
+    if timezone_iana:
+        try:
+            import pytz
+            if timezone_iana not in pytz.all_timezones:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid timezone: {timezone_iana}"
+                )
+        except ImportError:
+            # If pytz not available, accept any timezone string
+            pass
+
     # Check if domain already exists
     existing_tenants = await TenantService.get_all_tenants(db)
     for t in existing_tenants:
@@ -77,7 +113,10 @@ async def create_tenant(
             db=db,
             name=tenant_data["name"],
             domain=tenant_data["domain"],
-            admin_data=tenant_data["admin"]
+            admin_data=tenant_data["admin"],
+            currency_code=currency_code,
+            timezone_iana=timezone_iana,
+            timezone_enabled=timezone_enabled
         )
 
         return tenant
