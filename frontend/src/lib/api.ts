@@ -760,6 +760,36 @@ export const driverAPI = {
       }),
     });
   },
+
+  // Pause trip (Under Maintenance)
+  async pauseTrip(
+    tripId: string,
+    reason: string,
+    note?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/pause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: reason,
+        note: note
+      }),
+    });
+  },
+
+  // Resume trip
+  async resumeTrip(
+    tripId: string,
+    note?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        note: note
+      }),
+    });
+  },
 };
 
 // ============================================================================

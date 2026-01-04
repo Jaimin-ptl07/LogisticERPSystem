@@ -11,6 +11,7 @@ class TripStatus(str, Enum):
     PLANNING = "planning"
     LOADING = "loading"
     ON_ROUTE = "on-route"
+    PAUSED = "paused"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     TRUCK_MALFUNCTION = "truck-malfunction"
@@ -340,3 +341,20 @@ class DriverTripDetailResponse(BaseModel):
     orders: List[DriverOrderDetail]
     created_at: datetime
     updated_at: datetime
+    # Maintenance/pause fields
+    maintenance_note: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    paused_reason: Optional[str] = None
+    resumed_at: Optional[datetime] = None
+
+
+# Pause/Resume Schemas
+class TripPause(BaseModel):
+    """Schema for pausing a trip"""
+    reason: str = Field(..., min_length=1, max_length=500, description="Reason for pause")
+    note: Optional[str] = Field(None, max_length=2000, description="Additional notes")
+
+
+class TripResume(BaseModel):
+    """Schema for resuming a trip"""
+    note: Optional[str] = Field(None, max_length=2000, description="Resume notes")
