@@ -72,6 +72,7 @@ class VehicleType(str, enum.Enum):
 class VehicleStatus(str, enum.Enum):
     """Vehicle status enum"""
     AVAILABLE = "available"
+    ASSIGNED = "assigned"  # Assigned to a trip but not yet started
     ON_TRIP = "on_trip"
     MAINTENANCE = "maintenance"
     OUT_OF_SERVICE = "out_of_service"

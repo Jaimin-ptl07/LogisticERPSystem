@@ -1082,7 +1082,7 @@ async def get_driver_profile_by_user(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get driver profile by user ID (employee_profile_id)
+    Get driver profile by user ID (from auth service)
 
     Requires:
     - users:read_all (to view all profiles) OR
@@ -1090,8 +1090,11 @@ async def get_driver_profile_by_user(
     """
     logger.info(f"get_driver_profile_by_user called with user_id={user_id}, tenant_id={tenant_id}")
 
-    query = select(DriverProfile).where(
-        DriverProfile.employee_profile_id == user_id,
+    # Join with employee_profiles to match by user_id from auth service
+    query = select(DriverProfile).join(
+        EmployeeProfile, DriverProfile.employee_profile_id == EmployeeProfile.id
+    ).where(
+        EmployeeProfile.user_id == user_id,
         DriverProfile.tenant_id == tenant_id
     ).options(
         selectinload(DriverProfile.employee)
@@ -1102,15 +1105,17 @@ async def get_driver_profile_by_user(
 
     if not driver:
         # Log all driver profiles for this tenant to help debug
-        all_drivers_query = select(DriverProfile).where(DriverProfile.tenant_id == tenant_id)
+        all_drivers_query = select(DriverProfile, EmployeeProfile).join(
+            EmployeeProfile, DriverProfile.employee_profile_id == EmployeeProfile.id
+        ).where(DriverProfile.tenant_id == tenant_id)
         all_drivers_result = await db.execute(all_drivers_query)
-        all_drivers = all_drivers_result.scalars().all()
+        all_drivers = all_drivers_result.all()
 
         logger.error(f"Driver profile not found for user_id={user_id}, tenant_id={tenant_id}")
-        logger.error(f"Existing driver profiles for tenant: {[(d.id, d.employee_profile_id) for d in all_drivers]}")
+        logger.error(f"Existing driver profiles for tenant: {[(d.id, d.employee_profile_id, ep.user_id, ep.first_name) for d, ep in all_drivers]}")
         raise HTTPException(status_code=404, detail="Driver profile not found")
 
-    logger.info(f"Found driver profile: id={driver.id}, employee_profile_id={driver.employee_profile_id}")
+    logger.info(f"Found driver profile: id={driver.id}, employee_profile_id={driver.employee_profile_id}, user_id={driver.employee.user_id if driver.employee else 'N/A'}")
     return DriverProfileSchema(**driver_profile_to_dict(driver))
 
 
