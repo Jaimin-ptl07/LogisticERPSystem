@@ -288,25 +288,16 @@ export default function Orders() {
               const itemsWithAssignments = itemsData?.items || order.items;
 
               return (
-                <Card key={order.id} className="border-0 shadow-xl bg-white rounded-2xl overflow-hidden">
+                <Card key={order.id} className="border-0 shadow-xl bg-white rounded-2xl overflow-hidden relative">
                   <CardContent className="p-0">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
                       {/* Left Side - Customer Details */}
                       <div className="lg:col-span-4 bg-gray-50 p-6 border-r border-gray-200">
                         {/* Order Header */}
-                        <div className="mb-6">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xl font-bold text-gray-900">
-                              {order.order_number}
-                            </h3>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-gray-500 hover:text-gray-700"
-                            >
-                              <span className="text-lg">⋮</span>
-                            </Button>
-                          </div>
+                        <div className="mb-6 pr-8">
+                          <h3 className="text-xl font-bold text-gray-900 mb-2">
+                            {order.order_number}
+                          </h3>
                           <Badge
                             variant={statusConfig.variant}
                             className={`${statusConfig.bgColor} ${statusConfig.color} border ${statusConfig.borderColor} font-semibold px-3 py-1`}
@@ -459,8 +450,8 @@ export default function Orders() {
                       <div className="lg:col-span-8 p-6">
                         <div className="mb-6">
                           <div
-                            className="flex items-center justify-between mb-4 cursor-pointer"
-                            onClick={() => toggleOrderExpansion(order.id)}
+                            className="flex items-center justify-between mb-4"
+                            // onClick={() => toggleOrderExpansion(order.id)}
                           >
                             <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                               Order Items ({order.items_count})
@@ -470,11 +461,11 @@ export default function Orders() {
                                 </span>
                               )}
                             </h4>
-                            {isExpanded ? (
+                            {/* {isExpanded ? (
                               <ChevronDown className="w-5 h-5 text-gray-500" />
                             ) : (
                               <ChevronRight className="w-5 h-5 text-gray-500" />
-                            )}
+                            )} */}
                           </div>
 
                           {/* Order Items Table with Assignments */}
@@ -640,6 +631,16 @@ export default function Orders() {
                       </div>
                     </div>
                   </CardContent>
+                  {/* Menu Button - Absolutely positioned in top-right */}
+                  <div className="absolute top-4 right-4 z-10">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-2 h-auto"
+                    >
+                      <span className="text-lg leading-none">⋮</span>
+                    </Button>
+                  </div>
                 </Card>
               );
             })
