@@ -251,24 +251,37 @@ export default function Trips() {
 
   const handleStatusChange = async (tripId: string, newStatus: string) => {
     try {
+      // Refresh orders data to ensure we have the latest status
+      await fetchResources();
+
       // Get the trip details
       const trip = allTrips.find((t) => t.id === tripId);
 
-      // Check if trip has orders and validate their statuses before any status change
+      // Check if trip has orders and validate their ORIGINAL statuses from Orders service
+      // (not the TripOrder status which is for delivery progress)
       if (trip && trip.orders && trip.orders.length > 0) {
-        // Check if any assigned order does NOT have finance_approved status
+        // Check each order's original status from availableOrders
         const hasNonFinanceApprovedOrders = trip.orders.some(
-          (order) => order.status !== "finance_approved"
+          (tripOrder) => {
+            // Find the original order in availableOrders to check its finance status
+            const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
+            console.log(`Validating order ${tripOrder.order_id}: originalOrder=`, originalOrder, `status=`, originalOrder?.status);
+            return !originalOrder || originalOrder.status !== "finance_approved";
+          }
         );
 
         if (hasNonFinanceApprovedOrders) {
           // Find the first non-finance_approved order to show in the error message
           const nonApprovedOrder = trip.orders.find(
-            (order) => order.status !== "finance_approved"
+            (tripOrder) => {
+              const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
+              return !originalOrder || originalOrder.status !== "finance_approved";
+            }
           );
 
+          const originalOrderForMsg = availableOrders.find(o => o.id === nonApprovedOrder?.order_id);
           alert(
-            `Cannot change trip status. Order "${nonApprovedOrder?.order_id || "N/A"}" has status "${nonApprovedOrder?.status || "unknown"}". All assigned orders must be "finance_approved" before the trip status can be changed.`
+            `Cannot change trip status. Order "${nonApprovedOrder?.order_id || "N/A"}" has status "${originalOrderForMsg?.status || "unknown"}". All assigned orders must be "finance_approved" before the trip status can be changed.`
           );
           return;
         }

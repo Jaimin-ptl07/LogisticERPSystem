@@ -517,7 +517,7 @@ class DriverProfile(Base):
     badge_expiry = Column(DateTime(timezone=True))
     experience_years = Column(Integer, default=0)
     preferred_vehicle_types = Column(JSON)  # Array of preferred vehicle types
-    current_status = Column(String(20), default='available')  # available, on_trip, off_duty, on_leave, suspended
+    current_status = Column(String(20), default='available')  # available, assigned, on_trip, off_duty, on_leave, suspended
     last_trip_date = Column(DateTime(timezone=True))
     total_trips = Column(Integer, default=0)
     total_distance = Column(Float, default=0)  # Total kilometers driven

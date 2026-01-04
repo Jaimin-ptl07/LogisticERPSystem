@@ -386,7 +386,7 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     badge_expiry DATE,
     experience_years INTEGER DEFAULT 0,
     preferred_vehicle_types JSONB,  -- Array of preferred vehicle types
-    current_status VARCHAR(20) DEFAULT 'available' CHECK (current_status IN ('available', 'on_trip', 'off_duty', 'on_leave', 'suspended')),
+    current_status VARCHAR(20) DEFAULT 'available' CHECK (current_status IN ('available', 'assigned', 'on_trip', 'off_duty', 'on_leave', 'suspended')),
     last_trip_date DATE,
     total_trips INTEGER DEFAULT 0,
     total_distance DECIMAL(12,2) DEFAULT 0,  -- Total kilometers driven
