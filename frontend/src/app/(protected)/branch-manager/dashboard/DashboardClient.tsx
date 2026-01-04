@@ -10,6 +10,7 @@ import {
   useGetOrderItemsWithAssignmentsQuery,
   useSubmitOrderMutation,
   Order,
+  OrderItemAssignment,
 } from "@/services/api/ordersApi";
 import {
   Plus,
@@ -418,7 +419,14 @@ export default function Orders() {
                             </div>
                             <p className="text-sm font-bold text-gray-900">
                               {order.items && order.items.length > 0
-                                ? order.items.reduce((sum, item) => sum + ((item.weight || 0) * item.quantity), 0).toFixed(2) + ' kg'
+                                ? order.items.reduce((sum, item) => {
+                                    // Use total_weight if available (already calculated based on original quantity)
+                                    // If total_weight is not available, calculate using original_quantity or quantity
+                                    const itemWeight = (item as any).total_weight !== undefined
+                                      ? (item as any).total_weight
+                                      : (item.weight || 0) * ((item as any).original_quantity || item.quantity);
+                                    return sum + itemWeight;
+                                  }, 0).toFixed(2) + ' kg'
                                 : '0.00 kg'}
                             </p>
                           </div>
@@ -470,7 +478,7 @@ export default function Orders() {
                           </div>
 
                           {/* Order Items Table with Assignments */}
-                          {itemsWithAssignments && itemsWithAssignments.length > 0 ? (
+                          {(itemsWithAssignments && itemsWithAssignments.length > 0) || (order.items && order.items.length > 0) ? (
                             <div className="overflow-x-auto">
                               <table className="w-full">
                                 <thead>
@@ -478,18 +486,50 @@ export default function Orders() {
                                     <th className="text-left py-3 px-2 text-xs font-semibold text-gray-600">#</th>
                                     <th className="text-left py-3 px-2 text-xs font-semibold text-gray-600">Product</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Type</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Qty</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Assigned</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Remaining</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Assignments</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Quantity</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Wt/Unit</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Wt</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Price/Unit</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Price</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">planning</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">loading</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">on_route</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">delivered</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {itemsWithAssignments.map((item: any, index: number) => {
-                                    const weightPerUnit = item.weight || 0;
-                                    const totalItemWeight = weightPerUnit * (item.original_quantity || item.quantity);
+                                  {(itemsWithAssignments || order.items).map((item: any, index: number) => {
                                     const weightType = item.weight_type || 'fixed';
-                                    const hasAssignments = item.assignments && item.assignments.length > 0;
+                                    // Use total_weight if available (already calculated by API based on original quantity), otherwise calculate
+                                    const totalQty = item.original_quantity !== undefined ? item.original_quantity : item.quantity;
+                                    const totalItemWeight = (item as any).total_weight !== undefined
+                                      ? (item as any).total_weight
+                                      : (item.weight || 0) * totalQty;
+                                    const weightPerUnit = totalQty > 0 ? totalItemWeight / totalQty : 0;
+                                    // Use assignment data if available, otherwise fall back to basic item data
+                                    const assignedQty = item.assigned_quantity !== undefined ? item.assigned_quantity : 0;
+                                    const remainingQty = item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity;
+                                    const displayQty = totalQty; // Show total quantity (original quantity)
+
+                                    // Group assignments by status and sum quantities
+                                    const statusQuantities: Record<string, number> = {
+                                      planning: 0,
+                                      loading: 0,
+                                      on_route: 0,
+                                      delivered: 0,
+                                      pending_to_assign: 0,
+                                      failed: 0,
+                                      returned: 0,
+                                    };
+
+                                    if (item.assignments && item.assignments.length > 0) {
+                                      item.assignments.forEach((assignment: OrderItemAssignment) => {
+                                        const status = assignment.item_status;
+                                        if (status in statusQuantities) {
+                                          statusQuantities[status] += assignment.assigned_quantity;
+                                        }
+                                      });
+                                    }
 
                                     return (
                                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -509,81 +549,8 @@ export default function Orders() {
                                           </Badge>
                                         </td>
                                         <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">
-                                          {item.original_quantity || item.quantity}
+                                          {displayQty}
                                         </td>
-                                        <td className="py-4 px-2 text-center text-sm font-bold text-green-700">
-                                          {item.assigned_quantity}
-                                        </td>
-                                        <td className="py-4 px-2 text-center text-sm font-bold text-orange-700">
-                                          {item.remaining_quantity}
-                                        </td>
-                                        <td className="py-4 px-2 text-center">
-                                          {hasAssignments ? (
-                                            <div className="flex flex-wrap justify-center gap-1">
-                                              {item.assignments.map((assignment: OrderItemAssignment) => (
-                                                <div
-                                                  key={`${assignment.trip_id}-${assignment.assigned_at}`}
-                                                  className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-2 py-1 text-xs"
-                                                  title={`Trip: ${assignment.trip_id}\nStatus: ${assignment.item_status}\nAssigned: ${assignment.assigned_quantity}`}
-                                                >
-                                                  <Truck className="w-3 h-3 text-blue-600" />
-                                                  <span className="font-semibold text-blue-700">{assignment.assigned_quantity}</span>
-                                                  <Badge
-                                                    {...getAssignmentStatusConfig(assignment.item_status)}
-                                                    className="text-[10px] px-1 py-0 ml-1"
-                                                  />
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : (
-                                            <span className="text-xs text-gray-400">Not assigned</span>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : order.items && order.items.length > 0 ? (
-                            // Fallback to original items display
-                            <div className="overflow-x-auto">
-                              <table className="w-full">
-                                <thead>
-                                  <tr className="border-b border-gray-200">
-                                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-600">#</th>
-                                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-600">Product</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Type</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Quantity</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Wt/Unit</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Wt</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Price/Unit</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Price</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {order.items.map((item, index) => {
-                                    const weightPerUnit = item.weight || 0;
-                                    const totalItemWeight = weightPerUnit * item.quantity;
-                                    const weightType = item.weight_type || 'fixed';
-                                    return (
-                                      <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                        <td className="py-4 px-2 text-sm text-gray-900">{index + 1}</td>
-                                        <td className="py-4 px-2">
-                                          <p className="text-sm font-semibold text-gray-900">{item.product_name}</p>
-                                          {item.product_code && (
-                                            <p className="text-xs text-gray-500">{item.product_code}</p>
-                                          )}
-                                        </td>
-                                        <td className="py-4 px-2 text-center">
-                                          <Badge
-                                            variant={weightType === 'variable' ? 'warning' : 'default'}
-                                            className={`${weightType === 'variable' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-gray-100 text-gray-700 border-gray-200'} text-xs font-semibold px-2 py-1`}
-                                          >
-                                            {weightType === 'variable' ? 'Var' : 'Fixed'}
-                                          </Badge>
-                                        </td>
-                                        <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">{item.quantity}</td>
                                         <td className="py-4 px-2 text-center text-sm text-gray-900">
                                           {weightPerUnit > 0 ? weightPerUnit.toFixed(2) : '0.00'}
                                         </td>
@@ -594,7 +561,19 @@ export default function Orders() {
                                           {item.unit_price ? <CurrencyDisplay amount={item.unit_price} /> : 'N/A'}
                                         </td>
                                         <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                          {item.total_price ? <CurrencyDisplay amount={item.total_price} /> : item.unit_price ? <CurrencyDisplay amount={item.unit_price * item.quantity} /> : 'N/A'}
+                                          {item.total_price ? <CurrencyDisplay amount={item.total_price} /> : item.unit_price ? <CurrencyDisplay amount={item.unit_price * totalQty} /> : 'N/A'}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">
+                                          {statusQuantities.planning || 0}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-blue-600">
+                                          {statusQuantities.loading || 0}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-purple-600">
+                                          {statusQuantities.on_route || 0}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-green-600">
+                                          {statusQuantities.delivered || 0}
                                         </td>
                                       </tr>
                                     );

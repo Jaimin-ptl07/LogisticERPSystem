@@ -49,11 +49,12 @@ export interface OrderItem {
   unit: string;
   unit_price?: number;
   total_price?: number;
-  weight?: number;  // Weight per unit (in kg)
+  weight?: number;  // Weight per unit (in kg) or total weight depending on context
   weight_type?: 'fixed' | 'variable';  // Product weight type
   fixed_weight?: number;  // Fixed weight for fixed weight products (in kg)
   weight_unit?: string;  // Weight unit (kg, lb, g, etc.)
   volume?: number;
+  total_weight?: number;  // Total weight for the item (weight * quantity)
   // Assignment fields
   original_quantity?: number;
   assigned_quantity?: number;
