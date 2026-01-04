@@ -286,10 +286,63 @@ async def list_orders(
         )
 
         if is_partial_order:
-            # For partial orders, use remaining_items_json instead of original items
+            # For partial orders, we need to merge BOTH items_json (assigned) AND remaining_items_json (remaining)
             logger.info(f"Order {order.order_number} is partial with remaining items")
+
+            # Use a dictionary to merge items by ID (in case same item appears in both)
+            items_dict_by_id = {}
+
+            # Process assigned items from items_json
+            if hasattr(order, 'items_json') and order.items_json:
+                for item in order.items_json:
+                    item_id = item.get('id')
+                    # Get assignments from trip_item_assignments for this item
+                    item_assignments = assignments_by_item.get(item_id, [])
+                    assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
+
+                    # For items in items_json, the quantity is the ASSIGNED quantity
+                    assigned_qty_from_json = item.get('quantity', 0)
+                    original_qty = item.get('original_quantity') or assigned_qty_from_json
+                    remaining_qty = 0  # Items in items_json are fully assigned
+
+                    # items_json contains the ASSIGNED items
+                    item_dict = {
+                        'id': item_id,
+                        'product_id': item.get('product_id'),
+                        'product_name': item.get('product_name'),
+                        'product_code': item.get('product_code'),
+                        'description': item.get('description'),
+                        'original_quantity': original_qty,  # True original quantity
+                        'assigned_quantity': assigned_qty,  # Sum of all trip assignments
+                        'remaining_quantity': remaining_qty,  # Fully assigned
+                        'quantity': original_qty,  # Display original quantity
+                        'unit': item.get('unit'),
+                        'unit_price': float(item.get('unit_price')) if item.get('unit_price') else None,
+                        'total_price': float(item.get('total_price')) if item.get('total_price') else None,
+                        'weight': float(item.get('weight', 0)) if item.get('weight') else None,  # Weight per unit from items_json
+                        'weight_type': item.get('weight_type', 'fixed'),
+                        'fixed_weight': float(item.get('fixed_weight', 0)) if item.get('fixed_weight') else None,
+                        'weight_unit': item.get('weight_unit', 'kg'),
+                        'total_weight': float(item.get('total_weight')) if item.get('total_weight') else None,
+                        'volume': float(item.get('volume')) if item.get('volume') else None,
+                        'assignments': item_assignments,  # Include trip assignments with status breakdown
+                    }
+                    items_dict_by_id[item_id] = item_dict
+
+            # Process remaining items from remaining_items_json
             for item in order.remaining_items_json:
                 item_id = item.get('id')
+
+                # If this item was already in items_json, merge/combine the data
+                if item_id in items_dict_by_id:
+                    # Item exists in both - this means it was partially assigned
+                    existing_item = items_dict_by_id[item_id]
+                    # Add the remaining quantity to the existing item
+                    existing_item['remaining_quantity'] = item.get('quantity')
+                    existing_item['original_quantity'] = item.get('original_quantity')
+                    # The assigned quantity is already calculated from trip_item_assignments
+                    continue
+
                 # Get assignments from trip_item_assignments for this item
                 item_assignments = assignments_by_item.get(item_id, [])
                 assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
@@ -326,7 +379,10 @@ async def list_orders(
                     'volume': float(item.get('volume')) if item.get('volume') else None,
                     'assignments': item_assignments,  # Include trip assignments with status breakdown
                 }
-                items_data.append(item_dict)
+                items_dict_by_id[item_id] = item_dict
+
+            # Convert dictionary to list
+            items_data = list(items_dict_by_id.values())
         elif hasattr(order, 'items') and order.items:
             # For non-partial orders, use the original items from the relationship
             for item in order.items:
