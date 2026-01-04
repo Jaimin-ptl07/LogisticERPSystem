@@ -3,7 +3,7 @@ Pydantic schemas for Company Service
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator, field_serializer
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_serializer, computed_field
 from uuid import UUID
 from .database import BusinessType, VehicleStatus, ServiceType, WeightType
 # Note: VehicleType enum is now deprecated, use VehicleTypeModel instead
@@ -142,9 +142,10 @@ class CustomerBase(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
-    # Support both old enum and new foreign key
-    business_type: Optional[BusinessType] = None
-    business_type_id: Optional[UUID] = None
+    # Support both old enum, new foreign key, and multiple business types
+    business_type: Optional[BusinessType] = None  # Deprecated
+    business_type_id: Optional[UUID] = None  # Deprecated - single business type
+    business_type_ids: Optional[List[UUID]] = None  # New - multiple business types
     credit_limit: float = Field(default=0, ge=0)
     pricing_tier: str = Field(default="standard", max_length=20)
     is_active: bool = True
@@ -176,9 +177,10 @@ class CustomerUpdate(BaseSchema):
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
-    # Support both old enum and new foreign key
-    business_type: Optional[BusinessType] = None
-    business_type_id: Optional[UUID] = None
+    # Support both old enum, new foreign key, and multiple business types
+    business_type: Optional[BusinessType] = None  # Deprecated
+    business_type_id: Optional[UUID] = None  # Deprecated - single business type
+    business_type_ids: Optional[List[UUID]] = None  # New - multiple business types
     credit_limit: Optional[float] = Field(None, ge=0)
     pricing_tier: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
@@ -194,9 +196,61 @@ class CustomerInDB(CustomerBase):
 
 class Customer(CustomerInDB):
     """Schema for customer response"""
-    business_type_relation: Optional[BusinessTypeModel] = None
+    business_type_relation: Optional[BusinessTypeModel] = None  # Deprecated - single business type
     available_for_all_branches: bool = True
     branches: Optional[List["CustomerBranch"]] = None
+    business_types_raw: Optional[List[Any]] = Field(default=None, exclude=True, repr=False)  # Private field for internal use
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def business_types(self) -> Optional[List[BusinessTypeModel]]:
+        """Extract business types from CustomerBusinessType junction objects"""
+        if self.business_types_raw is None:
+            return None
+        result = []
+        for item in self.business_types_raw:
+            if isinstance(item, dict):
+                if 'business_type' in item and item['business_type']:
+                    if isinstance(item['business_type'], dict):
+                        result.append(BusinessTypeModel(**item['business_type']))
+                    else:
+                        result.append(item['business_type'])
+            elif hasattr(item, 'business_type') and item.business_type:
+                result.append(item.business_type)
+        return result if result else None
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Override model_validate to handle business_types extraction"""
+        # Handle SQLAlchemy objects directly
+        if hasattr(obj, '__table__'):  # SQLAlchemy model
+            # Convert business_types relationship before validation
+            if hasattr(obj, 'business_types'):
+                data = {
+                    'id': obj.id,
+                    'tenant_id': obj.tenant_id,
+                    'code': obj.code,
+                    'name': obj.name,
+                    'phone': obj.phone,
+                    'email': obj.email,
+                    'address': obj.address,
+                    'city': obj.city,
+                    'state': obj.state,
+                    'postal_code': obj.postal_code,
+                    'business_type': obj.business_type,
+                    'business_type_id': obj.business_type_id,
+                    'credit_limit': obj.credit_limit,
+                    'pricing_tier': obj.pricing_tier,
+                    'is_active': obj.is_active,
+                    'available_for_all_branches': obj.available_for_all_branches,
+                    'created_at': obj.created_at,
+                    'updated_at': obj.updated_at,
+                    'business_types_raw': list(obj.business_types) if obj.business_types else None,
+                    'business_type_relation': obj.business_type_relation,
+                    'branches': obj.branches,
+                }
+                return super().model_validate(data, **kwargs)
+        return super().model_validate(obj, **kwargs)
 
 
 class CustomerBranch(BaseSchema):

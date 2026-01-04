@@ -58,7 +58,8 @@ export default function NewCustomerPage() {
     state: "",
     postal_code: "",
     business_type: "", // Deprecated - old enum
-    business_type_id: "", // New - foreign key
+    business_type_id: "", // Deprecated - single business type
+    business_type_ids: [], // New - multiple business types
     credit_limit: 0,
     pricing_tier: "standard",
     is_active: true,
@@ -68,6 +69,7 @@ export default function NewCustomerPage() {
   const [isAvailableForAllBranches, setIsAvailableForAllBranches] =
     useState(true);
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
+  const [selectedBusinessTypes, setSelectedBusinessTypes] = useState<string[]>([]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -99,13 +101,13 @@ export default function NewCustomerPage() {
       newErrors.branches = "Please select at least one branch";
     }
 
-    // Only validate business_type_id if business types are loaded
+    // Validate business_type_ids if business types are loaded
     if (
       businessTypes &&
       businessTypes.length > 0 &&
-      !formData.business_type_id
+      selectedBusinessTypes.length === 0
     ) {
-      newErrors.business_type_id = "Please select a business type";
+      newErrors.business_type_ids = "Please select at least one business type";
     }
 
     setErrors(newErrors);
@@ -131,9 +133,9 @@ export default function NewCustomerPage() {
         city: formData.city || undefined,
         state: formData.state || undefined,
         postal_code: formData.postal_code || undefined,
-        // Use business_type_id instead of business_type
-        ...(formData.business_type_id
-          ? { business_type_id: formData.business_type_id }
+        // Use business_type_ids instead of business_type_id
+        ...(selectedBusinessTypes.length > 0
+          ? { business_type_ids: selectedBusinessTypes }
           : {}),
         credit_limit: formData.credit_limit || 0,
         pricing_tier: formData.pricing_tier || "standard",
@@ -144,7 +146,7 @@ export default function NewCustomerPage() {
           selectedBranches.length > 0 && { branch_ids: selectedBranches }),
       };
 
-      // Remove business_type_id from payload if it's null/empty
+      // Remove deprecated business_type_id from payload if it's null/empty
       if (
         submitData.business_type_id === null ||
         submitData.business_type_id === undefined ||
@@ -276,45 +278,78 @@ export default function NewCustomerPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="business_type_id">Business Type</Label>
-                <select
-                  id="business_type_id"
-                  value={formData.business_type_id}
-                  onChange={(e) =>
-                    handleInputChange("business_type_id", e.target.value)
-                  }
-                  className={`w-full px-3 py-2 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.business_type_id
-                      ? "border-red-500"
-                      : "border-gray-300"
-                  }`}
-                >
-                  <option value="">Select Business Type</option>
-                  {businessTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                  {businessTypes.length === 0 && (
-                    <option value="" disabled>
-                      No business types available
-                    </option>
-                  )}
-                </select>
-                {errors.business_type_id && (
-                  <p className="text-sm text-red-600 mt-1">
-                    {errors.business_type_id}
-                  </p>
+                <Label>Business Types</Label>
+                {/* Selected Business Types - shown as chips with remove button */}
+                {selectedBusinessTypes.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedBusinessTypes.map((btId) => {
+                      const bt = businessTypes.find((t) => t.id === btId);
+                      if (!bt) return null;
+                      return (
+                        <span
+                          key={bt.id}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                        >
+                          {bt.name}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedBusinessTypes(
+                                selectedBusinessTypes.filter((id) => id !== bt.id)
+                              )
+                            }
+                            className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
                 )}
-                {businessTypes.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    <a
-                      href="/company-admin/masters/business-types"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Create business types
-                    </a>{" "}
-                    to categorize your customers.
+                {/* Dropdown to add business types */}
+                <div className="mt-2">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value && !selectedBusinessTypes.includes(value)) {
+                        setSelectedBusinessTypes([...selectedBusinessTypes, value]);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={selectedBusinessTypes.length === businessTypes.length}
+                  >
+                    <option value="" disabled>
+                      {businessTypes.length === 0
+                        ? "No business types available"
+                        : selectedBusinessTypes.length === businessTypes.length
+                        ? "All business types selected"
+                        : "Select a business type"}
+                    </option>
+                    {businessTypes
+                      .filter((bt) => !selectedBusinessTypes.includes(bt.id))
+                      .map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                        </option>
+                      ))}
+                  </select>
+                  {businessTypes.length === 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      <a
+                        href="/company-admin/masters/business-types"
+                        className="text-blue-600 hover:underline"
+                      >
+                        Create business types
+                      </a>{" "}
+                      to categorize your customers.
+                    </p>
+                  )}
+                </div>
+                {errors.business_type_ids && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.business_type_ids}
                   </p>
                 )}
               </div>
