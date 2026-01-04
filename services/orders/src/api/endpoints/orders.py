@@ -716,6 +716,7 @@ async def update_tms_order_status(
 ):
     """Update TMS order status - Called by TMS service when orders are assigned"""
     from sqlalchemy import update
+    from src.models.order_item import OrderItem
 
     # Find order by order_id (not UUID)
     order_query = select(Order).where(
@@ -736,17 +737,70 @@ async def update_tms_order_status(
     # Update TMS order status
     order.tms_order_status = status_data.tms_order_status
 
+    # Debug logging
+    logger.info(
+        f"Received TMS status update: order_id={status_data.order_id}, "
+        f"tms_status={status_data.tms_order_status}, "
+        f"items_json provided={status_data.items_json is not None}, "
+        f"items_json count={len(status_data.items_json) if status_data.items_json is not None else 'N/A'}, "
+        f"remaining_items_json provided={status_data.remaining_items_json is not None}, "
+        f"remaining_items_json count={len(status_data.remaining_items_json) if status_data.remaining_items_json is not None else 'N/A'}"
+    )
+
     # Update items_json and remaining_items_json if provided
+    # NOTE: For split/partial orders, TMS is the source of truth. We store what TMS sends us.
+    # The TMS service calculates remaining_items_json based on all trip_orders for this order.
     if status_data.items_json is not None:
         order.items_json = status_data.items_json
+
     if status_data.remaining_items_json is not None:
         order.remaining_items_json = status_data.remaining_items_json
 
-    db.add(order)
+    # If items_json is provided but remaining_items_json is not, recalculate it
+    # This happens when TMS sends a simplified update
+    if status_data.items_json is not None and status_data.remaining_items_json is None:
+        # Get all items for this order
+        items_query = select(OrderItem).where(OrderItem.order_id == order.id)
+        items_result = await db.execute(items_query)
+        all_items = items_result.scalars().all()
 
-    # Also update the main status if fully assigned
-    if status_data.tms_order_status == "fully_assigned" and order.status == OrderStatus.LOGISTICS_APPROVED:
-        order.status = OrderStatus("assigned")  # You may need to add this to OrderStatus enum
+        # Build a set of assigned item IDs
+        assigned_item_ids = set()
+        if order.items_json:
+            for assigned_item in order.items_json:
+                if assigned_item.get("id"):
+                    assigned_item_ids.add(assigned_item["id"])
+
+        # Calculate remaining items (items not in items_json)
+        remaining_items = []
+        for item in all_items:
+            if item.id not in assigned_item_ids:
+                # This item is not assigned - add to remaining
+                remaining_item = {
+                    "id": item.id,
+                    "product_id": item.product_id,
+                    "product_name": item.product_name,
+                    "product_code": item.product_code,
+                    "quantity": item.quantity,
+                    "unit": item.unit,
+                    "unit_price": float(item.unit_price) if item.unit_price else None,
+                    "total_price": float(item.total_price) if item.total_price else None,
+                    "weight": float(item.weight) if item.weight else None,
+                    "volume": float(item.volume) if item.volume else None,
+                    "dimensions_length": float(item.dimensions_length) if item.dimensions_length else None,
+                    "dimensions_width": float(item.dimensions_width) if item.dimensions_width else None,
+                    "dimensions_height": float(item.dimensions_height) if item.dimensions_height else None,
+                }
+                remaining_items.append(remaining_item)
+
+        order.remaining_items_json = remaining_items if remaining_items else []
+
+        logger.info(
+            f"Recalculated remaining items for order {status_data.order_id}: "
+            f"{len(assigned_item_ids)} assigned, {len(remaining_items)} remaining"
+        )
+
+    db.add(order)
 
     await db.commit()
     await db.refresh(order)
@@ -761,26 +815,109 @@ async def update_item_status(
     token_data: TokenData = Depends(require_permissions(["orders:update"])),
 ):
     """
-    Update item status for all items in an order (called by TMS service)
-    This endpoint is called when trip status changes in TMS
+    Update item status in trip_item_assignments table when trip status changes (called by TMS service)
+
+    Only updates trip_item_assignments table - does NOT modify order_items table.
+    The order_items table maintains assignment-based status (not assigned/partial/fully assigned).
+
+    Note: status_data.order_id is the order_number (e.g., ORD-2026...), not the UUID
+    We need to first look up the order UUID from the order_number
+
+    For split/partial assignments, we update the specific items assigned to this trip.
+    The TMS trip_orders.items_json is the source of truth for which items are assigned.
     """
     from src.models.order_item import OrderItem
+    from src.models.trip_item_assignment import TripItemAssignment
     import json
+    import uuid
 
-    logger.info(f"Updating item status for order {status_data.order_id} to {status_data.item_status}")
+    logger.info(f"Updating item status for order {status_data.order_id} to {status_data.item_status}, trip_id: {status_data.trip_id}")
 
-    # Build the query for updating items
+    # First, find the order by order_number to get the UUID
+    order_query = select(Order).where(Order.order_number == status_data.order_id)
+    order_result = await db.execute(order_query)
+    order = order_result.scalar_one_or_none()
+
+    if not order:
+        logger.warning(f"Order not found with order_number {status_data.order_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order with number {status_data.order_id} not found"
+        )
+
+    # FIRST: Update trip_item_assignments table for items assigned to this trip
+    trip_assignments_updated = 0
+    trip_assignments_deleted = 0
+
+    if status_data.remove_from_trip and status_data.trip_id:
+        # REMOVAL: Delete trip_item_assignments for items being removed from this trip
+        if status_data.item_ids:
+            # Delete specific trip_item_assignments
+            assignment_query = select(TripItemAssignment).where(
+                and_(
+                    TripItemAssignment.order_item_id.in_(status_data.item_ids),
+                    TripItemAssignment.trip_id == status_data.trip_id
+                )
+            )
+        else:
+            # Delete all trip_item_assignments for this trip and order
+            assignment_query = select(TripItemAssignment).where(
+                and_(
+                    TripItemAssignment.order_id == order.id,
+                    TripItemAssignment.trip_id == status_data.trip_id
+                )
+            )
+
+        assignment_result = await db.execute(assignment_query)
+        trip_assignments = assignment_result.scalars().all()
+
+        for assignment in trip_assignments:
+            await db.delete(assignment)
+            trip_assignments_deleted += 1
+
+        logger.info(f"Deleted {trip_assignments_deleted} trip_item_assignments for trip {status_data.trip_id} (removal)")
+
+    elif status_data.trip_id:
+        # UPDATE: Update trip_item_assignments for items in this trip (status change)
+        if status_data.item_ids:
+            # Update specific trip_item_assignments
+            assignment_query = select(TripItemAssignment).where(
+                and_(
+                    TripItemAssignment.order_item_id.in_(status_data.item_ids),
+                    TripItemAssignment.trip_id == status_data.trip_id
+                )
+            )
+        else:
+            # Update all trip_item_assignments for this trip and order
+            assignment_query = select(TripItemAssignment).where(
+                and_(
+                    TripItemAssignment.order_id == order.id,
+                    TripItemAssignment.trip_id == status_data.trip_id
+                )
+            )
+
+        assignment_result = await db.execute(assignment_query)
+        trip_assignments = assignment_result.scalars().all()
+
+        for assignment in trip_assignments:
+            assignment.item_status = status_data.item_status
+            trip_assignments_updated += 1
+
+        logger.info(f"Updated {trip_assignments_updated} trip_item_assignments for trip {status_data.trip_id}")
+
+    # SECOND: Update order_items table
+    # Build the query for updating items using the order UUID
     if status_data.item_ids:
         # Update specific items
         query = select(OrderItem).where(
             and_(
                 OrderItem.id.in_(status_data.item_ids),
-                OrderItem.order_id == status_data.order_id
+                OrderItem.order_id == order.id  # Use order.id (UUID) not order_number
             )
         )
     else:
         # Update all items in the order
-        query = select(OrderItem).where(OrderItem.order_id == status_data.order_id)
+        query = select(OrderItem).where(OrderItem.order_id == order.id)  # Use order.id (UUID) not order_number
 
     result = await db.execute(query)
     items = result.scalars().all()
@@ -792,20 +929,38 @@ async def update_item_status(
             detail=f"No items found for order {status_data.order_id}"
         )
 
-    # Update each item
+    # Update each item in order_items
     updated_count = 0
     for item in items:
+        # For split assignments, only update if the item is assigned to THIS trip
+        # If status_data.trip_id is provided, only update items assigned to that trip
+        if status_data.trip_id and item.trip_id != status_data.trip_id:
+            # This item is assigned to a different trip, skip it
+            logger.info(f"Item {item.id} assigned to trip {item.trip_id}, skipping (target trip: {status_data.trip_id})")
+            continue
+
+        # Update the item status
         item.item_status = status_data.item_status
-        item.trip_id = status_data.trip_id
+
+        # Handle trip_id update
+        if status_data.remove_from_trip:
+            # Clear the trip_id when removing from trip
+            item.trip_id = None
+        elif status_data.trip_id is not None:
+            # Set trip_id to the provided value (can be None or empty string)
+            item.trip_id = status_data.trip_id if status_data.trip_id else None
+
         updated_count += 1
 
     await db.commit()
 
-    logger.info(f"Updated {updated_count} items for order {status_data.order_id} to status {status_data.item_status}")
+    logger.info(f"Updated {updated_count} order_items, {trip_assignments_updated} trip_item_assignments updated, {trip_assignments_deleted} deleted for order {status_data.order_id} to status {status_data.item_status}")
 
     return {
-        "message": f"Updated {updated_count} items to status {status_data.item_status}",
+        "message": f"Updated {updated_count} order_items and {trip_assignments_updated} trip_item_assignments, deleted {trip_assignments_deleted} to status {status_data.item_status}",
         "updated_count": updated_count,
+        "trip_assignments_updated": trip_assignments_updated,
+        "trip_assignments_deleted": trip_assignments_deleted,
         "order_id": status_data.order_id,
         "trip_id": status_data.trip_id,
         "item_status": status_data.item_status
@@ -838,3 +993,472 @@ async def cancel_order(
         reason
     )
     return order
+
+# ============================================================================
+# Trip Item Assignment Endpoints - New system for tracking split/partial assignments
+# ============================================================================
+
+@router.post("/trip-item-assignments/bulk")
+async def bulk_create_trip_item_assignments(
+    assignment_data: dict,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Bulk create trip-item assignments from TMS service"""
+    from src.models.trip_item_assignment import TripItemAssignment
+    from src.models.order_item import OrderItem
+    import uuid
+
+    trip_id = assignment_data.get("trip_id")
+    order_number = assignment_data.get("order_number")
+    items = assignment_data.get("items", [])
+
+    logger.info(f"Bulk creating {len(items)} trip-item assignments for trip {trip_id}, order {order_number}")
+
+    created_count = 0
+    for item in items:
+        new_assignment = TripItemAssignment(
+            id=str(uuid.uuid4()),
+            trip_id=trip_id,
+            order_id=item.get("order_id"),
+            order_item_id=item.get("order_item_id"),
+            order_number=order_number,
+            tenant_id=tenant_id,
+            assigned_quantity=item.get("assigned_quantity"),
+            item_status=item.get("item_status", "pending_to_assign")
+        )
+        db.add(new_assignment)
+        created_count += 1
+
+        # Also update the order_item status
+        order_item_id = item.get("order_item_id")
+        item_status = item.get("item_status", "pending_to_assign")
+        if order_item_id:
+            try:
+                order_item_query = select(OrderItem).where(
+                    and_(
+                        OrderItem.id == order_item_id,
+                        OrderItem.order_id == item.get("order_id")
+                    )
+                )
+                order_item_result = await db.execute(order_item_query)
+                order_item = order_item_result.scalar_one_or_none()
+
+                if order_item:
+                    logger.info(f"Updating order_item {order_item_id} status to {item_status}")
+                    order_item.item_status = item_status
+                    # Also update trip_id in order_items
+                    order_item.trip_id = trip_id
+            except Exception as e:
+                logger.error(f"Failed to update order_item {order_item_id} status: {str(e)}")
+
+    await db.commit()
+
+    logger.info(f"Successfully created {created_count} trip-item assignments for trip {trip_id}")
+    return {"message": f"Created {created_count} trip-item assignments", "created_count": created_count}
+
+
+@router.put("/trip-item-assignments/status")
+async def update_trip_item_assignments_status(
+    status_data: dict,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Update item status for all trip-item assignments for a trip"""
+    from src.models.trip_item_assignment import TripItemAssignment
+
+    trip_id = status_data.get("trip_id")
+    item_status = status_data.get("item_status")
+
+    query = select(TripItemAssignment).where(
+        and_(TripItemAssignment.trip_id == trip_id, TripItemAssignment.tenant_id == tenant_id)
+    )
+    result = await db.execute(query)
+    assignments = result.scalars().all()
+
+    for assignment in assignments:
+        assignment.item_status = item_status
+
+    await db.commit()
+
+    return {"message": f"Updated {len(assignments)} assignments", "updated_count": len(assignments)}
+
+
+@router.get("/trip-item-assignments/order/{order_number}")
+async def get_order_item_assignments(
+    order_number: str,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Get all trip-item assignments for an order and calculate remaining quantities.
+
+    This is the authoritative endpoint for determining:
+    1. Which items are assigned to which trips
+    2. How much of each item is assigned
+    3. How much remains available for assignment
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+    from src.models.order_item import OrderItem
+    from src.models.order import Order
+
+    # Get the order
+    order_query = select(Order).where(
+        and_(
+            Order.order_number == order_number,
+            Order.tenant_id == tenant_id
+        )
+    )
+    order_result = await db.execute(order_query)
+    order = order_result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Get all original items for this order
+    items_query = select(OrderItem).where(OrderItem.order_id == order.id)
+    items_result = await db.execute(items_query)
+    original_items = items_result.scalars().all()
+
+    # Get all trip-item assignments for this order
+    assignments_query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.order_id == order.id,
+            TripItemAssignment.tenant_id == tenant_id
+        )
+    )
+    assignments_result = await db.execute(assignments_query)
+    assignments = assignments_result.scalars().all()
+
+    # Build a map of assigned quantities per item
+    assigned_quantities = {}  # order_item_id -> total assigned quantity
+    assignment_details = {}   # order_item_id -> list of assignments
+
+    for assignment in assignments:
+        item_id = assignment.order_item_id
+        assigned_quantities[item_id] = assigned_quantities.get(item_id, 0) + assignment.assigned_quantity
+
+        if item_id not in assignment_details:
+            assignment_details[item_id] = []
+        assignment_details[item_id].append({
+            "trip_id": assignment.trip_id,
+            "assigned_quantity": assignment.assigned_quantity,
+            "item_status": assignment.item_status,
+            "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None
+        })
+
+    # Build response with original items, assigned amounts, and remaining
+    items_status = []
+    total_original_quantity = 0
+    total_assigned_quantity = 0
+    total_remaining_quantity = 0
+
+    for item in original_items:
+        original_qty = item.quantity
+        assigned_qty = assigned_quantities.get(item.id, 0)
+        remaining_qty = max(0, original_qty - assigned_qty)
+
+        total_original_quantity += original_qty
+        total_assigned_quantity += assigned_qty
+        total_remaining_quantity += remaining_qty
+
+        item_dict = {
+            "id": item.id,
+            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "product_code": item.product_code,
+            "original_quantity": original_qty,
+            "assigned_quantity": assigned_qty,
+            "remaining_quantity": remaining_qty,
+            "is_fully_assigned": remaining_qty == 0,
+            "is_partially_assigned": 0 < remaining_qty < original_qty,
+            "is_available": remaining_qty > 0,
+            "assignments": assignment_details.get(item.id, [])
+        }
+        items_status.append(item_dict)
+
+    # Determine overall order status
+    is_fully_assigned = total_remaining_quantity == 0
+    is_partially_assigned = 0 < total_remaining_quantity < total_original_quantity
+    is_available = total_remaining_quantity == total_original_quantity
+
+    return {
+        "order_id": order.id,
+        "order_number": order.order_number,
+        "items": items_status,
+        "summary": {
+            "total_original_quantity": total_original_quantity,
+            "total_assigned_quantity": total_assigned_quantity,
+            "total_remaining_quantity": total_remaining_quantity,
+            "is_fully_assigned": is_fully_assigned,
+            "is_partially_assigned": is_partially_assigned,
+            "is_available": is_available,
+            "tms_order_status": order.tms_order_status
+        }
+    }
+
+
+@router.post("/trip-item-assignments/bulk-fetch")
+async def bulk_get_order_item_assignments(
+    request_data: dict,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Bulk get trip-item assignments for multiple orders at once.
+
+    This solves the N+1 query problem by fetching all assignments in a single query.
+
+    Request body:
+    {
+        "order_numbers": ["ORD-001", "ORD-002", ...]
+    }
+
+    Returns a dictionary mapping order_number to assignment data.
+
+    NOTE: Changed from /bulk to /bulk-fetch to avoid conflict with bulk create endpoint
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+    from src.models.order_item import OrderItem
+    from src.models.order import Order
+
+    order_numbers = request_data.get("order_numbers", [])
+    if not order_numbers:
+        raise HTTPException(status_code=400, detail="order_numbers is required")
+
+    # Get all orders
+    orders_query = select(Order).where(
+        and_(
+            Order.order_number.in_(order_numbers),
+            Order.tenant_id == tenant_id
+        )
+    )
+    orders_result = await db.execute(orders_query)
+    orders = orders_result.scalars().all()
+
+    # Create a mapping of order_number to order
+    order_map = {order.order_number: order for order in orders}
+
+    # Get all original items for these orders
+    order_ids = [order.id for order in orders]
+    items_query = select(OrderItem).where(OrderItem.order_id.in_(order_ids))
+    items_result = await db.execute(items_query)
+    all_items = items_result.scalars().all()
+
+    # Group items by order_id
+    items_by_order = {}
+    for item in all_items:
+        if item.order_id not in items_by_order:
+            items_by_order[item.order_id] = []
+        items_by_order[item.order_id].append(item)
+
+    # Get all trip-item assignments for these orders in a SINGLE query
+    assignments_query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.order_id.in_(order_ids),
+            TripItemAssignment.tenant_id == tenant_id
+        )
+    )
+    assignments_result = await db.execute(assignments_query)
+    all_assignments = assignments_result.scalars().all()
+
+    # Build a map of order_id -> item_id -> assignments
+    assignments_by_order_and_item = {}
+    for assignment in all_assignments:
+        order_id = assignment.order_id
+        item_id = assignment.order_item_id
+
+        if order_id not in assignments_by_order_and_item:
+            assignments_by_order_and_item[order_id] = {}
+
+        if item_id not in assignments_by_order_and_item[order_id]:
+            assignments_by_order_and_item[order_id][item_id] = []
+
+        assignments_by_order_and_item[order_id][item_id].append({
+            "trip_id": assignment.trip_id,
+            "assigned_quantity": assignment.assigned_quantity,
+            "item_status": assignment.item_status,
+            "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None
+        })
+
+    # Build response for each order
+    result = {}
+
+    for order in orders:
+        items = items_by_order.get(order.id, [])
+        assignments_for_order = assignments_by_order_and_item.get(order.id, {})
+
+        items_status = []
+        total_original_quantity = 0
+        total_assigned_quantity = 0
+        total_remaining_quantity = 0
+
+        for item in items:
+            item_assignments = assignments_for_order.get(item.id, [])
+            assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
+            remaining_qty = max(0, item.quantity - assigned_qty)
+
+            total_original_quantity += item.quantity
+            total_assigned_quantity += assigned_qty
+            total_remaining_quantity += remaining_qty
+
+            item_dict = {
+                "id": item.id,
+                "product_id": item.product_id,
+                "product_name": item.product_name,
+                "product_code": item.product_code,
+                "original_quantity": item.quantity,
+                "assigned_quantity": assigned_qty,
+                "remaining_quantity": remaining_qty,
+                "is_fully_assigned": remaining_qty == 0,
+                "is_partially_assigned": 0 < remaining_qty < item.quantity,
+                "is_available": remaining_qty > 0,
+                "assignments": item_assignments
+            }
+            items_status.append(item_dict)
+
+        # Determine overall order status
+        is_fully_assigned = total_remaining_quantity == 0
+        is_partially_assigned = 0 < total_remaining_quantity < total_original_quantity
+        is_available = total_remaining_quantity == total_original_quantity
+
+        result[order.order_number] = {
+            "order_id": order.id,
+            "order_number": order.order_number,
+            "items": items_status,
+            "summary": {
+                "total_original_quantity": total_original_quantity,
+                "total_assigned_quantity": total_assigned_quantity,
+                "total_remaining_quantity": total_remaining_quantity,
+                "is_fully_assigned": is_fully_assigned,
+                "is_partially_assigned": is_partially_assigned,
+                "is_available": is_available,
+                "tms_order_status": order.tms_order_status
+            }
+        }
+
+    return result
+
+
+@router.get("/{order_id}/items-with-assignments")
+async def get_order_items_with_assignments(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Get order with items and their trip assignments
+
+    Returns detailed information about each order item including:
+    - Original quantity
+    - Assigned quantity (sum of all trip_item_assignments)
+    - Remaining quantity
+    - List of assignments with trip details
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+    from src.models.order_item import OrderItem
+
+    # Get order by UUID
+    order_query = select(Order).where(
+        and_(
+            Order.id == order_id,
+            Order.tenant_id == tenant_id
+        )
+    )
+    order_result = await db.execute(order_query)
+    order = order_result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    # Get all items for this order
+    items_query = select(OrderItem).where(OrderItem.order_id == order_id)
+    items_result = await db.execute(items_query)
+    items = items_result.scalars().all()
+
+    # Get all trip-item assignments for this order
+    assignments_query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.order_id == order_id,
+            TripItemAssignment.tenant_id == tenant_id
+        )
+    )
+    assignments_result = await db.execute(assignments_query)
+    assignments = assignments_result.scalars().all()
+
+    # Build a map of item_id -> assignments
+    assignments_by_item = {}
+    for assignment in assignments:
+        item_id = assignment.order_item_id
+        if item_id not in assignments_by_item:
+            assignments_by_item[item_id] = []
+
+        assignments_by_item[item_id].append({
+            "trip_id": assignment.trip_id,
+            "assigned_quantity": assignment.assigned_quantity,
+            "item_status": assignment.item_status,
+            "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None
+        })
+
+    # Build response with items and their assignments
+    items_with_assignments = []
+    total_original_quantity = 0
+    total_assigned_quantity = 0
+    total_remaining_quantity = 0
+
+    for item in items:
+        item_assignments = assignments_by_item.get(item.id, [])
+        assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
+        remaining_qty = item.quantity - assigned_qty
+
+        total_original_quantity += item.quantity
+        total_assigned_quantity += assigned_qty
+        total_remaining_quantity += remaining_qty
+
+        items_with_assignments.append({
+            "id": item.id,
+            "product_id": item.product_id,
+            "product_name": item.product_name,
+            "product_code": item.product_code,
+            "description": item.description,
+            "original_quantity": item.quantity,
+            "assigned_quantity": assigned_qty,
+            "remaining_quantity": remaining_qty,
+            "unit": item.unit,
+            "unit_price": float(item.unit_price) if item.unit_price else None,
+            "total_price": float(item.total_price) if item.total_price else None,
+            "weight": float(item.weight) if item.weight else None,
+            "volume": float(item.volume) if item.volume else None,
+            "weight_type": getattr(item, 'weight_type', 'fixed'),
+            "fixed_weight": getattr(item, 'fixed_weight', None),
+            "weight_unit": getattr(item, 'weight_unit', 'kg'),
+            "is_fully_assigned": remaining_qty == 0,
+            "is_partially_assigned": 0 < remaining_qty < item.quantity,
+            "is_available": remaining_qty == item.quantity,
+            "assignments": item_assignments
+        })
+
+    return {
+        "order_id": order.id,
+        "order_number": order.order_number,
+        "status": order.status,
+        "tms_order_status": order.tms_order_status,
+        "items": items_with_assignments,
+        "summary": {
+            "total_original_quantity": total_original_quantity,
+            "total_assigned_quantity": total_assigned_quantity,
+            "total_remaining_quantity": total_remaining_quantity,
+            "is_fully_assigned": total_remaining_quantity == 0,
+            "is_partially_assigned": 0 < total_remaining_quantity < total_original_quantity,
+            "is_available": total_remaining_quantity == total_original_quantity
+        }
+    }
+

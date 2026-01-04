@@ -45,6 +45,7 @@ COMPANY_SERVICE_URL = "http://company-service:8002"
 async def _update_order_item_statuses(
     trip_id: str,
     trip_status: str,
+    auth_headers: dict,
     token_data: TokenData,
     tenant_id: str
 ):
@@ -55,6 +56,8 @@ async def _update_order_item_statuses(
     - loading -> loading
     - on-route -> on_route
     - completed -> delivered
+
+    For split orders, we only update the specific items assigned to this trip.
     """
     from src.database import async_session_maker
 
@@ -82,23 +85,37 @@ async def _update_order_item_statuses(
         return
 
     # Update item status for each order via Orders service API
-    headers = {"Authorization": f"Bearer {token_data.credentials}"}
+    headers = auth_headers
 
     for trip_order in trip_orders:
         try:
+            # For split/partial orders, extract specific item IDs
+            item_ids = None
+            if trip_order.items_json and len(trip_order.items_json) > 0:
+                # This is a split/partial assignment - get the specific item IDs
+                item_ids = [item.get('id') for item in trip_order.items_json if item.get('id')]
+                logger.info(f"Trip status change for order {trip_order.order_id} - updating {len(item_ids)} specific items to {item_status}")
+
+            # Build item status payload
+            item_status_payload = {
+                "order_id": trip_order.order_id,
+                "trip_id": trip_id,
+                "item_status": item_status
+            }
+            # Only include item_ids if we have specific items (split assignment)
+            if item_ids:
+                item_status_payload["item_ids"] = item_ids
+
             async with AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/item-status",
                     headers=headers,
-                    json={
-                        "order_id": trip_order.order_id,
-                        "trip_id": trip_id,
-                        "item_status": item_status
-                    }
+                    json=item_status_payload
                 )
 
                 if response.status_code == 200:
-                    logger.info(f"Updated item status for order {trip_order.order_id} to {item_status}")
+                    result = response.json()
+                    logger.info(f"Updated item status for order {trip_order.order_id} ({len(item_ids) if item_ids else 'all'} items) to {item_status}: {result.get('message')}")
                 else:
                     logger.error(f"Failed to update item status for order {trip_order.order_id}: {response.text}")
         except Exception as e:
@@ -283,7 +300,7 @@ async def get_trips(
                 total=order.total,
                 weight=order.weight,
                 volume=order.volume,
-                items=display_items,  # Use display_items (items_json for split orders, or items_data from Orders service)
+                items=order.items,  # Use integer count from database
                 items_data=display_items,  # Use items_json if available, otherwise items_data from Orders service
                 items_json=order.items_json,
                 remaining_items_json=order.remaining_items_json,
@@ -575,12 +592,18 @@ async def create_trip(
 async def update_trip(
     trip_id: str,
     trip_data: TripUpdate,
+    request: Request,
     token_data: TokenData = Depends(require_permissions(["trips:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """Update trip"""
+    # Get authorization header for Orders service
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
     # Get existing trip
     query = select(Trip).where(
         and_(
@@ -607,7 +630,7 @@ async def update_trip(
 
     # If status changed, update item statuses in Orders service
     if 'status' in update_data and old_status != trip.status:
-        await _update_order_item_statuses(trip_id, trip.status, token_data, tenant_id)
+        await _update_order_item_statuses(trip_id, trip.status, auth_headers, token_data, tenant_id)
 
     # Fetch orders for this trip to avoid lazy loading issues
     orders_query = select(TripOrder).where(
@@ -786,22 +809,35 @@ async def assign_orders_to_trip(
         )
 
     # Check if any orders are already assigned to another trip (not split orders)
+    # Use trip_item_assignments endpoint to check actual remaining quantities
     for order_data in order_request.orders:
         if not order_data.original_order_id:  # Only check non-split orders
-            existing_query = select(TripOrder).where(
-                and_(
-                    TripOrder.order_id == order_data.order_id,
-                    TripOrder.tms_order_status == "fully_assigned",
-                    TripOrder.trip_id != trip_id  # Exclude current trip
+            # Check with Orders service if this order has remaining items
+            async with AsyncClient(timeout=10.0) as client:
+                assignments_response = await client.get(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/order/{order_data.order_id}?tenant_id={tenant_id}",
+                    headers=auth_headers
                 )
-            )
-            existing_result = await db.execute(existing_query)
-            existing = existing_result.scalar_one_or_none()
-            if existing:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Order {order_data.order_id} is already assigned to trip {existing.trip_id} and cannot be reassigned"
-                )
+
+                if assignments_response.status_code == 200:
+                    assignments_data = assignments_response.json()
+                    summary = assignments_data.get("summary", {})
+
+                    # If order is fully assigned (no remaining items), prevent reassignment
+                    if summary.get("is_fully_assigned"):
+                        # Find which trip has this order fully assigned
+                        items = assignments_data.get("items", [])
+                        if items and items[0].get("assignments"):
+                            assigned_trip = items[0]["assignments"][0]["trip_id"]
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Order {order_data.order_id} is already fully assigned to trip {assigned_trip} and has no remaining items"
+                            )
+                    # If partially assigned, allow - the frontend should only send remaining items
+                    elif summary.get("is_partially_assigned"):
+                        logger.info(f"Order {order_data.order_id} is partially assigned, allowing assignment of remaining items")
+                else:
+                    logger.warning(f"Could not verify assignment status for order {order_data.order_id}, proceeding with caution")
 
     # Get the current highest sequence number for this trip
     max_seq_query = select(TripOrder.sequence_number).where(
@@ -811,97 +847,201 @@ async def assign_orders_to_trip(
 
     # Add orders to trip with sequential sequence numbers
     created_orders = []
+    rollback_actions = []  # Track actions for rollback in case of failure
 
-    for idx, order_data in enumerate(order_request.orders):
-        # Get order data dict without user_id, company_id, and json fields to avoid conflicts
-        # Use model_dump(mode='json') to properly serialize enum values to strings
-        order_dict = order_data.model_dump(mode='json', exclude={'user_id', 'company_id', 'items_json', 'remaining_items_json'})
+    try:
+        for idx, order_data in enumerate(order_request.orders):
+            # Get order data dict without user_id, company_id, and json fields to avoid conflicts
+            # Use model_dump(mode='json') to properly serialize enum values to strings
+            order_dict = order_data.model_dump(mode='json', exclude={'user_id', 'company_id', 'items_json', 'remaining_items_json'})
 
-        # Determine TMS order status and whether this is assigning remaining items from a partial order
-        tms_status = "available"
-        is_assigning_remaining = False
+            # Determine TMS order status and whether this is assigning remaining items from a partial order
+            tms_status = "available"
+            is_assigning_remaining = False
 
-        if order_data.original_order_id:
-            # This is a split order (from UI split functionality)
-            # Check if there are remaining items
-            if order_data.remaining_items_json and len(order_data.remaining_items_json) > 0:
-                tms_status = "partial"
-            else:
-                tms_status = "fully_assigned"
-        elif order_data.items_json and len(order_data.items_json) > 0:
-            # This is assigning specific items (could be remaining items from a partial order)
-            # Check if this matches the remaining items count from a partial order
-            if len(order_data.items_json) < (order_data.original_items or order_data.items):
-                # Partial assignment - there are still items remaining
-                tms_status = "partial"
-                is_assigning_remaining = True
-            else:
-                # Full assignment - all items now assigned
-                tms_status = "fully_assigned"
-                is_assigning_remaining = True
-        else:
-            # No items_json provided - full assignment of all items
-            tms_status = "fully_assigned"
-
-        trip_order = TripOrder(
-            trip_id=trip_id,
-            sequence_number=max_seq + idx + 1,  # Assign sequential sequence numbers
-            user_id=user_id,
-            company_id=tenant_id,  # Use tenant_id as company_id for multi-tenancy
-            tms_order_status=tms_status,
-            items_json=order_data.items_json,  # Store assigned items in trip_orders
-            remaining_items_json=order_data.remaining_items_json,  # Store remaining items (if any)
-            **order_dict
-        )
-        created_orders.append(trip_order)
-        db.add(trip_order)
-
-        # Update order status in Orders service
-        # We update for all orders (both split and non-split) to keep the Orders service in sync
-        try:
-            # Prepare the update payload
-            update_payload = {
-                "order_id": order_data.order_id,
-                "tms_order_status": tms_status,
-                "items_json": order_data.items_json,
-                "remaining_items_json": order_data.remaining_items_json
-            }
-
-            # If assigning remaining items from a partial order, we need to update properly
-            if is_assigning_remaining and order_data.remaining_items_json is not None:
-                if len(order_data.remaining_items_json) == 0:
-                    # All remaining items assigned - mark as fully_assigned
-                    update_payload["tms_order_status"] = "fully_assigned"
-                    logger.info(f"Order {order_data.order_id} fully assigned - no remaining items")
+            if order_data.original_order_id:
+                # This is a split order (from UI split functionality)
+                # Check if there are remaining items
+                if order_data.remaining_items_json and len(order_data.remaining_items_json) > 0:
+                    tms_status = "partial"
                 else:
-                    # Still has remaining items
-                    update_payload["tms_order_status"] = "partial"
-                    logger.info(f"Order {order_data.order_id} still has {len(order_data.remaining_items_json)} remaining items")
+                    tms_status = "fully_assigned"
+            elif order_data.items_json and len(order_data.items_json) > 0:
+                # This is assigning specific items (could be remaining items from a partial order)
+                # Check if this matches the remaining items count from a partial order
+                if len(order_data.items_json) < (order_data.original_items or order_data.items):
+                    # Partial assignment - there are still items remaining
+                    tms_status = "partial"
+                    is_assigning_remaining = True
+                else:
+                    # Full assignment - all items now assigned
+                    tms_status = "fully_assigned"
+                    is_assigning_remaining = True
+            else:
+                # No items_json provided - full assignment of all items
+                tms_status = "fully_assigned"
 
-            # Update the order's tms_order_status, items_json, and remaining_items_json via Orders service
-            async with AsyncClient(timeout=10.0) as client:
-                update_response = await client.patch(
-                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/tms-status",
-                    headers=auth_headers,
-                    json=update_payload
+            trip_order = TripOrder(
+                trip_id=trip_id,
+                sequence_number=max_seq + idx + 1,  # Assign sequential sequence numbers
+                user_id=user_id,
+                company_id=tenant_id,  # Use tenant_id as company_id for multi-tenancy
+                tms_order_status=tms_status,
+                items_json=order_data.items_json,  # Store assigned items in trip_orders
+                remaining_items_json=order_data.remaining_items_json,  # Store remaining items (if any)
+                **order_dict
+            )
+            created_orders.append(trip_order)
+            db.add(trip_order)
+
+            # Update order status in Orders service
+            # We update for all orders (both split and non-split) to keep the Orders service in sync
+            # Create trip-item assignments in Orders service for tracking
+            # This replaces the old item_status logic with the new trip_item_assignments table
+            try:
+                # Prepare the update payload
+                update_payload = {
+                    "order_id": order_data.order_id,
+                    "tms_order_status": tms_status,
+                    "items_json": order_data.items_json,
+                    "remaining_items_json": order_data.remaining_items_json
+                }
+
+                # If assigning remaining items from a partial order, we need to update properly
+                if is_assigning_remaining and order_data.remaining_items_json is not None:
+                    if len(order_data.remaining_items_json) == 0:
+                        # All remaining items assigned - mark as fully_assigned
+                        update_payload["tms_order_status"] = "fully_assigned"
+                        logger.info(f"Order {order_data.order_id} fully assigned - no remaining items")
+                    else:
+                        # Still has remaining items
+                        update_payload["tms_order_status"] = "partial"
+                        logger.info(f"Order {order_data.order_id} still has {len(order_data.remaining_items_json)} remaining items")
+
+                # Create client outside so it can be used for both operations
+                async with AsyncClient(timeout=10.0) as client:
+                    # Update the order's tms_order_status, items_json, and remaining_items_json via Orders service
+                    update_response = await client.patch(
+                        f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/tms-status",
+                        headers=auth_headers,
+                        json=update_payload
+                    )
+                    if update_response.status_code != 200:
+                        raise Exception(f"Failed to update TMS status: {update_response.text}")
+                    else:
+                        logger.info(f"Successfully updated order {order_data.order_id} to tms_status={update_payload['tms_order_status']}")
+                        # Track for rollback
+                        rollback_actions.append({
+                            "action": "tms_status_update",
+                            "order_id": order_data.order_id,
+                            "previous_status": "available"  # We'll need to track this better
+                        })
+
+                    # Create trip-item assignments in Orders service for tracking
+                    if order_data.items_json and len(order_data.items_json) > 0:
+                        logger.info(f"Preparing to create trip-item assignments for order {order_data.order_id} with {len(order_data.items_json)} items")
+
+                        # Build assignment items list from items_json
+                        assignment_items = []
+                        for item in order_data.items_json:
+                            order_item_id = item.get("id")
+                            logger.info(f"Processing item: {order_item_id}, product: {item.get('product_name')}")
+
+                            assignment_items.append({
+                                "order_id": item.get("order_id"),  # Use the order_id from items_json
+                                "order_item_id": order_item_id,
+                                "assigned_quantity": item.get("quantity", 1),
+                                "item_status": "planning"
+                            })
+
+                        logger.info(f"Built {len(assignment_items)} assignment_items")
+
+                        if assignment_items:
+                            # Call the new bulk create endpoint
+                            bulk_payload = {
+                                "trip_id": trip_id,
+                                "order_number": order_data.order_id,
+                                "tenant_id": tenant_id,
+                                "items": assignment_items
+                            }
+
+                            logger.info(f"Calling bulk create endpoint with payload: {bulk_payload}")
+
+                            assignment_response = await client.post(
+                                f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/bulk",
+                                headers=auth_headers,
+                                json=bulk_payload
+                            )
+                            logger.info(f"Bulk create response status: {assignment_response.status_code}")
+
+                            if assignment_response.status_code != 200:
+                                logger.error(f"Failed to create trip-item assignments: {assignment_response.text}")
+                                raise Exception(f"Failed to create trip-item assignments: {assignment_response.text}")
+                            else:
+                                result = assignment_response.json()
+                                logger.info(f"Created trip-item assignments for order {order_data.order_id}: {result}")
+                                # Track for rollback
+                                rollback_actions.append({
+                                    "action": "create_assignments",
+                                    "trip_id": trip_id,
+                                    "order_number": order_data.order_id
+                                })
+                        else:
+                            logger.warning(f"No assignment_items built for order {order_data.order_id}")
+                    else:
+                        logger.warning(f"No items_json for order {order_data.order_id}, skipping trip-item assignments creation")
+
+            except Exception as e:
+                # Rollback: Delete the trip_order we just added
+                logger.error(f"Error updating order {order_data.order_id} in Orders service: {str(e)}", exc_info=True)
+
+                # Remove trip_order from session
+                db.expunge(trip_order)
+                created_orders.remove(trip_order)
+
+                # Attempt to rollback any actions taken in Orders service
+                for action in reversed(rollback_actions):
+                    try:
+                        async with AsyncClient(timeout=10.0) as client:
+                            if action["action"] == "tms_status_update":
+                                # Reset TMS status to available
+                                await client.patch(
+                                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/tms-status",
+                                    headers=auth_headers,
+                                    json={
+                                        "order_id": action["order_id"],
+                                        "tms_order_status": "available",
+                                        "items_json": [],
+                                        "remaining_items_json": order_data.items_json  # Return items to available
+                                    }
+                                )
+                                logger.info(f"Rolled back TMS status for order {action['order_id']}")
+                    except Exception as rollback_error:
+                        logger.error(f"Failed to rollback action {action}: {rollback_error}")
+
+                # Re-raise the exception to fail the entire assignment
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to assign order {order_data.order_id}: {str(e)}. All changes rolled back."
                 )
-                if update_response.status_code != 200:
-                    logger.error(f"Failed to update TMS status for order {order_data.order_id}: {update_response.text}")
-                    logger.error(f"Response status: {update_response.status_code}")
-                else:
-                    logger.info(f"Successfully updated order {order_data.order_id} to tms_status={update_payload['tms_order_status']}")
-        except Exception as e:
-            logger.error(f"Error updating TMS status for order {order_data.order_id}: {str(e)}", exc_info=True)
-            # Don't fail the assignment if status update fails
 
-    # Update trip capacity_used
-    total_weight = sum(order.weight for order in created_orders)
-    trip.capacity_used = (trip.capacity_used or 0) + total_weight
-    db.add(trip)
+        # Update trip capacity_used
+        total_weight = sum(order.weight for order in created_orders)
+        trip.capacity_used = (trip.capacity_used or 0) + total_weight
+        db.add(trip)
 
-    await db.commit()
+        await db.commit()
 
-    # Send audit log
+    except Exception as e:
+        # Any unexpected error - rollback everything
+        logger.error(f"Unexpected error during order assignment: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error during order assignment: {str(e)}"
+        )
+
+    # Send audit log (only if we got here successfully)
     audit_client = AuditClient(auth_headers)
     await audit_client.log_event(
         tenant_id=tenant_id,
@@ -1013,6 +1153,7 @@ async def reorder_trip_orders(
 @router.delete("/{trip_id}/orders/remove", response_model=MessageResponse)
 async def remove_order_from_trip(
     trip_id: str,
+    request: Request,
     order_id: str = Query(..., description="Order ID to remove"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     company_id: Optional[str] = Query(
@@ -1022,6 +1163,11 @@ async def remove_order_from_trip(
     db: AsyncSession = Depends(get_db)
 ):
     """Remove an order from a trip"""
+    # Get authorization header for Orders service
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
     # Verify trip exists and is in planning status
     trip_query = select(Trip).where(Trip.id == trip_id)
 
@@ -1078,5 +1224,174 @@ async def remove_order_from_trip(
     if trip.capacity_used is not None:
         trip.capacity_used = max(0, trip.capacity_used - removed_weight)
         await db.commit()
+
+    # Update Orders service with the removed items and recalculate TMS status
+    try:
+        # Check if there are other trip_orders for this order (partial assignments in other trips)
+        other_assignments_query = select(TripOrder).where(
+            and_(
+                TripOrder.order_id == order_id,
+                TripOrder.id != order.id  # Exclude the one being deleted
+            )
+        )
+        other_assignments_result = await db.execute(other_assignments_query)
+        other_assignments = other_assignments_result.scalars().all()
+
+        # Collect all assigned items from other trips (items still assigned)
+        all_assigned_items = []
+        for assignment in other_assignments:
+            if assignment.items_json:
+                all_assigned_items.extend(assignment.items_json)
+
+        # Get the removed items (from this trip_order being deleted)
+        removed_items = order.items_json if order.items_json else []
+
+        # Get the current state from Orders service to find authoritative remaining_items
+        # We'll calculate what the new remaining_items should be
+        async with AsyncClient(timeout=10.0) as client:
+            # Fetch current order state from Orders service
+            orders_response = await client.get(
+                f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/?order_number={order_id}&tenant_id={tenant_id}",
+                headers=auth_headers
+            )
+
+            current_remaining_items = []
+            if orders_response.status_code == 200:
+                orders_data = orders_response.json()
+                if orders_data.get("data") and len(orders_data["data"]) > 0:
+                    current_order = orders_data["data"][0]
+                    # Get the authoritative remaining_items_json from Orders service
+                    current_remaining_items = current_order.get("remaining_items_json", [])
+
+            # Calculate new remaining_items: current remaining + removed items
+            # We need to merge items by ID, summing up quantities for duplicates
+            new_remaining_items = list(current_remaining_items)  # Start with current
+
+            # Build a map of existing items by ID for easy lookup and quantity summation
+            remaining_items_map = {}
+            for item in new_remaining_items:
+                item_id = item.get("id")
+                if item_id:
+                    if item_id not in remaining_items_map:
+                        remaining_items_map[item_id] = item
+                    else:
+                        # Item already exists, sum up quantities
+                        existing_item = remaining_items_map[item_id]
+                        existing_quantity = existing_item.get("quantity", 0)
+                        removed_quantity = item.get("quantity", 0)
+                        existing_item["quantity"] = existing_quantity + removed_quantity
+                        # Also update total_weight if present
+                        existing_weight = existing_item.get("total_weight", 0)
+                        removed_weight = item.get("total_weight", 0)
+                        existing_item["total_weight"] = existing_weight + removed_weight
+                else:
+                    # No ID, keep as is (shouldn't happen normally)
+                    remaining_items_map[f"_no_id_{len(remaining_items_map)}"] = item
+
+            # Add removed items back, summing quantities if item already exists
+            for removed_item in removed_items:
+                item_id = removed_item.get("id")
+                if item_id:
+                    if item_id in remaining_items_map:
+                        # Item already exists in remaining, sum up quantities
+                        existing_item = remaining_items_map[item_id]
+                        existing_quantity = existing_item.get("quantity", 0)
+                        removed_quantity = removed_item.get("quantity", 0)
+                        existing_item["quantity"] = existing_quantity + removed_quantity
+                        # Also update total_weight if present
+                        existing_weight = existing_item.get("total_weight", 0)
+                        removed_weight = removed_item.get("total_weight", 0)
+                        existing_item["total_weight"] = existing_weight + removed_weight
+                        logger.info(f"Summing quantities for item {item_id}: {existing_quantity} + {removed_quantity} = {existing_item['quantity']}")
+                    else:
+                        # New item, add it to the map
+                        remaining_items_map[item_id] = removed_item
+                        logger.info(f"Adding new remaining item {item_id} with quantity {removed_item.get('quantity', 0)}")
+                else:
+                    # No ID, just append it (shouldn't happen normally)
+                    new_remaining_items.append(removed_item)
+
+            # Convert map back to list
+            all_remaining_items = list(remaining_items_map.values())
+
+            # Prepare the update payload for Orders service
+            tms_status_payload = {
+                "order_id": order_id,
+                "tms_order_status": "available",  # Default to available
+                "items_json": all_assigned_items if all_assigned_items else [],
+                "remaining_items_json": all_remaining_items if all_remaining_items else []
+            }
+
+            # Determine the correct TMS status
+            if all_assigned_items:
+                # There are still items assigned in other trips
+                if all_remaining_items:
+                    # Some items are still remaining
+                    tms_status_payload["tms_order_status"] = "partial"
+                else:
+                    # All items are assigned (in other trips)
+                    tms_status_payload["tms_order_status"] = "fully_assigned"
+                logger.info(f"Order {order_id} has {len(all_assigned_items)} items still assigned, {len(all_remaining_items)} remaining")
+            else:
+                # No items assigned anymore - order is fully available
+                tms_status_payload["tms_order_status"] = "available"
+                tms_status_payload["items_json"] = []
+                logger.info(f"Order {order_id} is now fully available - returning {len(all_remaining_items)} items to pool")
+
+            # Debug logging
+            logger.info(f"Sending to Orders service: order_id={order_id}, tms_status={tms_status_payload['tms_order_status']}, "
+                       f"items_json count={len(tms_status_payload.get('items_json', []))}, "
+                       f"remaining_items_json count={len(tms_status_payload.get('remaining_items_json', []))}")
+
+            # Update the TMS status via Orders service (reuse the same client)
+            tms_response = await client.patch(
+                f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/tms-status",
+                headers=auth_headers,
+                json=tms_status_payload
+            )
+            if tms_response.status_code == 200:
+                logger.info(f"Updated TMS status for order {order_id} to {tms_status_payload['tms_order_status']}")
+            else:
+                logger.error(f"Failed to update TMS status for order {order_id}: {tms_response.text}")
+
+        # Now update individual item statuses in Orders service
+        # NOTE: We always update item status in Orders DB for tracking purposes
+        # For split/partial orders, we pass specific item_ids
+        try:
+            # Extract item IDs from items_json if this is a split/partial assignment
+            item_ids = None
+            if order.items_json and len(order.items_json) > 0:
+                # This is a split/partial assignment - get the specific item IDs being removed
+                item_ids = [item.get('id') for item in order.items_json if item.get('id')]
+                logger.info(f"Split/partial removal for order {order_id} - resetting {len(item_ids)} specific items")
+
+            # Build item status payload
+            item_status_payload = {
+                "order_id": order_id,
+                "trip_id": trip_id,  # Pass the trip_id being removed from
+                "remove_from_trip": True,  # Flag to indicate removal
+                "item_status": "pending_to_assign"
+            }
+            # Only include item_ids if we have specific items (split assignment)
+            if item_ids:
+                item_status_payload["item_ids"] = item_ids
+
+            async with AsyncClient(timeout=10.0) as client:
+                item_status_response = await client.post(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/item-status",
+                    headers=auth_headers,
+                    json=item_status_payload
+                )
+                if item_status_response.status_code == 200:
+                    result = item_status_response.json()
+                    logger.info(f"Reset item status for order {order_id} ({len(item_ids) if item_ids else 'all'} items): {result.get('message')}")
+                else:
+                    logger.error(f"Failed to reset item status for order {order_id}: {item_status_response.text}")
+        except Exception as e:
+            logger.error(f"Error updating item status for order {order_id}: {str(e)}", exc_info=True)
+            # Don't fail the removal if status update fails
+    except Exception as e:
+        logger.error(f"Error updating Orders service for order {order_id}: {str(e)}", exc_info=True)
+        # Don't fail the removal if status update fails
 
     return MessageResponse(message=f"Successfully removed order {order_id} from trip {trip_id}")

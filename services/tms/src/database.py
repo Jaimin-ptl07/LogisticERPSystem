@@ -94,8 +94,8 @@ class TripOrder(Base):
         default="pending_to_assign"
     )
     total = Column(Float, nullable=False)
-    weight = Column(Integer, nullable=False)
-    volume = Column(Integer, nullable=False)
+    weight = Column(Float, nullable=False)  # Changed from Integer to Float for decimal weights
+    volume = Column(Float, nullable=False)  # Changed from Integer to Float for decimal volumes
     items = Column(Integer, nullable=False)
     priority = Column(
         String(20),
@@ -112,7 +112,7 @@ class TripOrder(Base):
     assigned_at = Column(DateTime, default=datetime.utcnow)
     original_order_id = Column(String(50))  # For split orders
     original_items = Column(Integer)        # For split orders
-    original_weight = Column(Integer)       # For split orders
+    original_weight = Column(Float)         # For split orders (changed from Integer to Float)
     items_json = Column(JSON)              # Store assigned items with quantities
     remaining_items_json = Column(JSON)    # Store remaining items for partial assignments
 

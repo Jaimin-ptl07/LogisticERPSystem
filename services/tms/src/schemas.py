@@ -78,8 +78,8 @@ class Order(BaseSchema):
     customerAddress: Optional[str] = None
     status: str
     total: float
-    weight: int
-    volume: int
+    weight: float  # Changed from int to float to support decimal weights
+    volume: float  # Changed from int to float to support decimal volumes
     date: date
     priority: Priority
     items: int
@@ -107,8 +107,8 @@ class TripOrderCreate(BaseModel):
     customer_phone: Optional[str] = None
     product_name: Optional[str] = None
     total: float
-    weight: int
-    volume: int
+    weight: float  # Changed from int to float to support decimal weights
+    volume: float  # Changed from int to float to support decimal volumes
     items: int
     quantity: Optional[int] = 1
     priority: Priority
@@ -117,7 +117,7 @@ class TripOrderCreate(BaseModel):
     delivery_instructions: Optional[str] = None
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
-    original_weight: Optional[int] = None
+    original_weight: Optional[float] = None  # Changed from int to float
     items_json: Optional[List[Dict[str, Any]]] = None
     remaining_items_json: Optional[List[Dict[str, Any]]] = None
     # user_id and company_id are extracted from JWT token, not required in request
@@ -145,9 +145,9 @@ class TripOrderResponse(BaseSchema):
     tms_order_status: Optional[str] = "available"
     item_status: Optional[str] = "pending_to_assign"  # Item-level status tracking
     total: float
-    weight: int
-    volume: int
-    items: Optional[List[Dict[str, Any]]] = None  # Changed from int to list to support split orders
+    weight: float  # Changed from int to float to support decimal weights
+    volume: float  # Changed from int to float to support decimal volumes
+    items: int  # Number of items (count), kept as int for backward compatibility
     items_data: Optional[List[Dict[str, Any]]] = None  # Items array with full product details
     items_json: Optional[List[Dict[str, Any]]] = None
     remaining_items_json: Optional[List[Dict[str, Any]]] = None
@@ -160,7 +160,7 @@ class TripOrderResponse(BaseSchema):
     delivery_instructions: Optional[str] = None
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
-    original_weight: Optional[int] = None
+    original_weight: Optional[float] = None  # Changed from int to float
     assigned_at: datetime
 
     model_config = ConfigDict(
@@ -315,8 +315,8 @@ class DriverOrderDetail(BaseModel):
     status: OrderStatus
     delivery_status: DeliveryStatus
     total: float = 0
-    weight: int = 0
-    volume: int = 0
+    weight: float = 0  # Changed from int to float
+    volume: float = 0  # Changed from int to float
     items: int = 0
     priority: Priority
     sequence_number: int

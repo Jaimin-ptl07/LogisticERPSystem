@@ -54,6 +54,21 @@ export interface OrderItem {
   fixed_weight?: number;  // Fixed weight for fixed weight products (in kg)
   weight_unit?: string;  // Weight unit (kg, lb, g, etc.)
   volume?: number;
+  // Assignment fields
+  original_quantity?: number;
+  assigned_quantity?: number;
+  remaining_quantity?: number;
+  is_fully_assigned?: boolean;
+  is_partially_assigned?: boolean;
+  is_available?: boolean;
+  assignments?: OrderItemAssignment[];
+}
+
+export interface OrderItemAssignment {
+  trip_id: string;
+  assigned_quantity: number;
+  item_status: string;
+  assigned_at?: string;
 }
 
 export interface OrderDocument {
@@ -215,6 +230,35 @@ export const ordersApi = createApi({
       providesTags: (result, error, id) => [{ type: 'Order', id }],
     }),
 
+    getOrderItemsWithAssignments: builder.query<{
+      order_id: string;
+      order_number: string;
+      status: string;
+      tms_order_status: string;
+      items: Array<OrderItem & {
+        original_quantity: number;
+        assigned_quantity: number;
+        remaining_quantity: number;
+        is_fully_assigned: boolean;
+        is_partially_assigned: boolean;
+        is_available: boolean;
+        assignments: OrderItemAssignment[];
+      }>;
+      summary: {
+        total_original_quantity: number;
+        total_assigned_quantity: number;
+        total_remaining_quantity: number;
+        is_fully_assigned: boolean;
+        is_partially_assigned: boolean;
+        is_available: boolean;
+      };
+    }, string>({
+      query: (id) => ({
+        url: `/${id}/items-with-assignments`,
+      }),
+      providesTags: (result, error, id) => [{ type: 'Order', id }],
+    }),
+
     createOrder: builder.mutation<Order, OrderCreate>({
       query: (order) => ({
         url: '/',
@@ -313,6 +357,7 @@ export const ordersApi = createApi({
 export const {
   useGetOrdersQuery,
   useGetOrderByIdQuery,
+  useGetOrderItemsWithAssignmentsQuery,
   useCreateOrderMutation,
   useUpdateOrderMutation,
   useSubmitOrderMutation,

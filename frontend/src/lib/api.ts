@@ -535,14 +535,16 @@ export interface OrderAssignData {
   customer: string;
   customerAddress?: string;
   total: number;
-  weight: number;
-  volume: number;
+  weight: number;  // Now supports decimal values
+  volume: number;  // Now supports decimal values
   items: number;
   priority: string;
   address?: string;
   original_order_id?: string;
   original_items?: number;
-  original_weight?: number;
+  original_weight?: number;  // Now supports decimal values
+  items_json?: any[];  // For split/partial order assignments
+  remaining_items_json?: any[];  // For split/partial order assignments
 }
 
 // Trip API functions

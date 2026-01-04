@@ -346,6 +346,25 @@ async def get_orders(
             if priority:
                 orders = [o for o in orders if o.get("priority") == priority]
 
+            # BULK FETCH: Get all trip-item assignments in a single request
+            # This solves the N+1 query problem
+            order_numbers = [order.get("order_number") for order in orders]
+            bulk_assignments_data = {}
+            try:
+                if order_numbers:
+                    bulk_response = await client.post(
+                        f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/bulk-fetch",
+                        json={"order_numbers": order_numbers},
+                        headers=headers
+                    )
+                    if bulk_response.status_code == 200:
+                        bulk_assignments_data = bulk_response.json()
+                        logger.info(f"Fetched bulk assignments for {len(bulk_assignments_data)} orders in a single request")
+                    else:
+                        logger.warning(f"Bulk assignments request failed: {bulk_response.status_code}, falling back to individual requests")
+            except Exception as e:
+                logger.error(f"Error fetching bulk assignments: {str(e)}, will attempt fallback")
+
             # Transform orders to match TMS Order schema format
             transformed_orders = []
             for order in orders:
@@ -363,78 +382,159 @@ async def get_orders(
                 else:
                     date_obj = date.today()
 
-                # Get TMS order status and determine which items to use
+                # Get TMS order status
                 tms_order_status = order.get("tms_order_status", "available")
-                items_data = order.get("items", [])
-                items_json = order.get("items_json")
-                remaining_items_json = order.get("remaining_items_json")
+                order_number = order.get("order_number", order.get("id"))
 
-                # For partial orders, the items array already contains remaining items from Orders service
-                # We just need to transform them
+                # Use bulk assignments data instead of individual request (solves N+1 problem)
+                assignments_data = bulk_assignments_data.get(order_number)
+                if not assignments_data:
+                    # Fallback to individual request if bulk data is missing
+                    try:
+                        assignments_response = await client.get(
+                            f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/order/{order_number}?tenant_id={tenant_id}",
+                            headers=headers
+                        )
+                        if assignments_response.status_code == 200:
+                            assignments_data = assignments_response.json()
+                            logger.info(f"Fallback: Got assignments for order {order_number}")
+                        else:
+                            logger.warning(f"Fallback failed for order {order_number}: {assignments_response.status_code}")
+                    except Exception as e:
+                        logger.error(f"Fallback error for order {order_number}: {str(e)}")
+
+                if assignments_data:
+                    logger.info(f"Got assignments for order {order_number}: {assignments_data.get('summary', {})}")
+
+                # Build items_data based on trip_item_assignments
+                # For available orders, show remaining items; for fully assigned, show all items as assigned
                 transformed_items = []
-                # Check if items is a list/array, if not, skip it
-                if isinstance(items_data, list):
-                    for item in items_data:
-                        transformed_items.append({
-                            "id": item.get("id"),
-                            "product_id": item.get("product_id"),
-                            "product_name": item.get("product_name"),
-                            "product_code": item.get("product_code"),
-                            "description": item.get("description"),
-                            "quantity": item.get("quantity"),
-                            "unit": item.get("unit"),
-                            "unit_price": item.get("unit_price"),
-                            "total_price": item.get("total_price"),
-                            "weight": item.get("weight"),
-                            "total_weight": item.get("total_weight"),
-                            "volume": item.get("volume"),
-                            "weight_type": item.get("weight_type"),
-                            "fixed_weight": item.get("fixed_weight"),
-                            "weight_unit": item.get("weight_unit"),
-                        })
+                display_weight = 0
+                display_volume = 0
+                items_count = 0
 
-                # Calculate weight and volume safely from the items
-                # For partial orders, items_data already contains remaining items with correct weights
-                # Use total_weight if available (for items with quantities), otherwise use weight
-                calculated_weight = sum(
-                    (item.get("total_weight") or (item.get("weight", 0) or 0))
-                    for item in items_data if isinstance(item, dict)
-                )
-                calculated_volume = sum(item.get("volume", 0) or 0 for item in items_data if isinstance(item, dict))
+                if assignments_data and assignments_data.get("items"):
+                    # Use the authoritative data from trip_item_assignments
+                    summary = assignments_data.get("summary", {})
+                    items_info = assignments_data.get("items", [])
 
-                # Get items count
-                if isinstance(items_data, list):
-                    items_count = len(items_data)
-                elif isinstance(items_data, int):
-                    items_count = items_data
+                    # Update tms_order_status based on actual assignments
+                    if summary.get("is_fully_assigned"):
+                        tms_order_status = "fully_assigned"
+                    elif summary.get("is_partially_assigned"):
+                        tms_order_status = "partial"
+                    elif summary.get("is_available"):
+                        tms_order_status = "available"
+
+                    # Build items list with remaining quantities
+                    for item_info in items_info:
+                        # Only include items that have remaining quantity > 0
+                        if item_info.get("remaining_quantity", 0) > 0:
+                            # First, try to get details from remaining_items_json (most accurate for partial orders)
+                            remaining_items = order.get("remaining_items_json", [])
+                            remaining_item = next(
+                                (i for i in remaining_items if i.get("id") == item_info["id"]),
+                                None
+                            ) if isinstance(remaining_items, list) else None
+
+                            # Fallback to original items_data if not found in remaining_items_json
+                            if not remaining_item:
+                                original_items = order.get("items", [])
+                                remaining_item = next(
+                                    (i for i in original_items if i.get("id") == item_info["id"]),
+                                    None
+                                ) if isinstance(original_items, list) else None
+
+                            quantity = item_info.get("remaining_quantity", 0)
+                            # Use total_weight from remaining_items_json if available, otherwise calculate from weight
+                            if remaining_item and remaining_item.get("total_weight") is not None:
+                                item_total_weight = remaining_item.get("total_weight", 0)
+                                # Calculate weight per unit for consistency
+                                item_weight_per_unit = item_total_weight / remaining_item.get("quantity", 1) if remaining_item.get("quantity", 1) > 0 else 0
+                                item_weight = item_weight_per_unit
+                            else:
+                                item_weight = remaining_item.get("weight", 0) if remaining_item else 0
+                                item_total_weight = item_weight * quantity if item_weight else 0
+
+                            transformed_items.append({
+                                "id": item_info["id"],
+                                "order_id": order.get("id"),  # Add the order UUID
+                                "product_id": item_info.get("product_id"),
+                                "product_name": item_info.get("product_name"),
+                                "product_code": item_info.get("product_code"),
+                                "description": remaining_item.get("description") if remaining_item else None,
+                                "quantity": quantity,  # Remaining quantity
+                                "unit": remaining_item.get("unit", "pcs") if remaining_item else "pcs",
+                                "unit_price": remaining_item.get("unit_price") if remaining_item else None,
+                                "total_price": remaining_item.get("total_price") if remaining_item else None,
+                                "weight": item_weight,
+                                "total_weight": item_total_weight,
+                                "volume": remaining_item.get("volume", 0) if remaining_item else 0,
+                                "weight_type": remaining_item.get("weight_type", "fixed") if remaining_item else "fixed",
+                                "fixed_weight": remaining_item.get("fixed_weight", 0) if remaining_item else 0,
+                                "weight_unit": remaining_item.get("weight_unit", "kg") if remaining_item else "kg",
+                                # Assignment info for UI
+                                "original_quantity": item_info.get("original_quantity"),
+                                "assigned_quantity": item_info.get("assigned_quantity"),
+                                "remaining_quantity": item_info.get("remaining_quantity"),
+                            })
+
+                    # Calculate weight and volume from remaining items
+                    display_weight = sum(
+                        item.get("total_weight") or (item.get("weight", 0) or 0)
+                        for item in transformed_items
+                    )
+                    display_volume = sum(item.get("volume", 0) or 0 for item in transformed_items)
+                    items_count = len(transformed_items)
+
+                    logger.info(f"Order {order_number}: {len(transformed_items)} remaining items, weight={display_weight}, status={tms_order_status}")
+
                 else:
-                    items_count = 0
+                    # Fallback to original items if assignments endpoint fails
+                    items_data = order.get("items", [])
+                    if isinstance(items_data, list):
+                        for item in items_data:
+                            transformed_items.append({
+                                "id": item.get("id"),
+                                "order_id": order.get("id"),  # Add the order UUID
+                                "product_id": item.get("product_id"),
+                                "product_name": item.get("product_name"),
+                                "product_code": item.get("product_code"),
+                                "description": item.get("description"),
+                                "quantity": item.get("quantity"),
+                                "unit": item.get("unit"),
+                                "unit_price": item.get("unit_price"),
+                                "total_price": item.get("total_price"),
+                                "weight": item.get("weight"),
+                                "total_weight": item.get("total_weight"),
+                                "volume": item.get("volume"),
+                                "weight_type": item.get("weight_type"),
+                                "fixed_weight": item.get("fixed_weight"),
+                                "weight_unit": item.get("weight_unit"),
+                            })
 
-                # For partial orders, use the calculated values from remaining items
-                # For available/fully_assigned orders, use the order's values
-                if tms_order_status == "partial":
-                    display_weight = calculated_weight
-                    display_volume = calculated_volume
-                else:
-                    display_weight = order.get("total_weight", 0) or calculated_weight
-                    display_volume = order.get("total_volume", 0) or calculated_volume
+                        display_weight = order.get("total_weight", 0)
+                        display_volume = order.get("total_volume", 0)
+                        items_count = len(transformed_items)
 
                 transformed_order = {
                     "id": order.get("order_number", order.get("id")),
                     "customer": order.get("customer", {}).get("name", "Unknown Customer") if order.get("customer") else "Unknown Customer",
                     "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
                     "status": order.get("status", "unknown"),
-                    "tms_order_status": tms_order_status,
+                    "tms_order_status": tms_order_status,  # Updated based on actual assignments
                     "total": order.get("total_amount", 0),
-                    # Use calculated weight for partial orders, otherwise use order's weight
+                    # Calculated from remaining items
                     "weight": display_weight,
                     "volume": display_volume,
                     "date": date_obj,
                     "priority": order.get("priority", "medium"),
                     "items_count": items_count,
-                    "items": transformed_items,
-                    "items_json": items_json,
-                    "remaining_items_json": remaining_items_json,
+                    "items": items_count,  # Integer count for backward compatibility
+                    "items_data": transformed_items,  # Array of remaining items
+                    # Keep for backward compatibility
+                    "items_json": order.get("items_json"),
+                    "remaining_items_json": order.get("remaining_items_json"),
                     "address": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address"
                 }
                 transformed_orders.append(transformed_order)

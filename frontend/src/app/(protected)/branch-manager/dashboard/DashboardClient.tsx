@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateOrderModal } from "@/components/Modal";
 import {
   useGetOrdersQuery,
+  useGetOrderItemsWithAssignmentsQuery,
   useSubmitOrderMutation,
   Order,
 } from "@/services/api/ordersApi";
@@ -26,7 +27,12 @@ import {
   Box,
   Building2,
   Hash,
-  FileText
+  FileText,
+  Truck,
+  CheckCircle,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
@@ -37,6 +43,7 @@ export default function Orders() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
   // Fetch real orders data
   const {
@@ -54,6 +61,37 @@ export default function Orders() {
   // Submit order mutation
   const [submitOrder, { isLoading: isSubmitting }] = useSubmitOrderMutation();
 
+  // Fetch items with assignments for expanded orders
+  const expandedOrderIds = Array.from(expandedOrders);
+
+  // Create individual queries for each expanded order
+  const itemsWithAssignmentsQueries = expandedOrderIds.map(orderId =>
+    useGetOrderItemsWithAssignmentsQuery(orderId, {
+      skip: !expandedOrders.has(orderId),
+    })
+  );
+
+  // Create a map of order_id -> items with assignments data
+  const itemsWithAssignmentsMap: Record<string, any> = {};
+  expandedOrderIds.forEach((orderId, index) => {
+    const data = itemsWithAssignmentsQueries[index]?.data;
+    if (data) {
+      itemsWithAssignmentsMap[orderId] = data;
+    }
+  });
+
+  const toggleOrderExpansion = (orderId: string) => {
+    setExpandedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
   const getStatusConfig = (status: string) => {
     const configs = {
       draft: { variant: "default" as const, label: "Draft", color: "text-gray-600", bgColor: "bg-gray-50", borderColor: "border-gray-200" },
@@ -69,6 +107,19 @@ export default function Orders() {
       cancelled: { variant: "destructive" as const, label: "Cancelled", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
     };
     return configs[status as keyof typeof configs] || configs.draft;
+  };
+
+  const getAssignmentStatusConfig = (status: string) => {
+    const configs = {
+      pending_to_assign: { variant: "default" as const, label: "Pending", color: "text-gray-600", bgColor: "bg-gray-100" },
+      planning: { variant: "info" as const, label: "Planning", color: "text-blue-600", bgColor: "bg-blue-50" },
+      loading: { variant: "warning" as const, label: "Loading", color: "text-orange-600", bgColor: "bg-orange-50" },
+      on_route: { variant: "info" as const, label: "On Route", color: "text-purple-600", bgColor: "bg-purple-50" },
+      delivered: { variant: "success" as const, label: "Delivered", color: "text-green-600", bgColor: "bg-green-50" },
+      failed: { variant: "destructive" as const, label: "Failed", color: "text-red-600", bgColor: "bg-red-50" },
+      returned: { variant: "default" as const, label: "Returned", color: "text-gray-600", bgColor: "bg-gray-100" },
+    };
+    return configs[status as keyof typeof configs] || configs.pending_to_assign;
   };
 
   const handleCreateOrder = () => {
@@ -230,7 +281,11 @@ export default function Orders() {
           {filteredOrders.length > 0 ? (
             filteredOrders.map((order) => {
               const statusConfig = getStatusConfig(order.status);
-              
+              const isExpanded = expandedOrders.has(order.id);
+              const itemsData = itemsWithAssignmentsMap[order.id];
+              const summary = itemsData?.summary;
+              const itemsWithAssignments = itemsData?.items || order.items;
+
               return (
                 <Card key={order.id} className="border-0 shadow-xl bg-white rounded-2xl overflow-hidden">
                   <CardContent className="p-0">
@@ -251,7 +306,7 @@ export default function Orders() {
                               <span className="text-lg">⋮</span>
                             </Button>
                           </div>
-                          <Badge 
+                          <Badge
                             variant={statusConfig.variant}
                             className={`${statusConfig.bgColor} ${statusConfig.color} border ${statusConfig.borderColor} font-semibold px-3 py-1`}
                           >
@@ -314,13 +369,47 @@ export default function Orders() {
                             </div>
                           )}
 
-                          <div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
-                              <Package className="w-4 h-4" />
-                              <span>Total Units</span>
-                            </div>
-                            <p className="text-sm font-bold text-gray-900">{order.items_count || 0}</p>
-                          </div>
+                          {/* Assignment Summary */}
+                          {summary && (
+                            <>
+                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                                  <Package className="w-4 h-4" />
+                                  <span>Assignment Summary</span>
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-gray-600">Total:</span>
+                                    <span className="text-sm font-bold text-gray-900">{summary.total_original_quantity}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-gray-600">Assigned:</span>
+                                    <span className="text-sm font-bold text-green-700">{summary.total_assigned_quantity}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-gray-600">Remaining:</span>
+                                    <span className="text-sm font-bold text-orange-700">{summary.total_remaining_quantity}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* TMS Status Badge */}
+                              {itemsData?.tms_order_status && (
+                                <div className="mt-3">
+                                  <Badge
+                                    variant={itemsData.tms_order_status === 'available' ? 'success' : itemsData.tms_order_status === 'partial' ? 'warning' : 'default'}
+                                    className={`${
+                                      itemsData.tms_order_status === 'available' ? 'bg-green-50 text-green-700 border-green-200' :
+                                      itemsData.tms_order_status === 'partial' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                      'bg-blue-50 text-blue-700 border-blue-200'
+                                    } text-xs font-semibold px-2 py-1`}
+                                  >
+                                    {itemsData.tms_order_status === 'available' ? 'Available' : itemsData.tms_order_status === 'partial' ? 'Partially Assigned' : 'Fully Assigned'}
+                                  </Badge>
+                                </div>
+                              )}
+                            </>
+                          )}
 
                           <div>
                             <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
@@ -358,17 +447,106 @@ export default function Orders() {
                         )}
                       </div>
 
-                      {/* Right Side - Order Items */}
+                      {/* Right Side - Order Items with Assignments */}
                       <div className="lg:col-span-8 p-6">
                         <div className="mb-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-bold text-gray-900">
+                          <div
+                            className="flex items-center justify-between mb-4 cursor-pointer"
+                            onClick={() => toggleOrderExpansion(order.id)}
+                          >
+                            <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                               Order Items ({order.items_count})
+                              {summary && (
+                                <span className="text-sm font-normal text-gray-500">
+                                  ({summary.total_assigned_quantity} assigned, {summary.total_remaining_quantity} remaining)
+                                </span>
+                              )}
                             </h4>
+                            {isExpanded ? (
+                              <ChevronDown className="w-5 h-5 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="w-5 h-5 text-gray-500" />
+                            )}
                           </div>
 
-                          {/* Order Items Table */}
-                          {order.items && order.items.length > 0 && (
+                          {/* Order Items Table with Assignments */}
+                          {itemsWithAssignments && itemsWithAssignments.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="w-full">
+                                <thead>
+                                  <tr className="border-b border-gray-200">
+                                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-600">#</th>
+                                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-600">Product</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Type</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Qty</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Assigned</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Remaining</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Assignments</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {itemsWithAssignments.map((item: any, index: number) => {
+                                    const weightPerUnit = item.weight || 0;
+                                    const totalItemWeight = weightPerUnit * (item.original_quantity || item.quantity);
+                                    const weightType = item.weight_type || 'fixed';
+                                    const hasAssignments = item.assignments && item.assignments.length > 0;
+
+                                    return (
+                                      <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                        <td className="py-4 px-2 text-sm text-gray-900">{index + 1}</td>
+                                        <td className="py-4 px-2">
+                                          <p className="text-sm font-semibold text-gray-900">{item.product_name}</p>
+                                          {item.product_code && (
+                                            <p className="text-xs text-gray-500">{item.product_code}</p>
+                                          )}
+                                        </td>
+                                        <td className="py-4 px-2 text-center">
+                                          <Badge
+                                            variant={weightType === 'variable' ? 'warning' : 'default'}
+                                            className={`${weightType === 'variable' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-gray-100 text-gray-700 border-gray-200'} text-xs font-semibold px-2 py-1`}
+                                          >
+                                            {weightType === 'variable' ? 'Var' : 'Fixed'}
+                                          </Badge>
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">
+                                          {item.original_quantity || item.quantity}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-bold text-green-700">
+                                          {item.assigned_quantity}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-bold text-orange-700">
+                                          {item.remaining_quantity}
+                                        </td>
+                                        <td className="py-4 px-2 text-center">
+                                          {hasAssignments ? (
+                                            <div className="flex flex-wrap justify-center gap-1">
+                                              {item.assignments.map((assignment: OrderItemAssignment) => (
+                                                <div
+                                                  key={`${assignment.trip_id}-${assignment.assigned_at}`}
+                                                  className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-2 py-1 text-xs"
+                                                  title={`Trip: ${assignment.trip_id}\nStatus: ${assignment.item_status}\nAssigned: ${assignment.assigned_quantity}`}
+                                                >
+                                                  <Truck className="w-3 h-3 text-blue-600" />
+                                                  <span className="font-semibold text-blue-700">{assignment.assigned_quantity}</span>
+                                                  <Badge
+                                                    {...getAssignmentStatusConfig(assignment.item_status)}
+                                                    className="text-[10px] px-1 py-0 ml-1"
+                                                  />
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <span className="text-xs text-gray-400">Not assigned</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : order.items && order.items.length > 0 ? (
+                            // Fallback to original items display
                             <div className="overflow-x-auto">
                               <table className="w-full">
                                 <thead>
@@ -423,6 +601,10 @@ export default function Orders() {
                                   })}
                                 </tbody>
                               </table>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500">
+                              No items found
                             </div>
                           )}
 

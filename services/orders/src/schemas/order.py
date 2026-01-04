@@ -245,7 +245,8 @@ class TmsOrderStatusUpdate(BaseModel):
 class ItemStatusUpdate(BaseModel):
     """Schema for updating item status from TMS service"""
     order_id: str
-    trip_id: str
+    trip_id: Optional[str] = None  # The trip_id to update items for (can be None when unassigning)
+    remove_from_trip: Optional[bool] = False  # Flag to indicate removal from trip (deletes trip_item_assignments)
     item_status: str = Field(..., pattern="^(pending_to_assign|planning|loading|on_route|delivered|failed|returned)$")
     item_ids: Optional[List[str]] = None  # If provided, only update specific items
 
@@ -282,6 +283,48 @@ class OrderQueryParams(BaseModel):
     page_size: int = Field(default=20, ge=1, le=100)
     sort_by: str = Field(default="created_at", pattern="^(created_at|updated_at|order_number|total_amount)$")
     sort_order: str = Field(default="desc", pattern="^(asc|desc)$")
+
+
+# Trip Item Assignment Schemas
+class TripItemAssignmentCreate(BaseModel):
+    """Schema for creating a trip-item assignment"""
+    trip_id: str = Field(..., description="TMS trip ID (e.g., TRIP-XXXX)")
+    order_id: str = Field(..., description="Order UUID")
+    order_item_id: str = Field(..., description="Order item UUID")
+    order_number: str = Field(..., description="Order number (e.g., ORD-2026...)")
+    tenant_id: str = Field(..., description="Tenant ID")
+    assigned_quantity: int = Field(..., ge=1, description="Quantity assigned to this trip")
+    item_status: str = Field(default="pending_to_assign", pattern="^(pending_to_assign|planning|loading|on_route|delivered|failed|returned)$")
+
+
+class TripItemAssignmentUpdate(BaseModel):
+    """Schema for updating a trip-item assignment"""
+    item_status: Optional[str] = Field(None, pattern="^(pending_to_assign|planning|loading|on_route|delivered|failed|returned)$")
+    assigned_quantity: Optional[int] = Field(None, ge=1)
+
+
+class TripItemAssignmentResponse(BaseModel):
+    """Schema for trip-item assignment response"""
+    id: str
+    trip_id: str
+    order_id: str
+    order_item_id: str
+    order_number: str
+    tenant_id: str
+    assigned_quantity: int
+    item_status: str
+    assigned_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TripItemAssignmentBulkCreate(BaseModel):
+    """Schema for bulk creating trip-item assignments"""
+    trip_id: str = Field(..., description="TMS trip ID")
+    order_number: str = Field(..., description="Order number")
+    tenant_id: str = Field(..., description="Tenant ID")
+    items: List[TripItemAssignmentCreate] = Field(..., description="List of items to assign")
 
 
 # Import forward references

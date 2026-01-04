@@ -11,7 +11,6 @@ import {
   TripCreateData,
 } from "@/lib/api";
 import { Driver, Trip } from "@/types";
-import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import {
   Truck,
   MapPin,
@@ -32,6 +31,7 @@ import {
   CreditCard,
   Scissors,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -105,8 +105,20 @@ export default function Trips() {
 
   // Fetch data on component mount
   useEffect(() => {
-    fetchAllTrips();
-    fetchResources();
+    let isMounted = true;
+
+    const loadData = async () => {
+      if (isMounted) {
+        await fetchAllTrips();
+        await fetchResources();
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Fetch all trips (for statistics)
@@ -114,7 +126,11 @@ export default function Trips() {
     try {
       setLoading(true);
       const data = await tmsAPI.getAllTrips();
-      setAllTrips(data);
+      // Deduplicate trips by ID in case of duplicates
+      const uniqueTrips = Array.from(
+        new Map(data.map((trip: Trip) => [trip.id, trip])).values()
+      );
+      setAllTrips(uniqueTrips);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch trips");
     } finally {
@@ -268,7 +284,7 @@ export default function Trips() {
 
       alert(
         statusMessages[newStatus as keyof typeof statusMessages] ||
-          "Trip status updated"
+        "Trip status updated"
       );
     } catch (err) {
       alert(
@@ -572,6 +588,7 @@ export default function Trips() {
       const isApprovedStatus =
         order.status === "submitted" || order.status === "finance_approved";
       const isNotAssigned = !isOrderAssigned(order.id);
+      const isNotFullyAssigned = order.tms_order_status !== "fully_assigned"; // Exclude fully assigned orders
       const matchesSearch =
         order.customer.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
         order.id.toLowerCase().includes(orderSearchTerm.toLowerCase());
@@ -582,7 +599,7 @@ export default function Trips() {
         (order.tms_order_status || "available") === tmsOrderStatusFilter;
 
       return (
-        isApprovedStatus && isNotAssigned && matchesSearch && matchesPriority && matchesTmsStatus
+        isApprovedStatus && isNotAssigned && isNotFullyAssigned && matchesSearch && matchesPriority && matchesTmsStatus
       );
     });
   };
@@ -745,6 +762,24 @@ export default function Trips() {
     }
   };
 
+  // Remove order from trip
+  const handleRemoveOrder = async (tripId: string, orderId: string) => {
+    if (!confirm("Are you sure you want to remove this order from the trip?")) {
+      return;
+    }
+
+    try {
+      await tmsAPI.removeOrderFromTrip(tripId, orderId);
+
+      // Refresh trips and orders
+      await Promise.all([fetchTrips(), fetchResources()]);
+
+      alert(`Successfully removed order ${orderId} from trip ${tripId}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to remove order from trip");
+    }
+  };
+
   // Split order logic - open item selection modal
   const handleSplitOrder = (order: any) => {
     if (!selectedTripForOrders) return;
@@ -769,9 +804,14 @@ export default function Trips() {
     if (!splitOrder || !selectedTripForOrders || selectedSplitItems.length === 0) return;
 
     try {
-      // Get the order items
-      const orderItems = splitOrder.items;
+      // Get the order items with fallback support
+      const orderItems = splitOrder.items_data || splitOrder.items_json || splitOrder.items;
       const itemsArray = Array.isArray(orderItems) ? orderItems : [];
+
+      if (itemsArray.length === 0) {
+        alert("Order has no items to split");
+        return;
+      }
 
       // Create arrays for assigned and remaining items with adjusted quantities
       type OrderItem = {
@@ -795,14 +835,16 @@ export default function Trips() {
       const itemsToAssign: OrderItem[] = [];
       const itemsRemaining: OrderItem[] = [];
 
-      itemsArray.forEach((item: OrderItem) => {
-        const itemId = item.id || String(item.product_id);
+      itemsArray.forEach((item: OrderItem, idx: number) => {
+        // Use composite key to match what's stored in selectedSplitItems
+        const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
         const originalQuantity = item.quantity || 1;
-        // Use total_weight if available, otherwise calculate from weight field
-        const totalWeight = item.total_weight || item.weight || 0;
-        const weightPerUnit = totalWeight / originalQuantity;
-        const volumePerUnit = (item.volume || 0) / originalQuantity;
-        const pricePerUnit = (item.total_price || 0) / originalQuantity;
+
+        // Validate weight calculation
+        const totalWeight = (item.total_weight || item.weight || 0);
+        const weightPerUnit = originalQuantity > 0 ? totalWeight / originalQuantity : 0;
+        const volumePerUnit = originalQuantity > 0 ? (item.volume || 0) / originalQuantity : 0;
+        const pricePerUnit = originalQuantity > 0 ? (item.total_price || 0) / originalQuantity : 0;
 
         if (selectedSplitItems.includes(itemId)) {
           // This item is selected - assign the specified quantity
@@ -814,7 +856,7 @@ export default function Trips() {
               ...item,
               quantity: assignQuantity,
               weight: weightPerUnit * assignQuantity,
-              total_weight: weightPerUnit * assignQuantity, // Also update total_weight
+              total_weight: weightPerUnit * assignQuantity,
               volume: volumePerUnit * assignQuantity,
               total_price: pricePerUnit * assignQuantity,
             });
@@ -827,7 +869,7 @@ export default function Trips() {
               ...item,
               quantity: remainingQuantity,
               weight: weightPerUnit * remainingQuantity,
-              total_weight: weightPerUnit * remainingQuantity, // Also update total_weight
+              total_weight: weightPerUnit * remainingQuantity,
               volume: volumePerUnit * remainingQuantity,
               total_price: pricePerUnit * remainingQuantity,
             });
@@ -837,6 +879,12 @@ export default function Trips() {
           itemsRemaining.push(item);
         }
       });
+
+      // Validate that we have items to assign
+      if (itemsToAssign.length === 0) {
+        alert("No items selected for assignment");
+        return;
+      }
 
       // Calculate totals
       const assignedWeight = itemsToAssign.reduce((sum: number, item: { weight?: number }) => sum + (item.weight || 0), 0);
@@ -849,21 +897,28 @@ export default function Trips() {
 
       // Create split order data
       const splitOrderData: OrderAssignData = {
-        order_id: splitOrder.id, // Use original order ID
-        customer: splitOrder.customer,
-        customerAddress: splitOrder.customerAddress,
+        order_id: splitOrder.id,
+        customer: splitOrder.customer || "Unknown Customer",
+        customerAddress: splitOrder.customerAddress || splitOrder.address,
         total: assignedTotal,
         weight: Math.round(assignedWeight * 100) / 100,
         volume: Math.round(assignedVolume * 100) / 100,
         items: itemsToAssign.length,
-        priority: splitOrder.priority,
-        address: splitOrder.address,
+        priority: splitOrder.priority || "normal",
+        address: splitOrder.address || splitOrder.customerAddress,
         original_order_id: splitOrder.id,
         original_items: itemsArray.reduce((sum: number, item: { quantity?: number }) => sum + (item.quantity || 0), 0),
-        original_weight: splitOrder.weight,
+        original_weight: splitOrder.weight || assignedWeight + remainingWeight,
         items_json: itemsToAssign,
         remaining_items_json: itemsRemaining,
       };
+
+      // Validate capacity before assignment
+      const newCapacityUsed = (selectedTripForOrders.capacityUsed || 0) + assignedWeight;
+      if (newCapacityUsed > (selectedTripForOrders.capacityTotal || 0)) {
+        alert(`Insufficient capacity! Required: ${assignedWeight.toFixed(2)}kg, Available: ${((selectedTripForOrders.capacityTotal || 0) - (selectedTripForOrders.capacityUsed || 0)).toFixed(2)}kg`);
+        return;
+      }
 
       // Assign split order to trip
       await tmsAPI.assignOrdersToTrip(selectedTripForOrders.id, [splitOrderData]);
@@ -887,7 +942,9 @@ export default function Trips() {
       // Refresh trips and orders
       await Promise.all([fetchTrips(), fetchResources()]);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to split order");
+      console.error("Error splitting order:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to split order";
+      alert(`Error: ${errorMessage}\n\nPlease check the console for details.`);
     }
   };
 
@@ -929,44 +986,91 @@ export default function Trips() {
     try {
       // Prepare orders data
       const ordersData: OrderAssignData[] = [];
-      selectedOrders.forEach((orderId) => {
+      const errors: string[] = [];
+
+      for (const orderId of selectedOrders) {
         const order = availableOrders.find((o) => o.id === orderId);
-        if (order) {
-          // For partial orders, we're assigning the remaining items
-          // The items array already contains only the remaining items from the backend
-          const itemsArray = Array.isArray(order.items) ? order.items : [];
+        if (!order) {
+          errors.push(`Order ${orderId} not found`);
+          continue;
+        }
+
+        try {
+          // Standardize items data - prefer items_data, fallback to items_json, then items
+          let itemsArray: any[] = [];
+
+          if (Array.isArray(order.items_data) && order.items_data.length > 0) {
+            itemsArray = order.items_data;
+          } else if (Array.isArray(order.items_json) && order.items_json.length > 0) {
+            itemsArray = order.items_json;
+          } else if (Array.isArray(order.items) && order.items.length > 0) {
+            itemsArray = order.items;
+          } else {
+            errors.push(`Order ${order.id} has no items data`);
+            continue;
+          }
+
+          // Validate items have required fields
+          const validItems = itemsArray.filter(item =>
+            item && (item.id || item.product_id) && item.quantity > 0
+          );
+
+          if (validItems.length === 0) {
+            errors.push(`Order ${order.id} has no valid items`);
+            continue;
+          }
 
           // Calculate weight from the items we're actually assigning
-          const assignedWeight = itemsArray.reduce((sum: number, item: { weight?: number }) => sum + (item.weight || 0), 0);
-          const assignedVolume = itemsArray.reduce((sum: number, item: { volume?: number }) => sum + (item.volume || 0), 0);
-          const assignedTotal = itemsArray.reduce((sum: number, item: { total_price?: number }) => sum + (item.total_price || 0), 0);
+          const assignedWeight = validItems.reduce((sum: number, item: { weight?: number }) => sum + (item.weight || 0), 0);
+          const assignedVolume = validItems.reduce((sum: number, item: { volume?: number }) => sum + (item.volume || 0), 0);
+          const assignedTotal = validItems.reduce((sum: number, item: { total_price?: number }) => sum + (item.total_price || 0), 0);
+
+          // Validate calculated values
+          if (assignedWeight <= 0) {
+            errors.push(`Order ${order.id} has invalid weight: ${assignedWeight}`);
+            continue;
+          }
 
           ordersData.push({
             order_id: order.id,
-            customer: order.customer,
-            customerAddress: order.customerAddress,
+            customer: order.customer || "Unknown Customer",
+            customerAddress: order.customerAddress || order.address,
             total: assignedTotal,
             weight: assignedWeight,
             volume: assignedVolume,
-            items: itemsArray.length,
-            items_json: itemsArray, // Items we're assigning (remaining items for partial orders)
+            items: validItems.length,
+            items_json: validItems, // Items we're assigning (with adjusted quantities if partial)
             remaining_items_json: [], // Will be empty since we're assigning all remaining items
-            original_items: order.items_count, // Store original count for reference
-            original_weight: order.weight, // Store original weight for reference
-            priority: order.priority,
-            address: order.address,
+            original_items: order.items_count || order.items || validItems.length,
+            original_weight: order.weight || assignedWeight,
+            priority: order.priority || "normal",
+            address: order.address || order.customerAddress,
           });
+        } catch (err) {
+          errors.push(`Error processing order ${order.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
-      });
+      }
+
+      // Check for validation errors
+      if (errors.length > 0) {
+        alert(`Validation errors:\n${errors.join('\n')}`);
+        return;
+      }
+
+      if (ordersData.length === 0) {
+        alert("No valid orders to assign");
+        return;
+      }
 
       // Check capacity
       const newCapacityUsed =
         (selectedTripForOrders.capacityUsed || 0) +
-        calculateTotalWeight(selectedOrders);
+        ordersData.reduce((sum, order) => sum + order.weight, 0);
+
       if (newCapacityUsed > (selectedTripForOrders.capacityTotal || 0)) {
         if (
           !confirm(
-            "Warning: Adding these orders will exceed the truck capacity. Do you want to continue?"
+            `Warning: Total weight (${newCapacityUsed.toFixed(2)}kg) exceeds truck capacity (${selectedTripForOrders.capacityTotal}kg). Do you want to continue?`
           )
         ) {
           return;
@@ -985,9 +1089,11 @@ export default function Trips() {
       setSelectedOrders([]);
 
       // Show success message
-      alert("Orders assigned successfully!");
+      alert(`Successfully assigned ${ordersData.length} order(s) to trip!`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to assign orders");
+      console.error("Error assigning orders:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to assign orders";
+      alert(`Error: ${errorMessage}\n\nPlease check the console for details.`);
     }
   };
 
@@ -1070,11 +1176,10 @@ export default function Trips() {
           {/* Status Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                statusFilter === "planning"
-                  ? "ring-2 ring-blue-500 bg-blue-50"
-                  : ""
-              }`}
+              className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "planning"
+                ? "ring-2 ring-blue-500 bg-blue-50"
+                : ""
+                }`}
               onClick={() =>
                 setStatusFilter(statusFilter === "planning" ? null : "planning")
               }
@@ -1082,18 +1187,16 @@ export default function Trips() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-lg ${
-                      statusFilter === "planning"
-                        ? "bg-blue-100"
-                        : "bg-gray-100"
-                    }`}
+                    className={`p-2 rounded-lg ${statusFilter === "planning"
+                      ? "bg-blue-100"
+                      : "bg-gray-100"
+                      }`}
                   >
                     <Package
-                      className={`w-5 h-5 ${
-                        statusFilter === "planning"
-                          ? "text-blue-600"
-                          : "text-gray-600"
-                      }`}
+                      className={`w-5 h-5 ${statusFilter === "planning"
+                        ? "text-blue-600"
+                        : "text-gray-600"
+                        }`}
                     />
                   </div>
                   <div>
@@ -1101,11 +1204,10 @@ export default function Trips() {
                       {tripStats.planning}
                     </p>
                     <p
-                      className={`text-sm ${
-                        statusFilter === "planning"
-                          ? "text-blue-600 font-medium"
-                          : "text-gray-500"
-                      }`}
+                      className={`text-sm ${statusFilter === "planning"
+                        ? "text-blue-600 font-medium"
+                        : "text-gray-500"
+                        }`}
                     >
                       Planning
                       {statusFilter === "planning" && (
@@ -1117,11 +1219,10 @@ export default function Trips() {
               </CardContent>
             </Card>
             <Card
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                statusFilter === "loading"
-                  ? "ring-2 ring-blue-500 bg-blue-50"
-                  : ""
-              }`}
+              className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "loading"
+                ? "ring-2 ring-blue-500 bg-blue-50"
+                : ""
+                }`}
               onClick={() =>
                 setStatusFilter(statusFilter === "loading" ? null : "loading")
               }
@@ -1129,11 +1230,10 @@ export default function Trips() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-lg ${
-                      statusFilter === "loading"
-                        ? "bg-yellow-100"
-                        : "bg-yellow-50"
-                    }`}
+                    className={`p-2 rounded-lg ${statusFilter === "loading"
+                      ? "bg-yellow-100"
+                      : "bg-yellow-50"
+                      }`}
                   >
                     <Truck className="w-5 h-5 text-yellow-600" />
                   </div>
@@ -1142,11 +1242,10 @@ export default function Trips() {
                       {tripStats.loading}
                     </p>
                     <p
-                      className={`text-sm ${
-                        statusFilter === "loading"
-                          ? "text-blue-600 font-medium"
-                          : "text-gray-500"
-                      }`}
+                      className={`text-sm ${statusFilter === "loading"
+                        ? "text-blue-600 font-medium"
+                        : "text-gray-500"
+                        }`}
                     >
                       Loading
                       {statusFilter === "loading" && (
@@ -1158,11 +1257,10 @@ export default function Trips() {
               </CardContent>
             </Card>
             <Card
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                statusFilter === "on-route"
-                  ? "ring-2 ring-blue-500 bg-blue-50"
-                  : ""
-              }`}
+              className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "on-route"
+                ? "ring-2 ring-blue-500 bg-blue-50"
+                : ""
+                }`}
               onClick={() =>
                 setStatusFilter(statusFilter === "on-route" ? null : "on-route")
               }
@@ -1170,9 +1268,8 @@ export default function Trips() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-lg ${
-                      statusFilter === "on-route" ? "bg-blue-100" : "bg-blue-50"
-                    }`}
+                    className={`p-2 rounded-lg ${statusFilter === "on-route" ? "bg-blue-100" : "bg-blue-50"
+                      }`}
                   >
                     <MapPin className="w-5 h-5 text-blue-600" />
                   </div>
@@ -1181,11 +1278,10 @@ export default function Trips() {
                       {tripStats.onRoute}
                     </p>
                     <p
-                      className={`text-sm ${
-                        statusFilter === "on-route"
-                          ? "text-blue-600 font-medium"
-                          : "text-gray-500"
-                      }`}
+                      className={`text-sm ${statusFilter === "on-route"
+                        ? "text-blue-600 font-medium"
+                        : "text-gray-500"
+                        }`}
                     >
                       On Route
                       {statusFilter === "on-route" && (
@@ -1197,11 +1293,10 @@ export default function Trips() {
               </CardContent>
             </Card>
             <Card
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                statusFilter === "completed"
-                  ? "ring-2 ring-blue-500 bg-blue-50"
-                  : ""
-              }`}
+              className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "completed"
+                ? "ring-2 ring-blue-500 bg-blue-50"
+                : ""
+                }`}
               onClick={() =>
                 setStatusFilter(
                   statusFilter === "completed" ? null : "completed"
@@ -1211,11 +1306,10 @@ export default function Trips() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-lg ${
-                      statusFilter === "completed"
-                        ? "bg-green-100"
-                        : "bg-green-50"
-                    }`}
+                    className={`p-2 rounded-lg ${statusFilter === "completed"
+                      ? "bg-green-100"
+                      : "bg-green-50"
+                      }`}
                   >
                     <CheckCircle className="w-5 h-5 text-green-600" />
                   </div>
@@ -1224,11 +1318,10 @@ export default function Trips() {
                       {tripStats.completed}
                     </p>
                     <p
-                      className={`text-sm ${
-                        statusFilter === "completed"
-                          ? "text-blue-600 font-medium"
-                          : "text-gray-500"
-                      }`}
+                      className={`text-sm ${statusFilter === "completed"
+                        ? "text-blue-600 font-medium"
+                        : "text-gray-500"
+                        }`}
                     >
                       Completed
                       {statusFilter === "completed" && (
@@ -1240,11 +1333,10 @@ export default function Trips() {
               </CardContent>
             </Card>
             <Card
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                statusFilter === "cancelled"
-                  ? "ring-2 ring-blue-500 bg-blue-50"
-                  : ""
-              }`}
+              className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === "cancelled"
+                ? "ring-2 ring-blue-500 bg-blue-50"
+                : ""
+                }`}
               onClick={() =>
                 setStatusFilter(
                   statusFilter === "cancelled" ? null : "cancelled"
@@ -1254,9 +1346,8 @@ export default function Trips() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-lg ${
-                      statusFilter === "cancelled" ? "bg-red-100" : "bg-red-50"
-                    }`}
+                    className={`p-2 rounded-lg ${statusFilter === "cancelled" ? "bg-red-100" : "bg-red-50"
+                      }`}
                   >
                     <XCircle className="w-5 h-5 text-red-600" />
                   </div>
@@ -1265,11 +1356,10 @@ export default function Trips() {
                       {tripStats.cancelled}
                     </p>
                     <p
-                      className={`text-sm ${
-                        statusFilter === "cancelled"
-                          ? "text-blue-600 font-medium"
-                          : "text-gray-500"
-                      }`}
+                      className={`text-sm ${statusFilter === "cancelled"
+                        ? "text-blue-600 font-medium"
+                        : "text-gray-500"
+                        }`}
                     >
                       Cancelled
                       {statusFilter === "cancelled" && (
@@ -1298,338 +1388,587 @@ export default function Trips() {
 
 
             {/* Trips Tab */}
-<TabsContent value="trips">
-  <Card>
-    <CardHeader>
-      <div className="flex items-center justify-between">
-        <CardTitle className="text-black">All Trips</CardTitle>
-        {statusFilter && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">
-              Filter:{" "}
-              <span className="font-medium text-blue-600">
-                {statusFilter.replace("-", " ").toUpperCase()}
-              </span>
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setStatusFilter(null)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
-      </div>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-6">
-        {activeTrips.length === 0 ? (
-          <div className="text-center py-12">
-            <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {statusFilter
-                ? `No ${statusFilter.replace("-", " ")} trips`
-                : "No trips available"}
-            </h3>
-            <p className="text-gray-500">
-              {statusFilter
-                ? `There are no trips with ${statusFilter.replace(
-                    "-",
-                    " "
-                  )} status.`
-                : "Create your first trip to get started."}
-            </p>
-            {statusFilter && (
-              <Button
-                onClick={() => setStatusFilter(null)}
-                variant="outline"
-                className="mt-4"
-              >
-                Clear Filter
-              </Button>
-            )}
-          </div>
-        ) : (
-          activeTrips.map((trip) => (
-            <div
-              key={trip.id}
-              className={`border border-gray-200 rounded-lg overflow-hidden transition-all ${
-                isTripLocked(trip.status)
-                  ? "bg-gray-50"
-                  : "bg-white"
-              } ${
-                dragOverTrip === trip.id
-                  ? "ring-2 ring-blue-400 bg-blue-50"
-                  : ""
-              }`}
-              onDragOver={(e) => handleDragOver(e, trip.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, trip.id)}
-            >
-              {/* Trip Layout - Split into Left Sidebar and Right Content */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 min-h-[400px]">
-                
-                {/* LEFT SIDEBAR - Trip Details */}
-                <div className="lg:col-span-4 border-r border-gray-200 bg-white flex flex-col">
-                  
-                  {/* Trip Header */}
-                  <div className="p-6 border-b border-gray-200">
-                    <h3 className="font-bold text-2xl text-gray-900 mb-2">
-                      {trip.id}
-                    </h3>
-                    <Badge
-                      variant={getStatusVariant(trip.status)}
-                      className="text-xs uppercase px-3 py-1"
-                    >
-                      {trip.status.toUpperCase().replace("-", " ")}
-                    </Badge>
-                    {isTripLocked(trip.status) && (
-                      <Badge variant="warning" className="text-xs ml-2">
-                        LOCKED
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Origin */}
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <div className="flex items-center gap-2 text-gray-600 mb-1">
-                      <MapPin className="w-4 h-4" />
-                      <span className="text-sm font-medium">Origin</span>
-                    </div>
-                    <p className="text-gray-900 font-medium ml-6">
-                      {trip.origin || "Not set"}
-                    </p>
-                  </div>
-
-                  {/* Truck Section */}
-                  <div className="px-6 py-4 border-b border-gray-200 bg-blue-50">
-                    <div className="flex items-center gap-2 text-blue-700 mb-3">
-                      <Truck className="w-5 h-5" />
-                      <span className="text-sm font-semibold">Truck</span>
-                    </div>
-                    {trip.truck ? (
-                      <div className="ml-7">
-                        <p className="font-bold text-lg text-gray-900 mb-1">
-                          {trip.truck.plate}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Capacity: {trip.capacityTotal ? `${trip.capacityTotal.toLocaleString()} kg` : 'N/A'}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic ml-7">Not assigned</p>
-                    )}
-                  </div>
-
-                  {/* Driver Section */}
-                  <div className="px-6 py-4 border-b border-gray-200 bg-green-50">
-                    <div className="flex items-center gap-2 text-green-700 mb-3">
-                      <User className="w-5 h-5" />
-                      <span className="text-sm font-semibold">Driver</span>
-                    </div>
-                    {trip.driver ? (
-                      <div className="ml-7">
-                        <p className="font-bold text-lg text-gray-900 mb-1">
-                          {trip.driver.name}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {trip.driver.phone}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic ml-7">Not assigned</p>
-                    )}
-                  </div>
-
-                  {/* Orders Count Section */}
-                  <div className="px-6 py-4 border-b border-gray-200 bg-orange-50">
-                    <div className="flex items-center gap-2 text-orange-700 mb-3">
-                      <Package className="w-5 h-5" />
-                      <span className="text-sm font-semibold">Orders</span>
-                    </div>
-                    <p className="font-bold text-3xl text-gray-900 ml-7">
-                      {trip.orders.length} Order{trip.orders.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-
-                  {/* Load Capacity */}
-                  <div className="px-6 py-4 flex-1 flex flex-col justify-end">
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-gray-700">Load Capacity</span>
-                        <span className="text-2xl font-bold text-green-600">
-                          {trip.capacityTotal && trip.capacityTotal > 0
-                            ? getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal)
-                            : 0}%
+            <TabsContent value="trips">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-black">All Trips</CardTitle>
+                    {statusFilter && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600">
+                          Filter:{" "}
+                          <span className="font-medium text-blue-600">
+                            {statusFilter.replace("-", " ").toUpperCase()}
+                          </span>
                         </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setStatusFilter(null)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
                       </div>
-                      {trip.capacityTotal && trip.capacityTotal > 0 && (
-                        <div className="w-full bg-gray-200 rounded-full h-3">
-                          <div
-                            className={`h-3 rounded-full transition-all ${getCapacityColor(
-                              getCapacityPercentage(
-                                trip.capacityUsed || 0,
-                                trip.capacityTotal
-                              )
-                            )}`}
-                            style={{
-                              width: `${Math.min(
-                                getCapacityPercentage(
-                                  trip.capacityUsed || 0,
-                                  trip.capacityTotal
-                                ),
-                                100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Add Orders Button */}
-                    {trip.status === "planning" && (
-                      <Button
-                        onClick={() => handleAddOrderClick(trip)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-base font-semibold"
-                      >
-                        <Plus className="w-5 h-5 mr-2" />
-                        Add Orders
-                      </Button>
                     )}
                   </div>
-                </div>
-
-                {/* RIGHT CONTENT - Orders List */}
-                <div className="lg:col-span-8 bg-gray-50">
-                  
-                  {/* Orders Header */}
-                  <div className="px-6 py-4 bg-white border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-bold text-gray-900">
-                        Orders ({trip.orders.length})
-                      </h4>
-                      {getNextStatusOptions(trip.status).length > 0 && (
-                        <div className="flex gap-2">
-                          {getNextStatusOptions(trip.status).map((option) => (
-                            <Button
-                              key={option.value}
-                              size="sm"
-                              onClick={() =>
-                                handleStatusChange(trip.id, option.value)
-                              }
-                              className={`text-xs text-white border-transparent hover:opacity-90 ${
-                                option.color === "red"
-                                  ? "bg-red-600 hover:bg-red-700"
-                                  : option.color === "green"
-                                  ? "bg-green-600 hover:bg-green-700"
-                                  : option.color === "blue"
-                                  ? "bg-blue-600 hover:bg-blue-700"
-                                  : option.color === "yellow"
-                                  ? "bg-yellow-600 hover:bg-yellow-700"
-                                  : "bg-gray-600 hover:bg-gray-700"
-                              }`}
-                            >
-                              {option.color === "red" && (
-                                <XCircle className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "green" && (
-                                <CheckCircle className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "blue" && (
-                                <Play className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "yellow" && (
-                                <Package className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "gray" && (
-                                <RotateCcw className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.label}
-                            </Button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Orders List */}
-                  <div className="p-6 space-y-4 max-h-[600px] overflow-y-auto">
-                    {trip.orders.length > 0 ? (
-                      trip.orders.map((order, orderIndex) => (
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {activeTrips.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                          {statusFilter
+                            ? `No ${statusFilter.replace("-", " ")} trips`
+                            : "No trips available"}
+                        </h3>
+                        <p className="text-gray-500">
+                          {statusFilter
+                            ? `There are no trips with ${statusFilter.replace(
+                              "-",
+                              " "
+                            )} status.`
+                            : "Create your first trip to get started."}
+                        </p>
+                        {statusFilter && (
+                          <Button
+                            onClick={() => setStatusFilter(null)}
+                            variant="outline"
+                            className="mt-4"
+                          >
+                            Clear Filter
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      activeTrips.map((trip) => (
                         <div
-                          key={order.id}
-                          className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                          key={trip.id}
+                          className={`border border-gray-200 rounded-lg overflow-hidden transition-all ${isTripLocked(trip.status)
+                            ? "bg-gray-50"
+                            : "bg-white"
+                            } ${dragOverTrip === trip.id
+                              ? "ring-2 ring-blue-400 bg-blue-50"
+                              : ""
+                            }`}
+                          onDragOver={(e) => handleDragOver(e, trip.id)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, trip.id)}
                         >
-                          {/* Order Header */}
-                          <div className="p-4 bg-gray-50 border-b border-gray-200">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                {trip.status === "planning" && (
-                                  <GripVertical className="w-5 h-5 text-gray-400 cursor-move" />
-                                )}
-                                <span className="text-sm font-bold text-white bg-gray-700 px-3 py-1 rounded">
-                                  #{order.sequence_number !== undefined ? order.sequence_number + 1 : orderIndex + 1}
-                                </span>
-                                <span className="font-bold text-lg text-gray-900">{order.id}</span>
+                          {/* Trip Layout - Split into Left Sidebar and Right Content */}
+                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 min-h-[400px]">
+
+                            {/* LEFT SIDEBAR - Trip Details */}
+                            <div className="lg:col-span-4 border-r border-gray-200 bg-white flex flex-col">
+
+                              {/* Trip Header */}
+                              <div className="p-6 border-b border-gray-200">
+                                <h3 className="font-bold text-2xl text-gray-900 mb-2">
+                                  {trip.id}
+                                </h3>
                                 <Badge
-                                  variant={getStatusVariant(order.status || trip.status)}
-                                  className="text-xs uppercase"
+                                  variant={getStatusVariant(trip.status)}
+                                  className="text-xs uppercase px-3 py-1"
                                 >
-                                  {(order.status || trip.status).toUpperCase().replace("-", " ")}
+                                  {trip.status.toUpperCase().replace("-", " ")}
                                 </Badge>
+                                {isTripLocked(trip.status) && (
+                                  <Badge variant="warning" className="text-xs ml-2">
+                                    LOCKED
+                                  </Badge>
+                                )}
                               </div>
-                              <div className="text-right">
-                                <p className="text-sm font-semibold text-gray-600">Weight</p>
-                                <p className="text-xl font-bold text-gray-900">
-                                  {order.weight ? order.weight.toFixed(2) : '0.00'} kg
+
+                              {/* Origin */}
+                              <div className="px-6 py-4 border-b border-gray-200">
+                                <div className="flex items-center gap-2 text-gray-600 mb-1">
+                                  <MapPin className="w-4 h-4" />
+                                  <span className="text-sm font-medium">Origin</span>
+                                </div>
+                                <p className="text-gray-900 font-medium ml-6">
+                                  {trip.origin || "Not set"}
                                 </p>
+                              </div>
+
+                              {/* Truck Section */}
+                              <div className="px-6 py-4 border-b border-gray-200 bg-blue-50">
+                                <div className="flex items-center gap-2 text-blue-700 mb-3">
+                                  <Truck className="w-5 h-5" />
+                                  <span className="text-sm font-semibold">Truck</span>
+                                </div>
+                                {trip.truck ? (
+                                  <div className="ml-7">
+                                    <p className="font-bold text-lg text-gray-900 mb-1">
+                                      {trip.truck.plate}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      Capacity: {trip.capacityTotal ? `${trip.capacityTotal.toLocaleString()} kg` : 'N/A'}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500 italic ml-7">Not assigned</p>
+                                )}
+                              </div>
+
+                              {/* Driver Section */}
+                              <div className="px-6 py-4 border-b border-gray-200 bg-green-50">
+                                <div className="flex items-center gap-2 text-green-700 mb-3">
+                                  <User className="w-5 h-5" />
+                                  <span className="text-sm font-semibold">Driver</span>
+                                </div>
+                                {trip.driver ? (
+                                  <div className="ml-7">
+                                    <p className="font-bold text-lg text-gray-900 mb-1">
+                                      {trip.driver.name}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      {trip.driver.phone}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500 italic ml-7">Not assigned</p>
+                                )}
+                              </div>
+
+                              {/* Orders Count Section */}
+                              <div className="px-6 py-4 border-b border-gray-200 bg-orange-50">
+                                <div className="flex items-center gap-2 text-orange-700 mb-3">
+                                  <Package className="w-5 h-5" />
+                                  <span className="text-sm font-semibold">Orders</span>
+                                </div>
+                                <p className="font-bold text-3xl text-gray-900 ml-7">
+                                  {trip.orders.length} Order{trip.orders.length !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+
+                              {/* Load Capacity */}
+                              <div className="px-6 py-4 flex-1 flex flex-col justify-end">
+                                <div className="mb-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-semibold text-gray-700">Load Capacity</span>
+                                    <span className="text-2xl font-bold text-green-600">
+                                      {trip.capacityTotal && trip.capacityTotal > 0
+                                        ? getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal)
+                                        : 0}%
+                                    </span>
+                                  </div>
+                                  {trip.capacityTotal && trip.capacityTotal > 0 && (
+                                    <div className="w-full bg-gray-200 rounded-full h-3">
+                                      <div
+                                        className={`h-3 rounded-full transition-all ${getCapacityColor(
+                                          getCapacityPercentage(
+                                            trip.capacityUsed || 0,
+                                            trip.capacityTotal
+                                          )
+                                        )}`}
+                                        style={{
+                                          width: `${Math.min(
+                                            getCapacityPercentage(
+                                              trip.capacityUsed || 0,
+                                              trip.capacityTotal
+                                            ),
+                                            100
+                                          )}%`,
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Add Orders Button */}
+                                {trip.status === "planning" && (
+                                  <Button
+                                    onClick={() => handleAddOrderClick(trip)}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-base font-semibold"
+                                  >
+                                    <Plus className="w-5 h-5 mr-2" />
+                                    Add Orders
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* RIGHT CONTENT - Orders List */}
+                            <div className="lg:col-span-8 bg-gray-50">
+
+                              {/* Orders Header */}
+                              <div className="px-6 py-4 bg-white border-b border-gray-200">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-lg font-bold text-gray-900">
+                                    Orders ({trip.orders.length})
+                                  </h4>
+                                  {getNextStatusOptions(trip.status).length > 0 && (
+                                    <div className="flex gap-2">
+                                      {getNextStatusOptions(trip.status).map((option) => (
+                                        <Button
+                                          key={option.value}
+                                          size="sm"
+                                          onClick={() =>
+                                            handleStatusChange(trip.id, option.value)
+                                          }
+                                          className={`text-xs text-white border-transparent hover:opacity-90 ${option.color === "red"
+                                            ? "bg-red-600 hover:bg-red-700"
+                                            : option.color === "green"
+                                              ? "bg-green-600 hover:bg-green-700"
+                                              : option.color === "blue"
+                                                ? "bg-blue-600 hover:bg-blue-700"
+                                                : option.color === "yellow"
+                                                  ? "bg-yellow-600 hover:bg-yellow-700"
+                                                  : "bg-gray-600 hover:bg-gray-700"
+                                            }`}
+                                        >
+                                          {option.color === "red" && (
+                                            <XCircle className="w-3 h-3 mr-1 text-white" />
+                                          )}
+                                          {option.color === "green" && (
+                                            <CheckCircle className="w-3 h-3 mr-1 text-white" />
+                                          )}
+                                          {option.color === "blue" && (
+                                            <Play className="w-3 h-3 mr-1 text-white" />
+                                          )}
+                                          {option.color === "yellow" && (
+                                            <Package className="w-3 h-3 mr-1 text-white" />
+                                          )}
+                                          {option.color === "gray" && (
+                                            <RotateCcw className="w-3 h-3 mr-1 text-white" />
+                                          )}
+                                          {option.label}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Orders List */}
+                              <div className="p-6 space-y-4 max-h-[600px] overflow-y-auto">
+                                {trip.orders.length > 0 ? (
+                                  trip.orders.map((order, orderIndex) => (
+                                    <div
+                                      key={order.id}
+                                      className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                                    >
+                                      {/* Order Header */}
+                                      <div className="p-4 bg-gray-50 border-b border-gray-200">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-3">
+                                            {trip.status === "planning" && (
+                                              <GripVertical className="w-5 h-5 text-gray-400 cursor-move" />
+                                            )}
+                                            <span className="text-sm font-bold text-white bg-gray-700 px-3 py-1 rounded">
+                                              #{order.sequence_number !== undefined ? order.sequence_number + 1 : orderIndex + 1}
+                                            </span>
+                                            <span className="font-bold text-lg text-gray-900">{order.id}</span>
+                                            <Badge
+                                              variant={getStatusVariant(order.status || trip.status)}
+                                              className="text-xs uppercase"
+                                            >
+                                              {(order.status || trip.status).toUpperCase().replace("-", " ")}
+                                            </Badge>
+                                          </div>
+                                          <div className="flex items-center gap-4">
+                                            <div className="text-right">
+                                              <p className="text-sm font-semibold text-gray-600">Weight</p>
+                                              <p className="text-xl font-bold text-gray-900">
+                                                {order.weight ? order.weight.toFixed(2) : '0.00'} kg
+                                              </p>
+                                            </div>
+                                            {trip.status === "planning" && (
+                                              <button
+                                                onClick={() => handleRemoveOrder(trip.id, order.order_id || order.id)}
+                                                className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Remove order from trip"
+                                              >
+                                                <Trash2 className="w-5 h-5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Order Details */}
+                                      <div className="p-4">
+                                        <div className="flex items-start gap-2 mb-4">
+                                          <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
+                                          <div>
+                                            <p className="font-semibold text-gray-900">
+                                              {order.customer || "Unknown Customer"}
+                                            </p>
+                                            {order.address && (
+                                              <p className="text-sm text-gray-600 mt-1">{order.address}</p>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 mb-4">
+                                          <Package className="w-4 h-4 text-gray-500" />
+                                          <span className="text-sm text-gray-600">
+                                            {typeof order.items === 'number'
+                                              ? order.items
+                                              : (order.items_count || 0)} items
+                                          </span>
+                                        </div>
+
+                                        {/* Order Items Table */}
+                                        {Array.isArray(order.items_data) && order.items_data.length > 0 ? (
+                                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                            <table className="w-full text-sm">
+                                              <thead className="bg-gray-100 border-b border-gray-200">
+                                                <tr>
+                                                  <th className="text-left py-2 px-3 font-semibold text-gray-700">#</th>
+                                                  <th className="text-left py-2 px-3 font-semibold text-gray-700">Product</th>
+                                                  <th className="text-right py-2 px-3 font-semibold text-gray-700">Planned Qty</th>
+                                                  <th className="text-right py-2 px-3 font-semibold text-gray-700">Wt/Unit</th>
+                                                  <th className="text-right py-2 px-3 font-semibold text-gray-700">Total Wt</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-gray-200">
+                                                {order.items_data.map((item, itemIndex) => (
+                                                  <tr key={item.id || itemIndex} className="hover:bg-gray-50">
+                                                    <td className="py-3 px-3 text-gray-600">{itemIndex + 1}</td>
+                                                    <td className="py-3 px-3">
+                                                      <div>
+                                                        <p className="font-medium text-gray-900">
+                                                          {item.product_name || "Unknown Product"}
+                                                        </p>
+                                                        {item.product_code && (
+                                                          <p className="text-xs text-gray-500">{item.product_code}</p>
+                                                        )}
+                                                      </div>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-medium text-gray-900">
+                                                      {item.quantity || 0}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-gray-900">
+                                                      {item.weight ?? 0}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-bold text-gray-900">
+                                                      {item.total_weight ?? (item.weight * item.quantity) ?? 0}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                              <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                                                <tr>
+                                                  <td colSpan={2} className="py-3 px-3 font-bold text-gray-900">Order Total</td>
+                                                  <td className="py-3 px-3 text-right font-bold text-gray-900">
+                                                    {order.items_data.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                                                  </td>
+                                                  <td className="py-3 px-3"></td>
+                                                  <td className="py-3 px-3 text-right font-bold text-gray-900">
+                                                    {order.items_data.reduce((sum, item) => sum + (item.total_weight ?? (item.weight * item.quantity) ?? 0), 0).toFixed(2)}
+                                                  </td>
+                                                </tr>
+                                              </tfoot>
+                                            </table>
+                                          </div>
+                                        ) : (
+                                          <div className="text-center py-6 text-gray-500 text-sm border border-gray-200 rounded-lg bg-gray-50">
+                                            No items found for this order
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-center py-16 bg-white border border-gray-200 rounded-lg">
+                                    <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                                    <p className="text-gray-600 font-medium">No orders assigned to this trip yet</p>
+                                    {trip.status === "planning" && (
+                                      <p className="text-sm mt-2 text-gray-400">
+                                        Click &quot;Add Orders&quot; to assign orders to this trip
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Trip Totals Summary */}
+                                {trip.orders.length > 0 && (
+                                  <div className="bg-white border border-gray-300 rounded-lg p-6 mt-6">
+                                    <h5 className="font-bold text-lg text-gray-900 mb-4">Trip Totals</h5>
+                                    <div className="grid grid-cols-2 gap-6">
+                                      <div>
+                                        <p className="text-sm text-gray-600 mb-1">Total Orders</p>
+                                        <p className="text-4xl font-bold text-gray-900">{trip.orders.length}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-sm text-gray-600 mb-1">Total Weight</p>
+                                        <p className="text-4xl font-bold text-gray-900">
+                                          {trip.orders.reduce((sum, order) => sum + (order.weight || 0), 0).toFixed(2)} kg
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
 
-                          {/* Order Details */}
-                          <div className="p-4">
-                            <div className="flex items-start gap-2 mb-4">
-                              <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
-                              <div>
-                                <p className="font-semibold text-gray-900">
-                                  {order.customer || "Unknown Customer"}
-                                </p>
-                                {order.address && (
-                                  <p className="text-sm text-gray-600 mt-1">{order.address}</p>
+                          {/* Drag Instructions */}
+                          {trip.status === "planning" && trip.orders.length > 0 && (
+                            <div className="p-4 bg-blue-50 border-t border-blue-200">
+                              <p className="text-sm text-blue-800">
+                                <strong>Drag & Drop:</strong> You can drag orders to reorder them within this trip or move them to another trip in planning status.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Lock Status Message */}
+                          {isTripLocked(trip.status) && (
+                            <div className="p-4 bg-yellow-50 border-t border-yellow-200">
+                              <p className="text-sm text-yellow-800">
+                                <strong>Trip is locked:</strong> Order details cannot be modified when trip is {trip.status.replace("-", " ")}.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Approved Orders Tab */}
+            <TabsContent value="orders">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-black">
+                    Orders ({getApprovedOrders().length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {getApprovedOrders().map((order) => (
+                      <div
+                        key={order.id}
+                        className="border border-gray-200 rounded-lg bg-white hover:shadow-md transition-all"
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, order)}
+                      >
+                        {/* Order Card Layout */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+
+                          {/* LEFT SIDEBAR - Order Summary */}
+                          <div className="lg:col-span-4 border-r border-gray-200 bg-white p-6">
+
+                            {/* Order Header */}
+                            <div className="mb-4">
+                              <h3 className="font-bold text-2xl text-gray-900 mb-2">
+                                {order.id}
+                              </h3>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <Badge
+                                  variant={getOrderStatusVariant(order.status)}
+                                  className="text-xs uppercase"
+                                >
+                                  {getOrderStatusDisplay(order.status)}
+                                </Badge>
+                                <Badge
+                                  variant={getTmsStatusVariant(order.tms_order_status || "available")}
+                                  className="text-xs uppercase"
+                                >
+                                  {getTmsStatusDisplay(order.tms_order_status || "available")}
+                                </Badge>
+                                {order.priority && (
+                                  <Badge
+                                    variant={getPriorityVariant(order.priority)}
+                                    className="text-xs uppercase"
+                                  >
+                                    {order.priority}
+                                  </Badge>
                                 )}
+                              </div>
+                              <p className="text-sm text-gray-500">{order.date}</p>
+                            </div>
+
+                            {/* Customer Section */}
+                            <div className="mb-4 pb-4 border-b border-gray-200">
+                              <div className="flex items-start gap-2">
+                                <User className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-1">Customer</p>
+                                  <p className="font-semibold text-gray-900">{order.customer}</p>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 mb-4">
-                              <Package className="w-4 h-4 text-gray-500" />
-                              <span className="text-sm text-gray-600">
-                                {Array.isArray(order.items)
-                                  ? order.items.length
-                                  : (order.items_count || 0)} items ({Array.isArray(order.items) ? order.items.reduce((sum, item) => sum + (item.quantity || 0), 0) : 0} units)
-                              </span>
+                            {/* Address Section */}
+                            <div className="mb-4 pb-4 border-b border-gray-200">
+                              <div className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-1">Delivery Address</p>
+                                  <p className="text-sm text-gray-900">{order.address}</p>
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Order Items Table */}
-                            {order.items && Array.isArray(order.items) && order.items.length > 0 ? (
-                              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                            {/* Order Stats */}
+                            <div className="space-y-3 mb-6">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-600">Items</span>
+                                <span className="text-lg font-bold text-gray-900">
+                                  {typeof order.items === 'number' ? order.items : (order.items_count || 0)}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-600">Weight</span>
+                                <span className="text-lg font-bold text-gray-900">
+                                  {order.weight} kg
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-600">Volume</span>
+                                <span className="text-lg font-bold text-gray-900">
+                                  {order.volume} L
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+                                <span className="text-sm text-gray-600">Total Amount</span>
+                                <span className="text-2xl font-bold text-gray-900">
+                                  ₹{order.total.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Action Button */}
+                            <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5">
+                              Assign to Trip
+                            </Button>
+                          </div>
+
+                          {/* RIGHT CONTENT - Order Items */}
+                          <div className="lg:col-span-8 bg-gray-50 p-6">
+
+                            {/* Items Header */}
+                            <div className="mb-4">
+                              <h4 className="text-lg font-bold text-gray-900">
+                                Order Items ({Array.isArray(order.items_data) ? order.items_data.length : (typeof order.items === 'number' ? order.items : 0)})
+                              </h4>
+                            </div>
+
+                            {/* Items List/Table */}
+                            {Array.isArray(order.items_data) && order.items_data.length > 0 ? (
+                              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                                 <table className="w-full text-sm">
                                   <thead className="bg-gray-100 border-b border-gray-200">
                                     <tr>
-                                      <th className="text-left py-2 px-3 font-semibold text-gray-700">#</th>
-                                      <th className="text-left py-2 px-3 font-semibold text-gray-700">Product</th>
-                                      <th className="text-right py-2 px-3 font-semibold text-gray-700">Planned Qty</th>
-                                      <th className="text-right py-2 px-3 font-semibold text-gray-700">Wt/Unit</th>
-                                      <th className="text-right py-2 px-3 font-semibold text-gray-700">Total Wt</th>
+                                      <th className="text-left py-3 px-4 font-semibold text-gray-700">#</th>
+                                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Product</th>
+                                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Quantity</th>
+                                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Weight/Unit</th>
+                                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Volume</th>
+                                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Price/Unit</th>
+                                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Total Weight</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-200">
-                                    {order.items.map((item, itemIndex) => (
+                                    {order.items_data.map((item: any, itemIndex: number) => (
                                       <tr key={item.id || itemIndex} className="hover:bg-gray-50">
-                                        <td className="py-3 px-3 text-gray-600">{itemIndex + 1}</td>
-                                        <td className="py-3 px-3">
+                                        <td className="py-3 px-4 text-gray-600">{itemIndex + 1}</td>
+                                        <td className="py-3 px-4">
                                           <div>
                                             <p className="font-medium text-gray-900">
                                               {item.product_name || "Unknown Product"}
@@ -1637,49 +1976,56 @@ export default function Trips() {
                                             {item.product_code && (
                                               <p className="text-xs text-gray-500">{item.product_code}</p>
                                             )}
+                                            {item.description && (
+                                              <p className="text-xs text-gray-500 mt-1">{item.description}</p>
+                                            )}
                                           </div>
                                         </td>
-                                        <td className="py-3 px-3 text-right font-medium text-gray-900">
-                                          {item.quantity || 0}
+                                        <td className="py-3 px-4 text-right font-medium text-gray-900">
+                                          {item.quantity} {item.unit || "pcs"}
                                         </td>
-                                        <td className="py-3 px-3 text-right text-gray-900">
-                                          {item.weight ?? 0}
+                                        <td className="py-3 px-4 text-right text-gray-900">
+                                          {item.weight ?? 0} {item.weight_unit || "kg"}
+                                          {item.weight_type && (
+                                            <span className="text-xs text-gray-400 block">({item.weight_type})</span>
+                                          )}
                                         </td>
-                                        <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                          {item.total_weight ?? (item.weight * item.quantity) ?? 0}
+                                        <td className="py-3 px-4 text-right text-gray-900">
+                                          {item.volume ?? 0} m³
+                                        </td>
+                                        <td className="py-3 px-4 text-right text-gray-900">
+                                          {item.unit_price ? `₹${item.unit_price}` : "N/A"}
+                                        </td>
+                                        <td className="py-3 px-4 text-right font-bold text-gray-900">
+                                          {item.total_weight ?? (item.weight * item.quantity) ?? 0} kg
                                         </td>
                                       </tr>
                                     ))}
                                   </tbody>
                                   <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                                     <tr>
-                                      <td colSpan={2} className="py-3 px-3 font-bold text-gray-900">Order Total</td>
-                                      <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                        {order.items.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                                      <td colSpan={2} className="py-3 px-4 font-bold text-gray-900">Total</td>
+                                      <td className="py-3 px-4 text-right font-bold text-gray-900">
+                                        {order.items_data.reduce((sum, item) => sum + (item.quantity || 0), 0)} items
                                       </td>
-                                      <td className="py-3 px-3"></td>
-                                      <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                        {order.items.reduce((sum, item) => sum + (item.total_weight ?? (item.weight * item.quantity) ?? 0), 0).toFixed(2)}
+                                      <td colSpan={3}></td>
+                                      <td className="py-3 px-4 text-right font-bold text-gray-900">
+                                        {order.items_data.reduce((sum, item) => sum + (item.total_weight ?? (item.weight * item.quantity) ?? 0), 0).toFixed(2)} kg
                                       </td>
                                     </tr>
                                   </tfoot>
                                 </table>
                               </div>
                             ) : (
-                              <div className="text-center py-6 text-gray-500 text-sm border border-gray-200 rounded-lg bg-gray-50">
-                                No items found for this order
+                              <div className="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                                <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                                <p className="text-gray-500">No items found for this order</p>
                               </div>
                             )}
                           </div>
                         </div>
-                      ))}
-                    ) : (
-                      <div className="text-center py-12 text-gray-500">
-                        <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p className="text-lg font-medium">No orders assigned</p>
-                        <p className="text-sm">Drag orders here to assign them to this trip</p>
                       </div>
-                    )}
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -1691,28 +2037,35 @@ export default function Trips() {
                 {/* Available Trucks */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-black">
+                    <CardTitle className="text-black flex items-center gap-2">
+                      <Truck className="w-5 h-5 text-gray-600" />
                       Available Trucks ({getTrucksAvailable().length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {getTrucksAvailable().map((truck) => (
-                        <div
-                          key={truck.id}
-                          className="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {truck.plate}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              {truck.model} • {truck.capacity}kg
-                            </p>
+                      {getTrucksAvailable().length > 0 ? (
+                        getTrucksAvailable().map((truck) => (
+                          <div
+                            key={truck.id}
+                            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-bold text-lg text-gray-900">{truck.plate}</h4>
+                              <Badge variant="success" className="text-xs">Available</Badge>
+                            </div>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <p>Model: <span className="font-medium text-gray-900">{truck.model}</span></p>
+                              <p>Capacity: <span className="font-medium text-gray-900">{truck.capacity} kg</span></p>
+                            </div>
                           </div>
-                          <Badge variant="success">Available</Badge>
+                        ))
+                      ) : (
+                        <div className="text-center py-12 bg-gray-50 border border-gray-200 rounded-lg">
+                          <Truck className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                          <p className="text-gray-500">No trucks available</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1720,28 +2073,38 @@ export default function Trips() {
                 {/* Available Drivers */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-black">
+                    <CardTitle className="text-black flex items-center gap-2">
+                      <User className="w-5 h-5 text-gray-600" />
                       Available Drivers ({availableDrivers.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {availableDrivers.map((driver) => (
-                        <div
-                          key={driver.id}
-                          className="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {driver.name}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              {driver.phone} • {driver.experience}
-                            </p>
+                      {availableDrivers.length > 0 ? (
+                        availableDrivers.map((driver) => (
+                          <div
+                            key={driver.id}
+                            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-bold text-lg text-gray-900">{driver.name}</h4>
+                              <Badge variant="success" className="text-xs">Available</Badge>
+                            </div>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <p className="flex items-center gap-1">
+                                <Phone className="w-3 h-3" />
+                                <span className="font-medium text-gray-900">{driver.phone}</span>
+                              </p>
+                              <p>Experience: <span className="font-medium text-gray-900">{driver.experience}</span></p>
+                            </div>
                           </div>
-                          <Badge variant="success">Available</Badge>
+                        ))
+                      ) : (
+                        <div className="text-center py-12 bg-gray-50 border border-gray-200 rounded-lg">
+                          <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                          <p className="text-gray-500">No drivers available</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1749,1494 +2112,329 @@ export default function Trips() {
             </TabsContent>
           </Tabs>
 
-          {/* Create Trip Modal - Same as original */}
+          {/* Create Trip Modal */}
           {showCreateTrip && (
-            <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold text-black">
-                      Create New Trip
-                    </h2>
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+
+                {/* Modal Header - Green */}
+                <div className="bg-gradient-to-r from-green-600 to-green-500 px-6 py-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                        <Package className="w-8 h-8 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold text-white">
+                          Plan New Trip
+                        </h2>
+                        <p className="text-green-50 text-sm mt-1">
+                          Select branch, truck, and driver to create a new delivery trip
+                        </p>
+                      </div>
+                    </div>
                     <Button
                       onClick={handleCloseModal}
                       variant="outline"
                       size="sm"
-                      className="text-gray-500 hover:text-gray-700"
+                      className="text-white border-white/30 hover:bg-white/10 bg-transparent"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5" />
                     </Button>
                   </div>
                 </div>
 
-                {/* Progress Steps */}
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                          currentStep >= 1
-                            ? "bg-green-600 text-white"
-                            : "bg-gray-200 text-gray-600"
-                        }`}
-                      >
-                        1
-                      </div>
-                      <span
-                        className={`ml-2 text-sm font-medium ${
-                          currentStep >= 1 ? "text-green-600" : "text-gray-500"
-                        }`}
-                      >
-                        Select Branch
-                      </span>
-                    </div>
-                    <div
-                      className={`flex-1 h-1 mx-4 ${
-                        currentStep >= 2 ? "bg-green-600" : "bg-gray-200"
-                      }`}
-                    ></div>
-                    <div className="flex items-center">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                          currentStep >= 2
-                            ? "bg-green-600 text-white"
-                            : "bg-gray-200 text-gray-600"
-                        }`}
-                      >
-                        2
-                      </div>
-                      <span
-                        className={`ml-2 text-sm font-medium ${
-                          currentStep >= 2 ? "text-green-600" : "text-gray-500"
-                        }`}
-                      >
-                        Select Truck
-                      </span>
-                    </div>
-                    <div
-                      className={`flex-1 h-1 mx-4 ${
-                        currentStep >= 3 ? "bg-green-600" : "bg-gray-200"
-                      }`}
-                    ></div>
-                    <div className="flex items-center">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                          currentStep >= 3
-                            ? "bg-green-600 text-white"
-                            : "bg-gray-200 text-gray-600"
-                        }`}
-                      >
-                        3
-                      </div>
-                      <span
-                        className={`ml-2 text-sm font-medium ${
-                          currentStep >= 3 ? "text-green-600" : "text-gray-500"
-                        }`}
-                      >
-                        Select Driver
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                {/* Modal Content - Scrollable */}
+                <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50">
+                  <div className="space-y-6">
 
-                {/* Step Content - Same as original */}
-                <div className="px-6 py-6">
-                  {/* Step 1: Select Branch */}
-                  {currentStep === 1 && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-black mb-4">
-                        Select Branch
-                      </h3>
-                      <p className="text-gray-600 mb-4">
-                        Choose the branch for this trip
-                      </p>
-
-                      {/* Search Input */}
-                      <div className="relative mb-6">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    {/* Select Branch Section */}
+                    <div className="dropdown-container">
+                      <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-green-600" />
+                        Branch <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400 pointer-events-none" />
                         <input
                           type="text"
-                          placeholder="Search branches by name or location..."
-                          value={branchSearchTerm}
-                          onChange={(e) => setBranchSearchTerm(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
+                          value={selectedBranch ? (branches.find(b => b.id === selectedBranch)?.name || '') + ' - ' + (branches.find(b => b.id === selectedBranch)?.location || '') : ''}
+                          onChange={(e) => setBranchSearchQuery(e.target.value)}
+                          onFocus={() => setBranchDropdownOpen(true)}
+                          placeholder="Search branches..."
+                          className="w-full pl-10 pr-10 py-3 border-2 border-gray-300 text-gray-900 rounded-xl focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-500/10 bg-white hover:border-green-400 cursor-pointer font-semibold"
                         />
-                      </div>
-
-                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                        {getFilteredBranches().map((branch) => (
-                          <div
-                            key={branch.id}
-                            onClick={() => handleBranchSelect(branch.id)}
-                            className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                              selectedBranch === branch.id
-                                ? "border-green-500 bg-green-50"
-                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h4 className="font-medium text-black">
-                                  {branch.name}
-                                </h4>
-                                <p className="text-sm text-gray-600">
-                                  {branch.location}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  Manager: {branch.manager}
-                                </p>
-                              </div>
-                              <div
-                                className={`w-5 h-5 rounded-full border-2 ${
-                                  selectedBranch === branch.id
-                                    ? "border-green-500 bg-green-500"
-                                    : "border-gray-300"
-                                }`}
-                              >
-                                {selectedBranch === branch.id && (
-                                  <div className="w-full h-full rounded-full bg-white"></div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Step 2: Select Truck */}
-                  {currentStep === 2 && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-black mb-4">
-                        Select Truck
-                      </h3>
-                      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-sm text-gray-600">
-                              Selected Branch:
-                            </p>
-                            <p className="font-medium text-black">
-                              {branches.find(b => b.id === selectedBranch)?.name || "Not selected"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">
-                              Available Trucks:
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {getFilteredTrucks().length} trucks found
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Search Input */}
-                      <div className="relative mb-6">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                        <input
-                          type="text"
-                          placeholder="Search trucks by plate, model, or capacity..."
-                          value={truckSearchTerm}
-                          onChange={(e) => setTruckSearchTerm(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
-                        />
-                      </div>
-
-                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                        {getFilteredTrucks().map((truck) => (
-                          <div
-                            key={truck.id}
-                            onClick={() => setSelectedTruck(truck.id)}
-                            className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                              selectedTruck === truck.id
-                                ? "border-green-500 bg-green-50"
-                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <div className="p-2 bg-gray-100 rounded-lg">
-                                  <Truck className="w-6 h-6 text-gray-600" />
-                                </div>
-                                <div>
-                                  <h4 className="font-medium text-black">
-                                    {truck.plate}
-                                  </h4>
-                                  <p className="text-sm text-gray-600">
-                                    {truck.model}
-                                  </p>
-                                  <p className="text-sm text-gray-600">
-                                    Capacity: {truck.capacity}kg
-                                  </p>
-                                </div>
-                              </div>
-                              <div
-                                className={`w-5 h-5 rounded-full border-2 ${
-                                  selectedTruck === truck.id
-                                    ? "border-green-500 bg-green-500"
-                                    : "border-gray-300"
-                                }`}
-                              >
-                                {selectedTruck === truck.id && (
-                                  <div className="w-full h-full rounded-full bg-white"></div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Step 3: Select Driver */}
-                  {currentStep === 3 && (
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-lg font-semibold text-black mb-2">
-                          Select Driver
-                        </h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                          Choose a driver for the trip
-                        </p>
-                      </div>
-
-                      {/* Previous Selections Summary */}
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
-                        <h4 className="font-medium text-black mb-2">
-                          Trip Configuration:
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-gray-500" />
-                            <span className="text-gray-600">
-                              Selected Branch:
-                            </span>
-                            <span className="font-medium text-black">
-                              {branches.find(b => b.id === selectedBranch)?.name || selectedBranch}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Truck className="h-4 w-4 text-gray-500" />
-                            <span className="text-gray-600">
-                              Selected Truck:
-                            </span>
-                            <span className="font-medium text-black">
-                              {selectedTruck
-                                ? availableTrucks.find(
-                                    (t) => t.id === selectedTruck
-                                  )?.plate
-                                : "Not selected"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-sm text-gray-600 border-t pt-2">
-                          Available Drivers:{" "}
-                          <span className="font-medium text-black">
-                            {getFilteredDrivers().length} drivers found
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Search Input */}
-                      <div className="relative mb-6">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                        <input
-                          type="text"
-                          placeholder="Search drivers by name, phone, or license..."
-                          value={driverSearchTerm}
-                          onChange={(e) => setDriverSearchTerm(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-500"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-                        {getFilteredDrivers().map((driver) => (
-                          <div
-                            key={driver.id}
-                            onClick={() => setSelectedDriver(driver)}
-                            className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
-                              selectedDriver?.id === driver.id
-                                ? "border-blue-500 bg-blue-50 shadow-sm"
-                                : "border-gray-200 hover:border-gray-300"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium text-black">
-                                {driver.name}
-                              </span>
-                              {selectedDriver?.id === driver.id && (
-                                <CheckCircle className="h-5 w-5 text-blue-500" />
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-600 space-y-1">
-                              <div className="flex items-center gap-1">
-                                <Phone className="h-3 w-3" />
-                                {driver.phone}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Award className="h-3 w-3" />
-                                {driver.experience}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <CreditCard className="h-3 w-3" />
-                                {driver.license}
-                              </div>
-                            </div>
-                            <div className="mt-2">
-                              <span
-                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                  driver.status === "active"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
-                                {driver.status}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
-                  <div className="flex justify-between">
-                    <Button
-                      onClick={handlePrevStep}
-                      variant="outline"
-                      disabled={currentStep === 1}
-                      className="text-gray-700 border-gray-300 hover:bg-gray-50"
-                    >
-                      Previous
-                    </Button>
-                    {currentStep < 3 ? (
-                      <Button
-                        onClick={handleNextStep}
-                        disabled={
-                          (currentStep === 1 && !selectedBranch) ||
-                          (currentStep === 2 && !selectedTruck)
-                        }
-                        className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
-                      >
-                        Next
-                      </Button>
->>>>>>> staging
-                    ) : (
-                      <div className="text-center py-16 bg-white border border-gray-200 rounded-lg">
-                        <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-600 font-medium">No orders assigned to this trip yet</p>
-                        {trip.status === "planning" && (
-                          <p className="text-sm mt-2 text-gray-400">
-                            Click &quot;Add Orders&quot; to assign orders to this trip
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Trip Totals Summary */}
-                    {trip.orders.length > 0 && (
-                      <div className="bg-white border border-gray-300 rounded-lg p-6 mt-6">
-                        <h5 className="font-bold text-lg text-gray-900 mb-4">Trip Totals</h5>
-                        <div className="grid grid-cols-2 gap-6">
-                          <div>
-                            <p className="text-sm text-gray-600 mb-1">Total Orders</p>
-                            <p className="text-4xl font-bold text-gray-900">{trip.orders.length}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600 mb-1">Total Weight</p>
-                            <p className="text-4xl font-bold text-gray-900">
-                              {trip.orders.reduce((sum, order) => sum + (order.weight || 0), 0).toFixed(2)} kg
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Drag Instructions */}
-              {trip.status === "planning" && trip.orders.length > 0 && (
-                <div className="p-4 bg-blue-50 border-t border-blue-200">
-                  <p className="text-sm text-blue-800">
-                    <strong>Drag & Drop:</strong> You can drag orders to reorder them within this trip or move them to another trip in planning status.
-                  </p>
-                </div>
-              )}
-
-              {/* Lock Status Message */}
-              {isTripLocked(trip.status) && (
-                <div className="p-4 bg-yellow-50 border-t border-yellow-200">
-                  <p className="text-sm text-yellow-800">
-                    <strong>Trip is locked:</strong> Order details cannot be modified when trip is {trip.status.replace("-", " ")}.
-                  </p>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </CardContent>
-  </Card>
-</TabsContent>
-
-           {/* Approved Orders Tab */}
-<TabsContent value="orders">
-  <Card>
-    <CardHeader>
-      <CardTitle className="text-black">
-        Orders ({getApprovedOrders().length})
-      </CardTitle>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-4">
-        {getApprovedOrders().map((order) => (
-          <div
-            key={order.id}
-            className="border border-gray-200 rounded-lg bg-white hover:shadow-md transition-all"
-            draggable
-            onDragStart={(e) => handleDragStart(e, order)}
-          >
-            {/* Order Card Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
-              
-              {/* LEFT SIDEBAR - Order Summary */}
-              <div className="lg:col-span-4 border-r border-gray-200 bg-white p-6">
-                
-                {/* Order Header */}
-                <div className="mb-4">
-                  <h3 className="font-bold text-2xl text-gray-900 mb-2">
-                    {order.id}
-                  </h3>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <Badge
-                      variant={getOrderStatusVariant(order.status)}
-                      className="text-xs uppercase"
-                    >
-                      {getOrderStatusDisplay(order.status)}
-                    </Badge>
-                    <Badge
-                      variant={getTmsStatusVariant(order.tms_order_status || "available")}
-                      className="text-xs uppercase"
-                    >
-                      {getTmsStatusDisplay(order.tms_order_status || "available")}
-                    </Badge>
-                    {order.priority && (
-                      <Badge
-                        variant={getPriorityVariant(order.priority)}
-                        className="text-xs uppercase"
-                      >
-                        {order.priority}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-500">{order.date}</p>
-                </div>
-
-                {/* Customer Section */}
-                <div className="mb-4 pb-4 border-b border-gray-200">
-                  <div className="flex items-start gap-2">
-                    <User className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Customer</p>
-                      <p className="font-semibold text-gray-900">{order.customer}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Address Section */}
-                <div className="mb-4 pb-4 border-b border-gray-200">
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Delivery Address</p>
-                      <p className="text-sm text-gray-900">{order.address}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Order Stats */}
-                <div className="space-y-3 mb-6">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Items</span>
-                    <span className="text-lg font-bold text-gray-900">
-                      {Array.isArray(order.items) ? order.items.length : (order.items_count || order.items || 0)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Weight</span>
-                    <span className="text-lg font-bold text-gray-900">
-                      {order.weight} kg
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Volume</span>
-                    <span className="text-lg font-bold text-gray-900">
-                      {order.volume} L
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                    <span className="text-sm text-gray-600">Total Amount</span>
-                    <span className="text-2xl font-bold text-gray-900">
-                      ₹{order.total.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Action Button */}
-                <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5">
-                  Assign to Trip
-                </Button>
-              </div>
-
-              {/* RIGHT CONTENT - Order Items */}
-              <div className="lg:col-span-8 bg-gray-50 p-6">
-                
-                {/* Items Header */}
-                <div className="mb-4">
-                  <h4 className="text-lg font-bold text-gray-900">
-                    Order Items ({order.items && Array.isArray(order.items) ? order.items.length : 0})
-                  </h4>
-                </div>
-
-                {/* Items List/Table */}
-                {order.items && Array.isArray(order.items) && order.items.length > 0 ? (
-                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-100 border-b border-gray-200">
-                        <tr>
-                          <th className="text-left py-3 px-4 font-semibold text-gray-700">#</th>
-                          <th className="text-left py-3 px-4 font-semibold text-gray-700">Product</th>
-                          <th className="text-right py-3 px-4 font-semibold text-gray-700">Quantity</th>
-                          <th className="text-right py-3 px-4 font-semibold text-gray-700">Weight/Unit</th>
-                          <th className="text-right py-3 px-4 font-semibold text-gray-700">Volume</th>
-                          <th className="text-right py-3 px-4 font-semibold text-gray-700">Price/Unit</th>
-                          <th className="text-right py-3 px-4 font-semibold text-gray-700">Total Weight</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {order.items.map((item: any, itemIndex: number) => (
-                          <tr key={item.id || itemIndex} className="hover:bg-gray-50">
-                            <td className="py-3 px-4 text-gray-600">{itemIndex + 1}</td>
-                            <td className="py-3 px-4">
-                              <div>
-                                <p className="font-medium text-gray-900">
-                                  {item.product_name || "Unknown Product"}
-                                </p>
-                                {item.product_code && (
-                                  <p className="text-xs text-gray-500">{item.product_code}</p>
-                                )}
-                                {item.description && (
-                                  <p className="text-xs text-gray-500 mt-1">{item.description}</p>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-right font-medium text-gray-900">
-                              {item.quantity} {item.unit || "pcs"}
-                            </td>
-                            <td className="py-3 px-4 text-right text-gray-900">
-                              {item.weight ?? 0} {item.weight_unit || "kg"}
-                              {item.weight_type && (
-                                <span className="text-xs text-gray-400 block">({item.weight_type})</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-right text-gray-900">
-                              {item.volume ?? 0} m³
-                            </td>
-                            <td className="py-3 px-4 text-right text-gray-900">
-                              {item.unit_price ? `₹${item.unit_price}` : "N/A"}
-                            </td>
-                            <td className="py-3 px-4 text-right font-bold text-gray-900">
-                              {item.total_weight ?? (item.weight * item.quantity) ?? 0} kg
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-gray-50 border-t-2 border-gray-300">
-                        <tr>
-                          <td colSpan={2} className="py-3 px-4 font-bold text-gray-900">Total</td>
-                          <td className="py-3 px-4 text-right font-bold text-gray-900">
-                            {order.items.reduce((sum, item) => sum + (item.quantity || 0), 0)} items
-                          </td>
-                          <td colSpan={3}></td>
-                          <td className="py-3 px-4 text-right font-bold text-gray-900">
-                            {order.items.reduce((sum, item) => sum + (item.total_weight ?? (item.weight * item.quantity) ?? 0), 0).toFixed(2)} kg
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 bg-white border border-gray-200 rounded-lg">
-                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                    <p className="text-gray-500">No items found for this order</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </CardContent>
-  </Card>
-</TabsContent>
-
-{/* Resources Tab */}
-<TabsContent value="resources">
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-    {/* Available Trucks */}
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-black flex items-center gap-2">
-          <Truck className="w-5 h-5 text-gray-600" />
-          Available Trucks ({getTrucksAvailable().length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {getTrucksAvailable().length > 0 ? (
-            getTrucksAvailable().map((truck) => (
-              <div
-                key={truck.id}
-                className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-lg text-gray-900">{truck.plate}</h4>
-                  <Badge variant="success" className="text-xs">Available</Badge>
-                </div>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p>Model: <span className="font-medium text-gray-900">{truck.model}</span></p>
-                  <p>Capacity: <span className="font-medium text-gray-900">{truck.capacity} kg</span></p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-12 bg-gray-50 border border-gray-200 rounded-lg">
-              <Truck className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-gray-500">No trucks available</p>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-
-    {/* Available Drivers */}
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-black flex items-center gap-2">
-          <User className="w-5 h-5 text-gray-600" />
-          Available Drivers ({availableDrivers.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {availableDrivers.length > 0 ? (
-            availableDrivers.map((driver) => (
-              <div
-                key={driver.id}
-                className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-lg text-gray-900">{driver.name}</h4>
-                  <Badge variant="success" className="text-xs">Available</Badge>
-                </div>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p className="flex items-center gap-1">
-                    <Phone className="w-3 h-3" />
-                    <span className="font-medium text-gray-900">{driver.phone}</span>
-                  </p>
-                  <p>Experience: <span className="font-medium text-gray-900">{driver.experience}</span></p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-12 bg-gray-50 border border-gray-200 rounded-lg">
-              <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-gray-500">No drivers available</p>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-</TabsContent>
-
-{/* Trips Tab */}
-<TabsContent value="trips">
-  <Card>
-    <CardHeader>
-      <div className="flex items-center justify-between">
-        <CardTitle className="text-black">All Trips</CardTitle>
-        {statusFilter && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">
-              Filter:{" "}
-              <span className="font-medium text-blue-600">
-                {statusFilter.replace("-", " ").toUpperCase()}
-              </span>
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setStatusFilter(null)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
-      </div>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-6">
-        {activeTrips.length === 0 ? (
-          <div className="text-center py-12">
-            <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {statusFilter
-                ? `No ${statusFilter.replace("-", " ")} trips`
-                : "No trips available"}
-            </h3>
-            <p className="text-gray-500">
-              {statusFilter
-                ? `There are no trips with ${statusFilter.replace(
-                    "-",
-                    " "
-                  )} status.`
-                : "Create your first trip to get started."}
-            </p>
-            {statusFilter && (
-              <Button
-                onClick={() => setStatusFilter(null)}
-                variant="outline"
-                className="mt-4"
-              >
-                Clear Filter
-              </Button>
-            )}
-          </div>
-        ) : (
-          activeTrips.map((trip) => (
-            <div
-              key={trip.id}
-              className={`border border-gray-200 rounded-lg overflow-hidden transition-all ${
-                isTripLocked(trip.status)
-                  ? "bg-gray-50"
-                  : "bg-white"
-              } ${
-                dragOverTrip === trip.id
-                  ? "ring-2 ring-blue-400 bg-blue-50"
-                  : ""
-              }`}
-              onDragOver={(e) => handleDragOver(e, trip.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, trip.id)}
-            >
-              {/* Trip Layout - Split into Left Sidebar and Right Content */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 min-h-[400px]">
-                
-                {/* LEFT SIDEBAR - Trip Details */}
-                <div className="lg:col-span-4 border-r border-gray-200 bg-white flex flex-col">
-                  
-                  {/* Trip Header */}
-                  <div className="p-6 border-b border-gray-200">
-                    <h3 className="font-bold text-2xl text-gray-900 mb-2">
-                      {trip.id}
-                    </h3>
-                    <Badge
-                      variant={getStatusVariant(trip.status)}
-                      className="text-xs uppercase px-3 py-1"
-                    >
-                      {trip.status.toUpperCase().replace("-", " ")}
-                    </Badge>
-                    {isTripLocked(trip.status) && (
-                      <Badge variant="warning" className="text-xs ml-2">
-                        LOCKED
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Origin */}
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <div className="flex items-center gap-2 text-gray-600 mb-1">
-                      <MapPin className="w-4 h-4" />
-                      <span className="text-sm font-medium">Origin</span>
-                    </div>
-                    <p className="text-gray-900 font-medium ml-6">
-                      {trip.origin || "Not set"}
-                    </p>
-                  </div>
-
-                  {/* Truck Section */}
-                  <div className="px-6 py-4 border-b border-gray-200 bg-blue-50">
-                    <div className="flex items-center gap-2 text-blue-700 mb-3">
-                      <Truck className="w-5 h-5" />
-                      <span className="text-sm font-semibold">Truck</span>
-                    </div>
-                    {trip.truck ? (
-                      <div className="ml-7">
-                        <p className="font-bold text-lg text-gray-900 mb-1">
-                          {trip.truck.plate}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Capacity: {trip.capacityTotal ? `${trip.capacityTotal.toLocaleString()} kg` : 'N/A'}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic ml-7">Not assigned</p>
-                    )}
-                  </div>
-
-                  {/* Driver Section */}
-                  <div className="px-6 py-4 border-b border-gray-200 bg-green-50">
-                    <div className="flex items-center gap-2 text-green-700 mb-3">
-                      <User className="w-5 h-5" />
-                      <span className="text-sm font-semibold">Driver</span>
-                    </div>
-                    {trip.driver ? (
-                      <div className="ml-7">
-                        <p className="font-bold text-lg text-gray-900 mb-1">
-                          {trip.driver.name}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {trip.driver.phone}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic ml-7">Not assigned</p>
-                    )}
-                  </div>
-
-                  {/* Orders Count Section */}
-                  <div className="px-6 py-4 border-b border-gray-200 bg-orange-50">
-                    <div className="flex items-center gap-2 text-orange-700 mb-3">
-                      <Package className="w-5 h-5" />
-                      <span className="text-sm font-semibold">Orders</span>
-                    </div>
-                    <p className="font-bold text-3xl text-gray-900 ml-7">
-                      {trip.orders.length} Order{trip.orders.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-
-                  {/* Load Capacity */}
-                  <div className="px-6 py-4 flex-1 flex flex-col justify-end">
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-gray-700">Load Capacity</span>
-                        <span className="text-2xl font-bold text-green-600">
-                          {trip.capacityTotal && trip.capacityTotal > 0
-                            ? getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal)
-                            : 0}%
-                        </span>
-                      </div>
-                      {trip.capacityTotal && trip.capacityTotal > 0 && (
-                        <div className="w-full bg-gray-200 rounded-full h-3">
-                          <div
-                            className={`h-3 rounded-full transition-all ${getCapacityColor(
-                              getCapacityPercentage(
-                                trip.capacityUsed || 0,
-                                trip.capacityTotal
-                              )
-                            )}`}
-                            style={{
-                              width: `${Math.min(
-                                getCapacityPercentage(
-                                  trip.capacityUsed || 0,
-                                  trip.capacityTotal
-                                ),
-                                100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Add Orders Button */}
-                    {trip.status === "planning" && (
-                      <Button
-                        onClick={() => handleAddOrderClick(trip)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-base font-semibold"
-                      >
-                        <Plus className="w-5 h-5 mr-2" />
-                        Add Orders
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {/* RIGHT CONTENT - Orders List */}
-                <div className="lg:col-span-8 bg-gray-50">
-                  
-                  {/* Orders Header */}
-                  <div className="px-6 py-4 bg-white border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-bold text-gray-900">
-                        Orders ({trip.orders.length})
-                      </h4>
-                      {getNextStatusOptions(trip.status).length > 0 && (
-                        <div className="flex gap-2">
-                          {getNextStatusOptions(trip.status).map((option) => (
-                            <Button
-                              key={option.value}
-                              size="sm"
-                              onClick={() =>
-                                handleStatusChange(trip.id, option.value)
-                              }
-                              className={`text-xs text-white border-transparent hover:opacity-90 ${
-                                option.color === "red"
-                                  ? "bg-red-600 hover:bg-red-700"
-                                  : option.color === "green"
-                                  ? "bg-green-600 hover:bg-green-700"
-                                  : option.color === "blue"
-                                  ? "bg-blue-600 hover:bg-blue-700"
-                                  : option.color === "yellow"
-                                  ? "bg-yellow-600 hover:bg-yellow-700"
-                                  : "bg-gray-600 hover:bg-gray-700"
-                              }`}
-                            >
-                              {option.color === "red" && (
-                                <XCircle className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "green" && (
-                                <CheckCircle className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "blue" && (
-                                <Play className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "yellow" && (
-                                <Package className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.color === "gray" && (
-                                <RotateCcw className="w-3 h-3 mr-1 text-white" />
-                              )}
-                              {option.label}
-                            </Button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Orders List */}
-                  <div className="p-6 space-y-4 max-h-[600px] overflow-y-auto">
-                    {trip.orders.length > 0 ? (
-                      trip.orders.map((order, orderIndex) => (
-                        <div
-                          key={order.id}
-                          className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                        <button
+                          type="button"
+                          onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100"
                         >
-                          {/* Order Header */}
-                          <div className="p-4 bg-gray-50 border-b border-gray-200">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                {trip.status === "planning" && (
-                                  <GripVertical className="w-5 h-5 text-gray-400 cursor-move" />
-                                )}
-                                <span className="text-sm font-bold text-white bg-gray-700 px-3 py-1 rounded">
-                                  #{order.sequence_number !== undefined ? order.sequence_number + 1 : orderIndex + 1}
-                                </span>
-                                <span className="font-bold text-lg text-gray-900">{order.id}</span>
-                                <Badge
-                                  variant={getStatusVariant(order.status || trip.status)}
-                                  className="text-xs uppercase"
-                                >
-                                  {(order.status || trip.status).toUpperCase().replace("-", " ")}
-                                </Badge>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-sm font-semibold text-gray-600">Weight</p>
-                                <p className="text-xl font-bold text-gray-900">
-                                  {order.weight ? order.weight.toFixed(2) : '0.00'} kg
-                                </p>
-                              </div>
-                            </div>
-                          </div>
+                          <ChevronDown className={`w-5 h-5 text-green-400 transition-transform ${branchDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
 
-                          {/* Order Details */}
-                          <div className="p-4">
-                            <div className="flex items-start gap-2 mb-4">
-                              <MapPin className="w-4 h-4 text-gray-500 mt-1 flex-shrink-0" />
-                              <div>
-                                <p className="font-semibold text-gray-900">
-                                  {order.customer || "Unknown Customer"}
-                                </p>
-                                {order.address && (
-                                  <p className="text-sm text-gray-600 mt-1">{order.address}</p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 mb-4">
-                              <Package className="w-4 h-4 text-gray-500" />
-                              <span className="text-sm text-gray-600">
-                                {Array.isArray(order.items) 
-                                  ? order.items.length 
-                                  : (order.items_count || order.items || 0)} items ({order.items_data?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0} units)
-                              </span>
-                            </div>
-
-                            {/* Order Items Table */}
-                            {(order.items_data && order.items_data.length > 0) || (order.items && Array.isArray(order.items) && order.items.length > 0) ? (
-                              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                <table className="w-full text-sm">
-                                  <thead className="bg-gray-100 border-b border-gray-200">
-                                    <tr>
-                                      <th className="text-left py-2 px-3 font-semibold text-gray-700">#</th>
-                                      <th className="text-left py-2 px-3 font-semibold text-gray-700">Product</th>
-                                      <th className="text-right py-2 px-3 font-semibold text-gray-700">Planned Qty</th>
-                                      <th className="text-right py-2 px-3 font-semibold text-gray-700">Wt/Unit</th>
-                                      <th className="text-right py-2 px-3 font-semibold text-gray-700">Total Wt</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-200">
-                                    {(order.items_data || order.items).map((item, itemIndex) => (
-                                      <tr key={item.id || itemIndex} className="hover:bg-gray-50">
-                                        <td className="py-3 px-3 text-gray-600">{itemIndex + 1}</td>
-                                        <td className="py-3 px-3">
-                                          <div>
-                                            <p className="font-medium text-gray-900">
-                                              {item.product_name || "Unknown Product"}
-                                            </p>
-                                            {item.product_code && (
-                                              <p className="text-xs text-gray-500">{item.product_code}</p>
-                                            )}
-                                          </div>
-                                        </td>
-                                        <td className="py-3 px-3 text-right font-medium text-gray-900">
-                                          {item.quantity || 0}
-                                        </td>
-                                        <td className="py-3 px-3 text-right text-gray-900">
-                                          {item.weight ?? 0}
-                                        </td>
-                                        <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                          {item.total_weight ?? (item.weight * item.quantity) ?? 0}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                  <tfoot className="bg-gray-50 border-t-2 border-gray-300">
-                                    <tr>
-                                      <td colSpan={2} className="py-3 px-3 font-bold text-gray-900">Order Total</td>
-                                      <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                        {(order.items_data || order.items).reduce((sum, item) => sum + (item.quantity || 0), 0)}
-                                      </td>
-                                      <td className="py-3 px-3"></td>
-                                      <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                        {(order.items_data || order.items).reduce((sum, item) => sum + (item.total_weight ?? (item.weight * item.quantity) ?? 0), 0).toFixed(2)}
-                                      </td>
-                                    </tr>
-                                  </tfoot>
-                                </table>
+                        {branchDropdownOpen && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                            {filteredBranches.length === 0 ? (
+                              <div className="p-4 text-center text-gray-500 text-sm font-medium">
+                                No branches found
                               </div>
                             ) : (
-                              <div className="text-center py-6 text-gray-500 text-sm border border-gray-200 rounded-lg bg-gray-50">
-                                No items found for this order
+                              <div className="py-1">
+                                {filteredBranches.map((branch) => (
+                                  <button
+                                    type="button"
+                                    key={branch.id}
+                                    onClick={() => handleBranchSelect(branch.id)}
+                                    className={`w-full px-4 py-3 text-left font-semibold transition-colors ${selectedBranch === branch.id
+                                      ? 'bg-green-50 text-green-700'
+                                      : 'text-gray-900 hover:bg-gray-50'
+                                      }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span>{branch.name} - {branch.location}</span>
+                                      {branch.status === 'active' && (
+                                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
                               </div>
                             )}
                           </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-16 bg-white border border-gray-200 rounded-lg">
-                        <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-600 font-medium">No orders assigned to this trip yet</p>
-                        {trip.status === "planning" && (
-                          <p className="text-sm mt-2 text-gray-400">
-                            Click &quot;Add Orders&quot; to assign orders to this trip
-                          </p>
                         )}
                       </div>
-                    )}
-
-                    {/* Trip Totals Summary */}
-                    {trip.orders.length > 0 && (
-                      <div className="bg-white border border-gray-300 rounded-lg p-6 mt-6">
-                        <h5 className="font-bold text-lg text-gray-900 mb-4">Trip Totals</h5>
-                        <div className="grid grid-cols-2 gap-6">
-                          <div>
-                            <p className="text-sm text-gray-600 mb-1">Total Orders</p>
-                            <p className="text-4xl font-bold text-gray-900">{trip.orders.length}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600 mb-1">Total Weight</p>
-                            <p className="text-4xl font-bold text-gray-900">
-                              {trip.orders.reduce((sum, order) => sum + (order.weight || 0), 0).toFixed(2)} kg
+                      {selectedBranch && (
+                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm font-medium text-gray-900">
+                            {branches.find(b => b.id === selectedBranch)?.name}
+                          </p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            {branches.find(b => b.id === selectedBranch)?.location}
+                          </p>
+                          {branches.find(b => b.id === selectedBranch)?.manager && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Manager: {branches.find(b => b.id === selectedBranch)?.manager}
                             </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Select Truck Section */}
+                    <div className="dropdown-container">
+                      <label className={`block text-sm font-bold mb-2 flex items-center gap-2 ${selectedBranch ? 'text-gray-700' : 'text-gray-400'
+                        }`}>
+                        <Truck className="w-4 h-4 text-blue-600" />
+                        Truck <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none ${selectedBranch ? 'text-blue-400' : 'text-gray-300'
+                          }`} />
+                        <input
+                          type="text"
+                          value={selectedTruck ? (availableTrucks.find(t => t.id === selectedTruck)?.plate || '') + ' - ' + (availableTrucks.find(t => t.id === selectedTruck)?.model || '') + ` (${availableTrucks.find(t => t.id === selectedTruck)?.capacity}kg)` : ''}
+                          onChange={(e) => setTruckSearchQuery(e.target.value)}
+                          onFocus={() => selectedBranch && setTruckDropdownOpen(true)}
+                          placeholder="Search trucks..."
+                          disabled={!selectedBranch}
+                          className={`w-full pl-10 pr-10 py-3 border-2 text-gray-900 rounded-xl focus:outline-none transition-all font-semibold ${!selectedBranch
+                            ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500'
+                            : 'border-gray-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-blue-400 cursor-pointer'
+                            }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => selectedBranch && setTruckDropdownOpen(!truckDropdownOpen)}
+                          disabled={!selectedBranch}
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 ${!selectedBranch ? 'cursor-not-allowed' : ''
+                            }`}
+                        >
+                          <ChevronDown className={`w-5 h-5 transition-transform ${truckDropdownOpen ? 'rotate-180' : ''} ${selectedBranch ? 'text-blue-400' : 'text-gray-300'
+                            }`} />
+                        </button>
+
+                        {truckDropdownOpen && selectedBranch && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                            {filteredTrucks.length === 0 ? (
+                              <div className="p-4 text-center text-gray-500 text-sm font-medium">
+                                No trucks found
+                              </div>
+                            ) : (
+                              <div className="py-1">
+                                {filteredTrucks.map((truck) => (
+                                  <button
+                                    type="button"
+                                    key={truck.id}
+                                    onClick={() => {
+                                      setSelectedTruck(truck.id);
+                                      setTruckDropdownOpen(false);
+                                    }}
+                                    className={`w-full px-4 py-3 text-left font-semibold transition-colors ${selectedTruck === truck.id
+                                      ? 'bg-blue-50 text-blue-700'
+                                      : 'text-gray-900 hover:bg-gray-50'
+                                      }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span>{truck.plate} - {truck.model} ({truck.capacity}kg)</span>
+                                      {truck.status === 'active' && (
+                                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {selectedTruck && (
+                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-bold text-gray-900">
+                                {availableTrucks.find(t => t.id === selectedTruck)?.plate}
+                              </p>
+                              <p className="text-xs text-gray-600 mt-1">
+                                {availableTrucks.find(t => t.id === selectedTruck)?.model}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-blue-600">Capacity</p>
+                              <p className="text-lg font-bold text-blue-600">
+                                {availableTrucks.find(t => t.id === selectedTruck)?.capacity?.toLocaleString()} kg
+                              </p>
+                            </div>
                           </div>
                         </div>
+                      )}
+                    </div>
+
+                    {/* Select Driver Section */}
+                    <div className="dropdown-container">
+                      <label className={`block text-sm font-bold mb-2 flex items-center gap-2 ${selectedBranch && selectedTruck ? 'text-gray-700' : 'text-gray-400'
+                        }`}>
+                        <User className="w-4 h-4 text-orange-600" />
+                        Driver <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none ${selectedBranch && selectedTruck ? 'text-orange-400' : 'text-gray-300'
+                          }`} />
+                        <input
+                          type="text"
+                          value={selectedDriver ? (selectedDriver.name || '') + ' - ' + (selectedDriver.phone || '') + ` (${selectedDriver.license})` : ''}
+                          onChange={(e) => setDriverSearchQuery(e.target.value)}
+                          onFocus={() => selectedBranch && selectedTruck && setDriverDropdownOpen(true)}
+                          placeholder="Search drivers..."
+                          disabled={!selectedBranch || !selectedTruck}
+                          className={`w-full pl-10 pr-10 py-3 border-2 text-gray-900 rounded-xl focus:outline-none transition-all font-semibold ${!selectedBranch || !selectedTruck
+                            ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500'
+                            : 'border-gray-300 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 bg-white hover:border-orange-400 cursor-pointer'
+                            }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => selectedBranch && selectedTruck && setDriverDropdownOpen(!driverDropdownOpen)}
+                          disabled={!selectedBranch || !selectedTruck}
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 ${!selectedBranch || !selectedTruck ? 'cursor-not-allowed' : ''
+                            }`}
+                        >
+                          <ChevronDown className={`w-5 h-5 transition-transform ${driverDropdownOpen ? 'rotate-180' : ''} ${selectedBranch && selectedTruck ? 'text-orange-400' : 'text-gray-300'
+                            }`} />
+                        </button>
+
+                        {driverDropdownOpen && selectedBranch && selectedTruck && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                            {filteredDrivers.length === 0 ? (
+                              <div className="p-4 text-center text-gray-500 text-sm font-medium">
+                                No drivers found
+                              </div>
+                            ) : (
+                              <div className="py-1">
+                                {filteredDrivers.map((driver) => (
+                                  <button
+                                    type="button"
+                                    key={driver.id}
+                                    onClick={() => {
+                                      setSelectedDriver(driver);
+                                      setDriverDropdownOpen(false);
+                                    }}
+                                    className={`w-full px-4 py-3 text-left font-semibold transition-colors ${selectedDriver?.id === driver.id
+                                      ? 'bg-orange-50 text-orange-700'
+                                      : 'text-gray-900 hover:bg-gray-50'
+                                      }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span>{driver.name} - {driver.phone} ({driver.license})</span>
+                                      {driver.status === 'active' && (
+                                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Drag Instructions */}
-              {trip.status === "planning" && trip.orders.length > 0 && (
-                <div className="p-4 bg-blue-50 border-t border-blue-200">
-                  <p className="text-sm text-blue-800">
-                    <strong>Drag & Drop:</strong> You can drag orders to reorder them within this trip or move them to another trip in planning status.
-                  </p>
-                </div>
-              )}
-
-              {/* Lock Status Message */}
-              {isTripLocked(trip.status) && (
-                <div className="p-4 bg-yellow-50 border-t border-yellow-200">
-                  <p className="text-sm text-yellow-800">
-                    <strong>Trip is locked:</strong> Order details cannot be modified when trip is {trip.status.replace("-", " ")}.
-                  </p>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </CardContent>
-  </Card>
-</TabsContent>
-          </Tabs>
-
-          {/* Create Trip Modal */}
-{showCreateTrip && (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-    <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-      
-      {/* Modal Header - Green */}
-      <div className="bg-gradient-to-r from-green-600 to-green-500 px-6 py-6">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-              <Package className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">
-                Plan New Trip
-              </h2>
-              <p className="text-green-50 text-sm mt-1">
-                Select branch, truck, and driver to create a new delivery trip
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={handleCloseModal}
-            variant="outline"
-            size="sm"
-            className="text-white border-white/30 hover:bg-white/10 bg-transparent"
-          >
-            <X className="w-5 h-5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Modal Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50">
-        <div className="space-y-6">
-
-          {/* Select Branch Section */}
-          <div className="dropdown-container">
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-green-600" />
-              Branch <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400 pointer-events-none" />
-              <input
-                type="text"
-                value={selectedBranch ? (branches.find(b => b.id === selectedBranch)?.name || '') + ' - ' + (branches.find(b => b.id === selectedBranch)?.location || '') : ''}
-                onChange={(e) => setBranchSearchQuery(e.target.value)}
-                onFocus={() => setBranchDropdownOpen(true)}
-                placeholder="Search branches..."
-                className="w-full pl-10 pr-10 py-3 border-2 border-gray-300 text-gray-900 rounded-xl focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-500/10 bg-white hover:border-green-400 cursor-pointer font-semibold"
-              />
-              <button
-                type="button"
-                onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100"
-              >
-                <ChevronDown className={`w-5 h-5 text-green-400 transition-transform ${branchDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {branchDropdownOpen && (
-                <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                  {filteredBranches.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 text-sm font-medium">
-                      No branches found
-                    </div>
-                  ) : (
-                    <div className="py-1">
-                      {filteredBranches.map((branch) => (
-                        <button
-                          type="button"
-                          key={branch.id}
-                          onClick={() => handleBranchSelect(branch.id)}
-                          className={`w-full px-4 py-3 text-left font-semibold transition-colors ${
-                            selectedBranch === branch.id
-                              ? 'bg-green-50 text-green-700'
-                              : 'text-gray-900 hover:bg-gray-50'
-                          }`}
-                        >
+                      {selectedDriver && (
+                        <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                           <div className="flex items-center justify-between">
-                            <span>{branch.name} - {branch.location}</span>
-                            {branch.status === 'active' && (
-                              <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
-                            )}
+                            <div>
+                              <p className="text-sm font-bold text-gray-900">
+                                {selectedDriver.name}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  <Phone className="w-3 h-3" />
+                                  {selectedDriver.phone}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Award className="w-3 h-3" />
+                                  {selectedDriver.experience}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <CreditCard className="w-3 h-3" />
+                                  {selectedDriver.license}
+                                </span>
+                              </div>
+                            </div>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${selectedDriver.status === "active"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
+                              }`}>
+                              {selectedDriver.status}
+                            </span>
                           </div>
-                        </button>
-                      ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-            {selectedBranch && (
-              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-sm font-medium text-gray-900">
-                  {branches.find(b => b.id === selectedBranch)?.name}
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  {branches.find(b => b.id === selectedBranch)?.location}
-                </p>
-                {branches.find(b => b.id === selectedBranch)?.manager && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Manager: {branches.find(b => b.id === selectedBranch)?.manager}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
 
-          {/* Select Truck Section */}
-          <div className="dropdown-container">
-            <label className={`block text-sm font-bold mb-2 flex items-center gap-2 ${
-              selectedBranch ? 'text-gray-700' : 'text-gray-400'
-            }`}>
-              <Truck className="w-4 h-4 text-blue-600" />
-              Truck <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none ${
-                selectedBranch ? 'text-blue-400' : 'text-gray-300'
-              }`} />
-              <input
-                type="text"
-                value={selectedTruck ? (availableTrucks.find(t => t.id === selectedTruck)?.plate || '') + ' - ' + (availableTrucks.find(t => t.id === selectedTruck)?.model || '') + ` (${availableTrucks.find(t => t.id === selectedTruck)?.capacity}kg)` : ''}
-                onChange={(e) => setTruckSearchQuery(e.target.value)}
-                onFocus={() => selectedBranch && setTruckDropdownOpen(true)}
-                placeholder="Search trucks..."
-                disabled={!selectedBranch}
-                className={`w-full pl-10 pr-10 py-3 border-2 text-gray-900 rounded-xl focus:outline-none transition-all font-semibold ${
-                  !selectedBranch
-                    ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500'
-                    : 'border-gray-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 bg-white hover:border-blue-400 cursor-pointer'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => selectedBranch && setTruckDropdownOpen(!truckDropdownOpen)}
-                disabled={!selectedBranch}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 ${
-                  !selectedBranch ? 'cursor-not-allowed' : ''
-                }`}
-              >
-                <ChevronDown className={`w-5 h-5 transition-transform ${truckDropdownOpen ? 'rotate-180' : ''} ${
-                  selectedBranch ? 'text-blue-400' : 'text-gray-300'
-                }`} />
-              </button>
-
-              {truckDropdownOpen && selectedBranch && (
-                <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                  {filteredTrucks.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 text-sm font-medium">
-                      No trucks found
-                    </div>
-                  ) : (
-                    <div className="py-1">
-                      {filteredTrucks.map((truck) => (
-                        <button
-                          type="button"
-                          key={truck.id}
-                          onClick={() => {
-                            setSelectedTruck(truck.id);
-                            setTruckDropdownOpen(false);
-                          }}
-                          className={`w-full px-4 py-3 text-left font-semibold transition-colors ${
-                            selectedTruck === truck.id
-                              ? 'bg-blue-50 text-blue-700'
-                              : 'text-gray-900 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span>{truck.plate} - {truck.model} ({truck.capacity}kg)</span>
-                            {truck.status === 'active' && (
-                              <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            {selectedTruck && (
-              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">
-                      {availableTrucks.find(t => t.id === selectedTruck)?.plate}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {availableTrucks.find(t => t.id === selectedTruck)?.model}
-                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-blue-600">Capacity</p>
-                    <p className="text-lg font-bold text-blue-600">
-                      {availableTrucks.find(t => t.id === selectedTruck)?.capacity?.toLocaleString()} kg
-                    </p>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="bg-white border-t border-gray-200 px-6 py-4">
+                  <div className="flex justify-between items-center">
+                    <Button
+                      onClick={handleCloseModal}
+                      variant="outline"
+                      className="text-gray-700 border-gray-300 hover:bg-gray-50 px-6"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleCreateTrip}
+                      disabled={!selectedBranch || !selectedTruck || !selectedDriver}
+                      className="bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed px-8 py-2.5 font-semibold"
+                    >
+                      <Plus className="w-5 h-5 mr-2" />
+                      Create Trip
+                    </Button>
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Select Driver Section */}
-          <div className="dropdown-container">
-            <label className={`block text-sm font-bold mb-2 flex items-center gap-2 ${
-              selectedBranch && selectedTruck ? 'text-gray-700' : 'text-gray-400'
-            }`}>
-              <User className="w-4 h-4 text-orange-600" />
-              Driver <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none ${
-                selectedBranch && selectedTruck ? 'text-orange-400' : 'text-gray-300'
-              }`} />
-              <input
-                type="text"
-                value={selectedDriver ? (selectedDriver.name || '') + ' - ' + (selectedDriver.phone || '') + ` (${selectedDriver.license})` : ''}
-                onChange={(e) => setDriverSearchQuery(e.target.value)}
-                onFocus={() => selectedBranch && selectedTruck && setDriverDropdownOpen(true)}
-                placeholder="Search drivers..."
-                disabled={!selectedBranch || !selectedTruck}
-                className={`w-full pl-10 pr-10 py-3 border-2 text-gray-900 rounded-xl focus:outline-none transition-all font-semibold ${
-                  !selectedBranch || !selectedTruck
-                    ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500'
-                    : 'border-gray-300 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 bg-white hover:border-orange-400 cursor-pointer'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => selectedBranch && selectedTruck && setDriverDropdownOpen(!driverDropdownOpen)}
-                disabled={!selectedBranch || !selectedTruck}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 ${
-                  !selectedBranch || !selectedTruck ? 'cursor-not-allowed' : ''
-                }`}
-              >
-                <ChevronDown className={`w-5 h-5 transition-transform ${driverDropdownOpen ? 'rotate-180' : ''} ${
-                  selectedBranch && selectedTruck ? 'text-orange-400' : 'text-gray-300'
-                }`} />
-              </button>
-
-              {driverDropdownOpen && selectedBranch && selectedTruck && (
-                <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                  {filteredDrivers.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 text-sm font-medium">
-                      No drivers found
-                    </div>
-                  ) : (
-                    <div className="py-1">
-                      {filteredDrivers.map((driver) => (
-                        <button
-                          type="button"
-                          key={driver.id}
-                          onClick={() => {
-                            setSelectedDriver(driver);
-                            setDriverDropdownOpen(false);
-                          }}
-                          className={`w-full px-4 py-3 text-left font-semibold transition-colors ${
-                            selectedDriver?.id === driver.id
-                              ? 'bg-orange-50 text-orange-700'
-                              : 'text-gray-900 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span>{driver.name} - {driver.phone} ({driver.license})</span>
-                            {driver.status === 'active' && (
-                              <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Active</span>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-            {selectedDriver && (
-              <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">
-                      {selectedDriver.name}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {selectedDriver.phone}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Award className="w-3 h-3" />
-                        {selectedDriver.experience}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <CreditCard className="w-3 h-3" />
-                        {selectedDriver.license}
-                      </span>
-                    </div>
-                  </div>
-                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                    selectedDriver.status === "active"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-gray-100 text-gray-800"
-                  }`}>
-                    {selectedDriver.status}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
-      {/* Modal Footer */}
-      <div className="bg-white border-t border-gray-200 px-6 py-4">
-        <div className="flex justify-between items-center">
-          <Button
-            onClick={handleCloseModal}
-            variant="outline"
-            className="text-gray-700 border-gray-300 hover:bg-gray-50 px-6"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCreateTrip}
-            disabled={!selectedBranch || !selectedTruck || !selectedDriver}
-            className="bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed px-8 py-2.5 font-semibold"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Create Trip
-          </Button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+          )}
 
           {/* Order Assignment Modal - Same as original */}
           {showOrderModal && selectedTripForOrders && (
@@ -3299,13 +2497,12 @@ export default function Trips() {
                           Total After Assignment
                         </p>
                         <p
-                          className={`text-lg font-semibold ${
-                            (selectedTripForOrders.capacityUsed || 0) +
-                              calculateTotalWeight(selectedOrders) >
+                          className={`text-lg font-semibold ${(selectedTripForOrders.capacityUsed || 0) +
+                            calculateTotalWeight(selectedOrders) >
                             (selectedTripForOrders.capacityTotal || 0)
-                              ? "text-red-600"
-                              : "text-green-600"
-                          }`}
+                            ? "text-red-600"
+                            : "text-green-600"
+                            }`}
                         >
                           {(selectedTripForOrders.capacityUsed || 0) +
                             calculateTotalWeight(selectedOrders)}
@@ -3320,7 +2517,7 @@ export default function Trips() {
                             className={`h-3 rounded-full transition-all ${getCapacityColor(
                               getCapacityPercentage(
                                 (selectedTripForOrders.capacityUsed || 0) +
-                                  calculateTotalWeight(selectedOrders),
+                                calculateTotalWeight(selectedOrders),
                                 selectedTripForOrders.capacityTotal || 0
                               )
                             )}`}
@@ -3328,7 +2525,7 @@ export default function Trips() {
                               width: `${Math.min(
                                 getCapacityPercentage(
                                   (selectedTripForOrders.capacityUsed || 0) +
-                                    calculateTotalWeight(selectedOrders),
+                                  calculateTotalWeight(selectedOrders),
                                   selectedTripForOrders.capacityTotal || 0
                                 ),
                                 100
@@ -3339,7 +2536,7 @@ export default function Trips() {
                         <p className="text-sm text-gray-600 mt-1">
                           {getCapacityPercentage(
                             (selectedTripForOrders.capacityUsed || 0) +
-                              calculateTotalWeight(selectedOrders),
+                            calculateTotalWeight(selectedOrders),
                             selectedTripForOrders.capacityTotal || 0
                           )}
                           % capacity used
@@ -3398,25 +2595,23 @@ export default function Trips() {
                         {getAvailableOrders().map((order) => {
                           const wouldExceedCapacity =
                             (selectedTripForOrders.capacityUsed || 0) +
-                              calculateTotalWeight([
-                                ...selectedOrders,
-                                order.id,
-                              ]) >
+                            calculateTotalWeight([
+                              ...selectedOrders,
+                              order.id,
+                            ]) >
                             (selectedTripForOrders.capacityTotal || 0);
                           const isExpanded = expandedOrderIds.has(order.id);
-                          const orderItems = order.items;
+                          const orderItems = order.items_data || order.items_json || [];
                           const itemsArray = Array.isArray(orderItems) ? orderItems : [];
 
                           return (
                             <div
                               key={order.id}
-                              className={`border rounded-lg transition-all overflow-hidden ${
-                                selectedOrders.includes(order.id)
-                                  ? "border-blue-500 bg-blue-50"
-                                  : "border-gray-200 hover:border-gray-300"
-                              } ${
-                                wouldExceedCapacity ? "border-orange-400" : ""
-                              }`}
+                              className={`border rounded-lg transition-all overflow-hidden ${selectedOrders.includes(order.id)
+                                ? "border-blue-500 bg-blue-50"
+                                : "border-gray-200 hover:border-gray-300"
+                                } ${wouldExceedCapacity ? "border-orange-400" : ""
+                                }`}
                             >
                               {/* Order Header - Always Visible */}
                               <div className="p-4">
@@ -3651,10 +2846,10 @@ export default function Trips() {
                         <p className="text-sm text-gray-600">Selected Weight</p>
                         <p className="text-lg font-bold text-orange-600">
                           {(() => {
-                            const orderItems = splitOrder.items;
+                            const orderItems = splitOrder.items_data || splitOrder.items_json || splitOrder.items;
                             const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                            return itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }) => {
-                              const itemId = item.id || String(item.product_id);
+                            return itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                              const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                               if (selectedSplitItems.includes(itemId)) {
                                 const quantity = splitItemQuantities[itemId] || item.quantity || 1;
                                 const originalQuantity = item.quantity || 1;
@@ -3670,176 +2865,155 @@ export default function Trips() {
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-                  <div className="flex justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600">Customer:</span>
-                      <span className="font-medium text-black">{splitOrder.customer}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-gray-600">Total:</span>
-                      <span className="font-bold text-black">
-                        <CurrencyDisplay amount={splitOrder.total} />
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+                  {/* Items List */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-black">Order Items</h4>
+                    {(() => {
+                      const orderItems = splitOrder.items_data || splitOrder.items_json || splitOrder.items;
+                      const itemsArray = Array.isArray(orderItems) ? orderItems : [];
 
-            {/* Right Side - Items List */}
-            <div className="flex flex-col flex-1 min-w-0">
-              <div className="px-6 py-4 border-b border-gray-200 bg-white">
-                <h3 className="font-bold text-lg text-black">Order Items</h3>
-              </div>
-              <div className="flex-1 px-6 py-6 overflow-y-auto">
-                {(() => {
-                  const orderItems = splitOrder.items;
-                  const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-
-                  if (itemsArray.length === 0) {
-                    return (
-                      <div className="text-center py-8 text-gray-500">
-                        <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                        <p>No items found in this order</p>
-                      </div>
-                    );
-                  }
-
-                  return itemsArray.map((item: any, idx: number) => {
-                    const itemId = item.id || String(item.product_id) || String(idx);
-                    const isSelected = selectedSplitItems.includes(itemId);
-
-                    // Calculate available capacity
-                    const usedCapacity = selectedTripForOrders?.capacityUsed || 0;
-                    const totalCapacity = selectedTripForOrders?.capacityTotal || 0;
-                    const availableCapacity = totalCapacity - usedCapacity;
-
-                    // Calculate total weight of all currently selected items (using quantities)
-                    const currentSelectedWeight = itemsArray.reduce((sum: number, i: any) => {
-                      const iid = i.id || String(i.product_id) || String(idx);
-                      if (selectedSplitItems.includes(iid)) {
-                        const qty = splitItemQuantities[iid] || i.quantity || 1;
-                        const originalQty = i.quantity || 1;
-                        const totalWeight = i.total_weight || i.weight || 0;
-                        const weightPerUnit = totalWeight / originalQty;
-                        return sum + (weightPerUnit * qty);
+                      if (itemsArray.length === 0) {
+                        return (
+                          <div className="text-center py-8 text-gray-500">
+                            <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                            <p>No items found in this order</p>
+                          </div>
+                        );
                       }
-                      return sum;
-                    }, 0);
 
-                    // Calculate weight per unit for this item
-                    const originalQuantity = item.quantity || 1;
-                    const totalItemWeight = item.total_weight || item.weight || 0;
-                    const weightPerUnit = totalItemWeight / originalQuantity;
+                      return itemsArray.map((item: any, idx: number) => {
+                        // Use composite key to ensure uniqueness across all orders
+                        const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
+                        const isSelected = selectedSplitItems.includes(itemId);
 
-                    // Calculate max quantity that can fit for this item
-                    const remainingCapacity = availableCapacity - currentSelectedWeight;
-                    const maxQuantityForItem = isSelected ? originalQuantity : Math.floor(remainingCapacity / weightPerUnit);
-                    const clampedMaxQuantity = Math.max(0, Math.min(maxQuantityForItem, originalQuantity));
+                        // Calculate available capacity
+                        const usedCapacity = selectedTripForOrders?.capacityUsed || 0;
+                        const totalCapacity = selectedTripForOrders?.capacityTotal || 0;
+                        const availableCapacity = totalCapacity - usedCapacity;
 
-                    const canSelect = remainingCapacity >= 0 && clampedMaxQuantity > 0;
+                        // Calculate total weight of all currently selected items (using quantities)
+                        const currentSelectedWeight = itemsArray.reduce((sum: number, i: any, iIdx: number) => {
+                          const iid = `${splitOrder.id}-${i.id || i.product_id || iIdx}`;
+                          if (selectedSplitItems.includes(iid)) {
+                            const qty = splitItemQuantities[iid] || i.quantity || 1;
+                            const originalQty = i.quantity || 1;
+                            const totalWeight = i.total_weight || i.weight || 0;
+                            const weightPerUnit = totalWeight / originalQty;
+                            return sum + (weightPerUnit * qty);
+                          }
+                          return sum;
+                        }, 0);
 
-                    return (
-                      <div
-                        key={itemId}
-                        className={`border rounded-lg overflow-hidden transition-all ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-50'
-                            : canSelect
-                            ? 'border-gray-200 hover:border-gray-300 bg-white'
-                            : 'border-gray-200 bg-gray-100 opacity-60'
-                        }`}
-                      >
-                        <div className="p-4">
-                          <div className="flex items-start gap-4">
-                            <input
-                              type="checkbox"
-                              id={`item-${itemId}`}
-                              checked={isSelected}
-                              disabled={!canSelect && !isSelected}
-                              onChange={() => {
-                                setSelectedSplitItems(prev => {
-                                  const newSet = new Set(prev);
-                                  if (newSet.has(itemId)) {
-                                    newSet.delete(itemId);
-                                    // Clear quantity when unselecting
-                                    setSplitItemQuantities(prevQty => {
-                                      const newQty = { ...prevQty };
-                                      delete newQty[itemId];
-                                      return newQty;
-                                    });
-                                  } else {
-                                    newSet.add(itemId);
-                                    // Automatically set quantity to maximum that fits
-                                    setSplitItemQuantities(prev => ({
-                                      ...prev,
-                                      [itemId]: clampedMaxQuantity
-                                    }));
-                                  }
-                                  return Array.from(newSet);
-                                });
-                              }}
-                              className="w-5 h-5 text-blue-600 rounded mt-1"
-                            />
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                                  #{idx + 1}
-                                </span>
-                                <label
-                                  htmlFor={`item-${itemId}`}
-                                  className={`font-medium ${canSelect || isSelected ? 'text-black cursor-pointer' : 'text-gray-500 cursor-not-allowed'}`}
-                                >
-                                  {item.product_name || "Unknown Product"}
-                                </label>
-                                {item.product_code && (
-                                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                                    {item.product_code}
-                                  </span>
-                                )}
-                              </div>
-                              {item.description && (
-                                <p className="text-sm text-gray-600 mb-3">{item.description}</p>
-                              )}
+                        // Calculate weight per unit for this item
+                        const originalQuantity = item.quantity || 1;
+                        const totalItemWeight = item.total_weight || item.weight || 0;
+                        const weightPerUnit = totalItemWeight / originalQuantity;
 
-                              {/* Quantity Split Input */}
-                              <div className="mb-3">
-                                <label className="block text-xs font-medium text-black mb-1">
-                                  Quantity to Assign (Max: {clampedMaxQuantity} {clampedMaxQuantity < originalQuantity ? `- Limited by capacity` : ''})
-                                </label>
+                        // Calculate max quantity that can fit for this item
+                        const remainingCapacity = availableCapacity - currentSelectedWeight;
+                        const maxQuantityForItem = isSelected ? originalQuantity : Math.floor(remainingCapacity / weightPerUnit);
+                        const clampedMaxQuantity = Math.max(0, Math.min(maxQuantityForItem, originalQuantity));
+
+                        const canSelect = remainingCapacity >= 0 && clampedMaxQuantity > 0;
+
+                        return (
+                          <div
+                            key={itemId}
+                            className={`border rounded-lg overflow-hidden transition-all ${isSelected
+                              ? 'border-blue-500 bg-blue-50'
+                              : canSelect
+                                ? 'border-gray-200 hover:border-gray-300 bg-white'
+                                : 'border-gray-200 bg-gray-100 opacity-60'
+                              }`}
+                          >
+                            <div className="p-4">
+                              <div className="flex items-start gap-4">
                                 <input
-                                  type="number"
-                                  min="0"
-                                  max={clampedMaxQuantity}
-                                  value={isSelected ? (splitItemQuantities[itemId] || clampedMaxQuantity) : 0}
-                                  disabled={!isSelected}
-                                  onChange={(e) => {
-                                    let newQuantity = parseInt(e.target.value) || 0;
-                                    // Clamp to the maximum that fits in capacity
-                                    newQuantity = Math.max(0, Math.min(newQuantity, clampedMaxQuantity));
-                                    setSplitItemQuantities(prev => ({
-                                      ...prev,
-                                      [itemId]: newQuantity
-                                    }));
+                                  type="checkbox"
+                                  id={`item-${itemId}`}
+                                  checked={isSelected}
+                                  disabled={!canSelect && !isSelected}
+                                  onChange={() => {
+                                    setSelectedSplitItems(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(itemId)) {
+                                        newSet.delete(itemId);
+                                        // Clear quantity when unselecting
+                                        setSplitItemQuantities(prevQty => {
+                                          const newQty = { ...prevQty };
+                                          delete newQty[itemId];
+                                          return newQty;
+                                        });
+                                      } else {
+                                        newSet.add(itemId);
+                                        // Automatically set quantity to maximum that fits
+                                        setSplitItemQuantities(prev => ({
+                                          ...prev,
+                                          [itemId]: clampedMaxQuantity
+                                        }));
+                                      }
+                                      return Array.from(newSet);
+                                    });
                                   }}
-                                  className="w-32 px-2 py-1 text-sm text-black border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500"
+                                  className="w-5 h-5 text-blue-600 rounded mt-1"
                                 />
-                                {clampedMaxQuantity < originalQuantity && (
-                                  <p className="text-xs text-orange-600 mt-1">
-                                    ⚠️ Only {clampedMaxQuantity} units can fit in remaining capacity ({remainingCapacity.toFixed(2)} kg available)
-                                  </p>
-                                )}
-                              </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                                      #{idx + 1}
+                                    </span>
+                                    <label
+                                      htmlFor={`item-${itemId}`}
+                                      className={`font-medium ${canSelect || isSelected ? 'text-black cursor-pointer' : 'text-gray-500 cursor-not-allowed'}`}
+                                    >
+                                      {item.product_name || "Unknown Product"}
+                                    </label>
+                                    {item.product_code && (
+                                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                        {item.product_code}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {item.description && (
+                                    <p className="text-sm text-gray-600 mb-3">{item.description}</p>
+                                  )}
 
-                              <div className="grid grid-cols-4 gap-3 text-xs">
-                                <div className="bg-gray-50 p-2 rounded">
-                                  <p className="text-black">Total Qty</p>
-                                  <p className="font-medium text-black">{item.quantity || 1} {item.unit || 'pcs'}</p>
-                                </div>
-                                <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                                  {/* Quantity Split Input */}
+                                  <div className="mb-3">
+                                    <label className="block text-xs font-medium text-black mb-1">
+                                      Quantity to Assign (Max: {clampedMaxQuantity} {clampedMaxQuantity < originalQuantity ? `- Limited by capacity` : ''})
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={clampedMaxQuantity}
+                                      value={isSelected ? (splitItemQuantities[itemId] || clampedMaxQuantity) : 0}
+                                      disabled={!isSelected}
+                                      onChange={(e) => {
+                                        let newQuantity = parseInt(e.target.value) || 0;
+                                        // Clamp to the maximum that fits in capacity
+                                        newQuantity = Math.max(0, Math.min(newQuantity, clampedMaxQuantity));
+                                        setSplitItemQuantities(prev => ({
+                                          ...prev,
+                                          [itemId]: newQuantity
+                                        }));
+                                      }}
+                                      className="w-32 px-2 py-1 text-sm text-black border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500"
+                                    />
+                                    {clampedMaxQuantity < originalQuantity && (
+                                      <p className="text-xs text-orange-600 mt-1">
+                                        ⚠️ Only {clampedMaxQuantity} units can fit in remaining capacity ({remainingCapacity.toFixed(2)} kg available)
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <div className="grid grid-cols-4 gap-3 text-xs">
+                                    <div className="bg-gray-50 p-2 rounded">
+                                      <p className="text-black">Total Qty</p>
+                                      <p className="font-medium text-black">{item.quantity || 1} {item.unit || 'pcs'}</p>
+                                    </div>
+                                    <div className="bg-blue-50 p-2 rounded border border-blue-200">
                                       <p className="text-black">Assigning</p>
                                       <p className="font-medium text-black">
                                         {isSelected ? (splitItemQuantities[itemId] || item.quantity || 1) : 0} {item.unit || 'pcs'}
@@ -3890,8 +3064,8 @@ export default function Trips() {
                             {(() => {
                               const orderItems = splitOrder.items;
                               const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                              return itemsArray.reduce((sum: number, item: any) => {
-                                const itemId = item.id || String(item.product_id);
+                              return itemsArray.reduce((sum: number, item: any, idx: number) => {
+                                const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
                                   const quantity = splitItemQuantities[itemId] || item.quantity || 1;
                                   const originalQuantity = item.quantity || 1;
@@ -3911,8 +3085,8 @@ export default function Trips() {
                             {(() => {
                               const orderItems = splitOrder.items;
                               const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                              return itemsArray.reduce((sum: number, item: any) => {
-                                const itemId = item.id || String(item.product_id);
+                              return itemsArray.reduce((sum: number, item: any, idx: number) => {
+                                const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
                                   return sum + (splitItemQuantities[itemId] || item.quantity || 1);
                                 }
@@ -3932,8 +3106,8 @@ export default function Trips() {
                             {(() => {
                               const orderItems = splitOrder.items;
                               const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                              const remainingItems = itemsArray.filter((item: { id?: string; product_id?: string; quantity?: number }) => {
-                                const itemId = item.id || String(item.product_id);
+                              const remainingItems = itemsArray.filter((item: { id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                                const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
                                   const quantity = splitItemQuantities[itemId] || item.quantity || 1;
                                   return quantity < (item.quantity || 1);
@@ -3950,8 +3124,8 @@ export default function Trips() {
                             {(() => {
                               const orderItems = splitOrder.items;
                               const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                              const selectedWeight = itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }) => {
-                                const itemId = item.id || String(item.product_id);
+                              const selectedWeight = itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                                const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
                                   const quantity = splitItemQuantities[itemId] || item.quantity || 1;
                                   const originalQuantity = item.quantity || 1;
@@ -3972,8 +3146,8 @@ export default function Trips() {
                             {(() => {
                               const orderItems = splitOrder.items;
                               const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                              const selectedQty = itemsArray.reduce((sum: number, item: { id?: string; product_id?: string; quantity?: number }) => {
-                                const itemId = item.id || String(item.product_id);
+                              const selectedQty = itemsArray.reduce((sum: number, item: { id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                                const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
                                   return sum + (splitItemQuantities[itemId] || item.quantity || 1);
                                 }
@@ -3995,8 +3169,8 @@ export default function Trips() {
                   {(() => {
                     const orderItems = splitOrder.items;
                     const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                    const selectedWeight = itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }) => {
-                      const itemId = item.id || String(item.product_id);
+                    const selectedWeight = itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                      const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                       if (selectedSplitItems.includes(itemId)) {
                         const quantity = splitItemQuantities[itemId] || item.quantity || 1;
                         const originalQuantity = item.quantity || 1;

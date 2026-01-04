@@ -166,10 +166,49 @@ CREATE INDEX IF NOT EXISTS idx_order_documents_is_verified ON order_documents(is
 CREATE INDEX IF NOT EXISTS idx_order_status_history_order_id ON order_status_history(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_status_history_created_at ON order_status_history(created_at);
 
+-- Create trip_item_assignments junction table for tracking split/partial item assignments
+CREATE TABLE IF NOT EXISTS trip_item_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id VARCHAR(50) NOT NULL,  -- TMS trip ID (e.g., TRIP-XXXX)
+    order_id VARCHAR(255) NOT NULL,  -- Order UUID from orders table
+    order_item_id VARCHAR(255) NOT NULL,  -- Order item UUID from order_items table
+    order_number VARCHAR(50) NOT NULL,  -- Order number for easy lookup (e.g., ORD-2026...)
+    tenant_id VARCHAR(255) NOT NULL,
+
+    -- Assignment details
+    assigned_quantity INTEGER NOT NULL,  -- Quantity assigned to this trip
+    item_status VARCHAR(50) DEFAULT 'pending_to_assign' CHECK (
+        item_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned')
+    ),
+
+    -- Timestamps
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    -- Unique constraint: Same item can only be assigned once to the same trip
+    UNIQUE(trip_id, order_item_id)
+);
+
+-- Add comments for documentation
+COMMENT ON TABLE trip_item_assignments IS 'Junction table tracking which order items are assigned to which trips with quantities';
+COMMENT ON COLUMN trip_item_assignments.assigned_quantity IS 'Quantity of this item assigned to this trip';
+COMMENT ON COLUMN trip_item_assignments.item_status IS 'Current status of this item assignment';
+
+-- Create indexes for trip_item_assignments
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_trip_id ON trip_item_assignments(trip_id);
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_order_id ON trip_item_assignments(order_id);
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_order_item_id ON trip_item_assignments(order_item_id);
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_order_number ON trip_item_assignments(order_number);
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_tenant_id ON trip_item_assignments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_item_status ON trip_item_assignments(item_status);
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_trip_status ON trip_item_assignments(trip_id, item_status);
+CREATE INDEX IF NOT EXISTS idx_trip_item_assignments_order_trip ON trip_item_assignments(order_id, trip_id);
+
 -- Create triggers to update updated_at
 CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_order_items_updated_at BEFORE UPDATE ON order_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_order_documents_updated_at BEFORE UPDATE ON order_documents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_trip_item_assignments_updated_at BEFORE UPDATE ON trip_item_assignments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Create sequence for order numbers
 CREATE SEQUENCE IF NOT EXISTS order_number_seq
