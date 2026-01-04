@@ -141,7 +141,7 @@ class TripOrderResponse(BaseSchema):
     customer_contact: Optional[str] = None
     customer_phone: Optional[str] = None
     product_name: Optional[str] = None
-    status: OrderStatus
+    trip_order_status: OrderStatus  # Renamed from 'status' - delivery progress status (assigned->loading->on-route->completed)
     tms_order_status: Optional[str] = "available"
     item_status: Optional[str] = "pending_to_assign"  # Item-level status tracking
     total: float

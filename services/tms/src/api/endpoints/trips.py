@@ -488,7 +488,7 @@ async def get_trips(
                 customer_contact=order.customer_contact,
                 customer_phone=order.customer_phone,
                 product_name=order.product_name,
-                status=order.status,
+                trip_order_status=order.status,  # Renamed from 'status'
                 tms_order_status=order.tms_order_status,
                 total=order.total,
                 weight=order.weight,
@@ -664,7 +664,7 @@ async def get_trip(
                 customer_contact=order.customer_contact,
                 customer_phone=order.customer_phone,
                 product_name=order.product_name,
-                status=order.status,
+                trip_order_status=order.status,  # Renamed from 'status'
                 tms_order_status=order.tms_order_status,
                 total=order.total,
                 weight=order.weight,
@@ -887,7 +887,7 @@ async def update_trip(
                 "customer_contact": order.customer_contact,
                 "customer_phone": order.customer_phone,
                 "product_name": order.product_name,
-                "status": order.status,
+                "trip_order_status": order.status,  # Renamed from 'status' - delivery progress status
                 "total": order.total,
                 "weight": order.weight,
                 "volume": order.volume,
