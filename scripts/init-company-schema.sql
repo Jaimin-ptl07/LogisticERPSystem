@@ -33,7 +33,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS branches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     address VARCHAR(500),
     city VARCHAR(100),
@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS branches (
     created_by VARCHAR(255),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
 );
 
 -- Add created_by column if it doesn't exist (for migrations)
@@ -63,7 +64,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     phone VARCHAR(20),
     email VARCHAR(100),
@@ -77,7 +78,8 @@ CREATE TABLE IF NOT EXISTS customers (
     is_active BOOLEAN DEFAULT true,
     available_for_all_branches BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
 );
 
 -- Junction table for customer-branch relationships (for customers not available in all branches)
@@ -94,7 +96,7 @@ CREATE TABLE IF NOT EXISTS customer_branches (
 CREATE TABLE IF NOT EXISTS vehicles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    plate_number VARCHAR(20) UNIQUE NOT NULL,
+    plate_number VARCHAR(20) NOT NULL,
     make VARCHAR(50),
     model VARCHAR(50),
     year INTEGER,
@@ -107,7 +109,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
     is_active BOOLEAN DEFAULT true,
     available_for_all_branches BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, plate_number)  -- Tenant-aware unique constraint
 );
 
 -- Junction table for vehicle-branch relationships (for vehicles not available in all branches)
@@ -137,7 +140,7 @@ CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
     category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
-    code VARCHAR(50) UNIQUE NOT NULL,
+    code VARCHAR(50) NOT NULL,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(500),
     unit_price DECIMAL(12,2) NOT NULL,
@@ -154,7 +157,8 @@ CREATE TABLE IF NOT EXISTS products (
     is_active BOOLEAN DEFAULT true,
     available_for_all_branches BOOLEAN DEFAULT true,  -- New field for branch availability
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
 );
 
 -- Junction table for product-branch relationships (for products not available in all branches)
@@ -188,13 +192,14 @@ CREATE TABLE IF NOT EXISTS pricing_rules (
 CREATE TABLE IF NOT EXISTS service_zones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(500),
     coverage_areas JSONB,  -- List of postal codes or coordinates
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
 );
 
 -- Create indexes for performance
@@ -313,7 +318,7 @@ CREATE TABLE IF NOT EXISTS user_invitations (
     id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     tenant_id VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    invitation_token VARCHAR(255) UNIQUE NOT NULL,
+    invitation_token VARCHAR(255) UNIQUE NOT NULL,  -- Global uniqueness for security
     role_id VARCHAR(50),  -- Auth service role ID stored as string (no FK constraint)
     branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
     invited_by VARCHAR(255) NOT NULL,  -- User ID who sent the invitation
@@ -324,7 +329,8 @@ CREATE TABLE IF NOT EXISTS user_invitations (
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, email)  -- Tenant-aware unique constraint (allows same email across tenants)
 );
 
 -- Create employee_profiles table
@@ -332,8 +338,8 @@ CREATE TABLE IF NOT EXISTS user_invitations (
 CREATE TABLE IF NOT EXISTS employee_profiles (
     id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     tenant_id VARCHAR(255) NOT NULL,
-    user_id VARCHAR(255) NOT NULL UNIQUE,  -- Reference to auth service users table
-    employee_code VARCHAR(20) UNIQUE,
+    user_id VARCHAR(255) NOT NULL UNIQUE,  -- Reference to auth service users table (global uniqueness)
+    employee_code VARCHAR(20),
     role_id VARCHAR(50) NOT NULL,  -- Auth service role ID stored as string (no FK constraint)
     branch_id UUID REFERENCES branches(id),
     first_name VARCHAR(100),
@@ -363,7 +369,8 @@ CREATE TABLE IF NOT EXISTS employee_profiles (
     aadhar_number VARCHAR(20),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, employee_code)  -- Tenant-aware unique constraint
 );
 
 -- Create driver_profiles table (extends employee_profiles)
@@ -371,7 +378,7 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     employee_profile_id VARCHAR(36) NOT NULL REFERENCES employee_profiles(id) ON DELETE CASCADE,
     tenant_id VARCHAR(255) NOT NULL,
-    license_number VARCHAR(50) UNIQUE NOT NULL,
+    license_number VARCHAR(50) NOT NULL,
     license_type VARCHAR(20) NOT NULL CHECK (license_type IN ('light_motor', 'heavy_motor', 'transport', 'goods')),
     license_expiry DATE NOT NULL,
     license_issuing_authority VARCHAR(100),
@@ -390,7 +397,8 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     police_verification_date DATE,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, license_number)  -- Tenant-aware unique constraint
 );
 
 -- Create finance_manager_profiles table (extends employee_profiles)
