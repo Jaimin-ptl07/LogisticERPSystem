@@ -18,7 +18,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE vehicle_status AS ENUM ('available', 'on_trip', 'maintenance', 'out_of_service');
+    CREATE TYPE vehicle_status AS ENUM ('available', 'assigned', 'on_trip', 'maintenance', 'out_of_service');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;

@@ -42,6 +42,199 @@ router = APIRouter(
 COMPANY_SERVICE_URL = "http://company-service:8002"
 
 
+async def _get_vehicle_id_by_plate(
+    plate_number: str,
+    auth_headers: dict,
+    tenant_id: str
+) -> Optional[str]:
+    """
+    Get vehicle ID from plate number by querying Company Service
+    """
+    try:
+        async with AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{COMPANY_SERVICE_URL}/vehicles/",
+                params={
+                    "search": plate_number,
+                    "tenant_id": tenant_id,
+                    "per_page": 1
+                },
+                headers=auth_headers
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                items = data.get("items", [])
+                if items and len(items) > 0:
+                    # Find exact match for plate number
+                    for vehicle in items:
+                        if vehicle.get("plate_number") == plate_number:
+                            vehicle_id = vehicle.get("id")
+                            logger.info(f"Found vehicle ID {vehicle_id} for plate {plate_number}")
+                            return str(vehicle_id)
+
+            logger.warning(f"No vehicle found for plate number: {plate_number}")
+            return None
+    except Exception as e:
+        logger.error(f"Error getting vehicle ID by plate: {str(e)}")
+        return None
+
+
+async def _update_truck_status(
+    truck_plate: str,
+    new_status: str,
+    auth_headers: dict,
+    tenant_id: str
+):
+    """
+    Update truck status in Company Service
+
+    Status mapping:
+    - assigned: When truck is assigned to a trip (planning -> loading)
+    - on_trip: When trip is on-route
+    - available: When trip is completed or cancelled
+    """
+    # Map TMS status to Company Service status
+    status_mapping = {
+        "assigned": "assigned",  # Assigned to a trip
+        "on-route": "on_trip",
+        "available": "available"
+    }
+
+    company_status = status_mapping.get(new_status)
+    if not company_status:
+        logger.warning(f"No status mapping for truck status: {new_status}")
+        return
+
+    # Get vehicle ID from plate number
+    vehicle_id = await _get_vehicle_id_by_plate(truck_plate, auth_headers, tenant_id)
+    if not vehicle_id:
+        logger.error(f"Cannot update truck status - vehicle not found for plate: {truck_plate}")
+        return
+
+    try:
+        async with AsyncClient(timeout=10.0) as client:
+            response = await client.put(
+                f"{COMPANY_SERVICE_URL}/vehicles/{vehicle_id}/status",
+                params={"status": company_status, "tenant_id": tenant_id},
+                headers=auth_headers
+            )
+
+            if response.status_code == 200:
+                logger.info(f"Updated truck {truck_plate} (ID: {vehicle_id}) status to {company_status}")
+            else:
+                logger.error(f"Failed to update truck status: {response.status_code} - {response.text}")
+    except Exception as e:
+        logger.error(f"Error updating truck status: {str(e)}")
+
+
+async def _update_driver_status(
+    driver_id: str,
+    new_status: str,
+    auth_headers: dict,
+    tenant_id: str
+):
+    """
+    Update driver status in Company Service
+
+    Status mapping:
+    - assigned: When driver is assigned to a trip
+    - on-trip: When trip is on-route
+    - available: When trip is completed or cancelled
+
+    Note: driver_id is user_id from auth service. We need to get the driver profile ID first.
+    """
+    try:
+        # First, get the driver profile using user_id
+        async with AsyncClient(timeout=10.0) as client:
+            # Get driver profile by user_id
+            get_response = await client.get(
+                f"{COMPANY_SERVICE_URL}/profiles/drivers/by-user/{driver_id}",
+                params={"tenant_id": tenant_id},
+                headers=auth_headers
+            )
+
+            if get_response.status_code != 200:
+                logger.error(f"Failed to get driver profile for user_id {driver_id}: {get_response.status_code} - {get_response.text}")
+                return
+
+            driver_profile = get_response.json()
+            driver_profile_id = driver_profile.get("id")
+
+            if not driver_profile_id:
+                logger.error(f"No driver profile ID found for user_id {driver_id}")
+                return
+
+            logger.info(f"Found driver profile {driver_profile_id} for user_id {driver_id}")
+
+            # Now update the driver profile using the profile_id
+            update_response = await client.put(
+                f"{COMPANY_SERVICE_URL}/profiles/drivers/{driver_profile_id}",
+                params={"tenant_id": tenant_id},
+                headers=auth_headers,
+                json={"current_status": new_status}
+            )
+
+            if update_response.status_code == 200:
+                logger.info(f"Updated driver {driver_id} (profile: {driver_profile_id}) status to {new_status}")
+            else:
+                logger.error(f"Failed to update driver status: {update_response.status_code} - {update_response.text}")
+    except Exception as e:
+        logger.error(f"Error updating driver status: {str(e)}")
+
+
+async def _update_resource_statuses_for_trip(
+    trip_status: str,
+    truck_plate: str,
+    driver_id: str,
+    auth_headers: dict,
+    tenant_id: str
+):
+    """
+    Update truck and driver status based on trip status
+
+    Mapping:
+    - planning/created: truck=assigned, driver=assigned
+    - planning -> loading: truck=assigned, driver=assigned (reinforce)
+    - loading -> on-route: truck=on_trip, driver=on-trip
+    - on-route -> completed: truck=available, driver=available
+    - any -> cancelled: truck=available, driver=available
+    """
+    status_mappings = {
+        "planning": {
+            "truck": "assigned",
+            "driver": "assigned"
+        },
+        "loading": {
+            "truck": "assigned",
+            "driver": "assigned"
+        },
+        "on-route": {
+            "truck": "on-route",
+            "driver": "on-trip"
+        },
+        "completed": {
+            "truck": "available",
+            "driver": "available"
+        },
+        "cancelled": {
+            "truck": "available",
+            "driver": "available"
+        }
+    }
+
+    mapping = status_mappings.get(trip_status)
+    if not mapping:
+        logger.info(f"No resource status update needed for trip status: {trip_status}")
+        return
+
+    # Update truck status
+    await _update_truck_status(truck_plate, mapping["truck"], auth_headers, tenant_id)
+
+    # Update driver status
+    await _update_driver_status(driver_id, mapping["driver"], auth_headers, tenant_id)
+
+
 async def _update_order_item_statuses(
     trip_id: str,
     trip_status: str,
@@ -541,6 +734,15 @@ async def create_trip(
     await db.commit()
     await db.refresh(trip)
 
+    # Update truck and driver status to 'assigned' when trip is created
+    await _update_resource_statuses_for_trip(
+        trip.status or "planning",  # Use trip status or default to planning
+        trip.truck_plate,
+        trip.driver_id,
+        auth_headers,
+        tenant_id
+    )
+
     # Send audit log
     audit_client = AuditClient(auth_headers)
     await audit_client.log_event(
@@ -628,9 +830,19 @@ async def update_trip(
     await db.commit()
     await db.refresh(trip)
 
-    # If status changed, update item statuses in Orders service
+    # If status changed, update item statuses in Orders service AND truck/driver status in Company service
     if 'status' in update_data and old_status != trip.status:
+        # Update order item statuses
         await _update_order_item_statuses(trip_id, trip.status, auth_headers, token_data, tenant_id)
+
+        # Update truck and driver statuses based on new trip status
+        await _update_resource_statuses_for_trip(
+            trip.status,
+            trip.truck_plate,
+            trip.driver_id,
+            auth_headers,
+            tenant_id
+        )
 
     # Fetch orders for this trip to avoid lazy loading issues
     orders_query = select(TripOrder).where(
@@ -700,12 +912,19 @@ async def update_trip(
 
 @router.delete("/{trip_id}")
 async def delete_trip(
+    request: Request,
     trip_id: str,
     token_data: TokenData = Depends(require_permissions(["trips:delete"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """Delete trip"""
+    # Get authorization header for Company service
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
     # Get existing trip
     query = select(Trip).where(
         and_(
@@ -719,9 +938,22 @@ async def delete_trip(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
+    # Store truck and driver info before deleting
+    truck_plate = trip.truck_plate
+    driver_id = trip.driver_id
+
     # Delete trip (orders will be deleted via cascade)
     await db.delete(trip)
     await db.commit()
+
+    # Release truck and driver - set them back to available
+    await _update_resource_statuses_for_trip(
+        "cancelled",  # Use cancelled status mapping to release resources
+        truck_plate,
+        driver_id,
+        auth_headers,
+        tenant_id
+    )
 
     return {"message": "Trip deleted successfully"}
 

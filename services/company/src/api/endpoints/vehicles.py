@@ -126,12 +126,12 @@ async def get_vehicle_status_options():
     """
     logger.info("Getting vehicle status options...")
     try:
-        status_options = ["available", "on_trip", "maintenance", "out_of_service"]
+        status_options = ["available", "assigned", "on_trip", "maintenance", "out_of_service"]
         logger.info(f"Returning status options: {status_options}")
         return status_options
     except Exception as e:
         logger.error(f"Error getting vehicle status options: {e}")
-        return ["available", "on_trip", "maintenance", "out_of_service"]
+        return ["available", "assigned", "on_trip", "maintenance", "out_of_service"]
 
 
 @router.get("/{vehicle_id}", response_model=VehicleSchema)

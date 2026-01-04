@@ -251,19 +251,26 @@ export default function Trips() {
 
   const handleStatusChange = async (tripId: string, newStatus: string) => {
     try {
-      // Check if trying to change to loading status and validate order statuses
-      if (newStatus === "loading") {
-        const trip = allTrips.find((t) => t.id === tripId);
-        if (trip && trip.orders) {
-          const hasPendingOrders = trip.orders.some(
-            (order) => order.status === "submitted"
+      // Get the trip details
+      const trip = allTrips.find((t) => t.id === tripId);
+
+      // Check if trip has orders and validate their statuses before any status change
+      if (trip && trip.orders && trip.orders.length > 0) {
+        // Check if any assigned order does NOT have finance_approved status
+        const hasNonFinanceApprovedOrders = trip.orders.some(
+          (order) => order.status !== "finance_approved"
+        );
+
+        if (hasNonFinanceApprovedOrders) {
+          // Find the first non-finance_approved order to show in the error message
+          const nonApprovedOrder = trip.orders.find(
+            (order) => order.status !== "finance_approved"
           );
-          if (hasPendingOrders) {
-            alert(
-              "Cannot change trip status to loading while there are orders submitted for approval."
-            );
-            return;
-          }
+
+          alert(
+            `Cannot change trip status. Order "${nonApprovedOrder?.order_id || "N/A"}" has status "${nonApprovedOrder?.status || "unknown"}". All assigned orders must be "finance_approved" before the trip status can be changed.`
+          );
+          return;
         }
       }
 
@@ -506,8 +513,45 @@ export default function Trips() {
     console.log("getApprovedOrders - sample tms statuses:", availableOrders.slice(0, 10).map(o => ({ id: o.id, status: o.status, tms_status: o.tms_order_status })));
     return filtered;
   };
+
+  // Helper function to get truck status badge variant
+  const getTruckStatusVariant = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case "available":
+        return "success";
+      case "in_use":
+      case "on-trip":
+        return "warning";
+      case "maintenance":
+      case "out-of-service":
+        return "danger";
+      default:
+        return "default";
+    }
+  };
+
+  // Helper function to get driver status badge variant
+  const getDriverStatusVariant = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case "available":
+        return "success";
+      case "on_trip":
+      case "on-trip":
+        return "warning";
+      case "on_leave":
+      case "on-leave":
+        return "info";
+      case "unavailable":
+        return "danger";
+      default:
+        return "default";
+    }
+  };
+
+  // Helper functions for trip creation - only return available resources
   const getTrucksAvailable = () =>
     availableTrucks.filter((truck) => truck.status === "available");
+
   const getDriversAvailable = () => {
     console.log("getDriversAvailable - availableDrivers:", availableDrivers);
     console.log("getDriversAvailable - selectedBranch:", selectedBranch);
@@ -2034,25 +2078,27 @@ export default function Trips() {
             {/* Resources Tab */}
             <TabsContent value="resources">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Available Trucks */}
+                {/* All Trucks */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-black flex items-center gap-2">
                       <Truck className="w-5 h-5 text-gray-600" />
-                      Available Trucks ({getTrucksAvailable().length})
+                      All Trucks ({availableTrucks.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {getTrucksAvailable().length > 0 ? (
-                        getTrucksAvailable().map((truck) => (
+                      {availableTrucks.length > 0 ? (
+                        availableTrucks.map((truck) => (
                           <div
                             key={truck.id}
                             className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                           >
                             <div className="flex items-center justify-between mb-2">
                               <h4 className="font-bold text-lg text-gray-900">{truck.plate}</h4>
-                              <Badge variant="success" className="text-xs">Available</Badge>
+                              <Badge variant={getTruckStatusVariant(truck.status)} className="text-xs capitalize">
+                                {truck.status || "Unknown"}
+                              </Badge>
                             </div>
                             <div className="text-sm text-gray-600 space-y-1">
                               <p>Model: <span className="font-medium text-gray-900">{truck.model}</span></p>
@@ -2063,19 +2109,19 @@ export default function Trips() {
                       ) : (
                         <div className="text-center py-12 bg-gray-50 border border-gray-200 rounded-lg">
                           <Truck className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                          <p className="text-gray-500">No trucks available</p>
+                          <p className="text-gray-500">No trucks found</p>
                         </div>
                       )}
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Available Drivers */}
+                {/* All Drivers */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-black flex items-center gap-2">
                       <User className="w-5 h-5 text-gray-600" />
-                      Available Drivers ({availableDrivers.length})
+                      All Drivers ({availableDrivers.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -2088,7 +2134,9 @@ export default function Trips() {
                           >
                             <div className="flex items-center justify-between mb-2">
                               <h4 className="font-bold text-lg text-gray-900">{driver.name}</h4>
-                              <Badge variant="success" className="text-xs">Available</Badge>
+                              <Badge variant={getDriverStatusVariant(driver.status)} className="text-xs capitalize">
+                                {driver.status?.replace("_", " ") || "Unknown"}
+                              </Badge>
                             </div>
                             <div className="text-sm text-gray-600 space-y-1">
                               <p className="flex items-center gap-1">
@@ -2102,7 +2150,7 @@ export default function Trips() {
                       ) : (
                         <div className="text-center py-12 bg-gray-50 border border-gray-200 rounded-lg">
                           <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                          <p className="text-gray-500">No drivers available</p>
+                          <p className="text-gray-500">No drivers found</p>
                         </div>
                       )}
                     </div>

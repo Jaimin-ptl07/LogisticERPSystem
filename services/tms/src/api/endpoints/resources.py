@@ -86,7 +86,7 @@ async def get_trucks(
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
-    """Get available trucks from Company service filtered by assigned branches
+    """Get trucks from Company service filtered by assigned branches
 
     For Admin users: Returns ALL trucks for the tenant
     For Logistics Managers: Returns trucks from assigned branches only
@@ -103,9 +103,8 @@ async def get_trucks(
 
     # Determine parameters for vehicle query
     if is_admin:
-        # Admin - get all trucks for tenant
+        # Admin - get all trucks for tenant (no status filter)
         params = {
-            "status": "available",
             "is_active": True,
             "per_page": 100,
             "tenant_id": tenant_id
@@ -136,7 +135,6 @@ async def get_trucks(
                 return []
 
             params = {
-                "status": "available",
                 "is_active": True,
                 "per_page": 100,
                 "tenant_id": tenant_id,
@@ -159,7 +157,7 @@ async def get_trucks(
                 plate="TEMP-001",
                 model="Fallback Truck",
                 capacity=1000.0,
-                status="available"
+                status="unknown"
             )]
 
         data = response.json()
@@ -176,12 +174,15 @@ async def get_trucks(
             model = vehicle.get("model", "")
             truck_model = f"{make} {model}".strip() if make or model else "Unknown"
 
+            # Get actual status from vehicle
+            vehicle_status = vehicle.get("status", "unknown")
+
             trucks.append(Truck(
                 id=str(vehicle["id"]),
                 plate=vehicle["plate_number"],
                 model=truck_model,
                 capacity=float(capacity),
-                status="available"  # All vehicles from /available endpoint are available
+                status=vehicle_status
             ))
 
         logger.info(f"Returning {len(trucks)} trucks for user {token_data.user_id}")
