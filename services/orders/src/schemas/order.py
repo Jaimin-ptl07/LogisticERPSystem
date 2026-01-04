@@ -59,6 +59,9 @@ class OrderCreate(OrderBase):
 
 class OrderUpdate(BaseModel):
     """Schema for updating an order"""
+    # Basic fields (for editing draft orders)
+    customer_id: Optional[str] = None
+    branch_id: Optional[str] = None
     order_type: Optional[OrderType] = None
     priority: Optional[str] = Field(None, max_length=20)
 
@@ -94,6 +97,9 @@ class OrderUpdate(BaseModel):
     # Dates
     pickup_date: Optional[datetime] = None
     delivery_date: Optional[datetime] = None
+
+    # Items - for updating order items when editing draft orders
+    items: Optional[List["OrderItemCreateRequest"]] = None
 
 
 # Response schemas

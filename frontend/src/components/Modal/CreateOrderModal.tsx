@@ -10,12 +10,14 @@ import { Button } from "@/components/ui/Button";
 import { toast } from "react-hot-toast";
 import {
   useCreateOrderMutation,
+  useUpdateOrderMutation,
   useGetBranchesQuery,
   useGetCustomersQuery,
   useGetProductsQuery,
   Branch,
   Customer,
   Product,
+  Order,
 } from "@/services/api/ordersApi";
 import { Package, Plus, X, Info, User, Weight, Clock, Building2, FileText, Box, TrendingUp, ChevronDown, Search } from "lucide-react";
 import { skipToken } from "@reduxjs/toolkit/query";
@@ -45,6 +47,7 @@ interface CreateOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (order: any) => void;
+  order?: Order;  // Add this for edit mode
 }
 
 // Searchable Select Component
@@ -212,6 +215,7 @@ export function CreateOrderModal({
   isOpen,
   onClose,
   onSuccess,
+  order,
 }: CreateOrderModalProps) {
   const [showBranchNote, setShowBranchNote] = useState(false);
   const lastItemRef = useRef<HTMLDivElement>(null);
@@ -263,20 +267,73 @@ export function CreateOrderModal({
     selectedBranch ? { branch_id: selectedBranch } : skipToken
   );
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
+  const [updateOrder, { isLoading: isUpdating }] = useUpdateOrderMutation();
+
+  // Determine if we're in edit mode
+  const isEditMode = !!order;
+  const isLoading = isCreating || isUpdating;
 
   const branches = branchesData || [];
   const customers = customersData || [];
   const products = productsData || [];
 
-  // Generate order number on mount
+  // Generate order number on mount (only in create mode)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !isEditMode) {
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const uniqueNumber = uuidv4().slice(0, 8).toUpperCase();
       const orderNumber = `ORD-${today}-${uniqueNumber}`;
       setValue("orderNumber", orderNumber);
     }
-  }, [isOpen, setValue]);
+  }, [isOpen, setValue, isEditMode]);
+
+  // Populate form with existing order data when editing
+  useEffect(() => {
+    if (isEditMode && order) {
+      // Populate basic fields
+      setValue("orderNumber", order.order_number);
+      setValue("branch", order.branch_id);
+      setValue("customer", order.customer_id);
+      setValue("notes", order.special_instructions || "");
+
+      // Calculate due days from delivery_date
+      if (order.delivery_date) {
+        const deliveryDate = new Date(order.delivery_date);
+        const today = new Date();
+        const diffTime = deliveryDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        setValue("dueDays", diffDays > 0 ? diffDays : 7);
+      }
+
+      // Populate order items
+      if (order.items && order.items.length > 0) {
+        const orderItems = order.items.map((item) => ({
+          id: uuidv4(),
+          productName: item.product_name || "",
+          weight: item.weight || 0,
+          quantity: item.quantity || 1,
+        }));
+        setValue("orderItems", orderItems);
+      }
+    } else if (isOpen && !isEditMode) {
+      // Reset form for create mode
+      reset({
+        orderNumber: "",
+        dueDays: 7,
+        branch: "",
+        customer: "",
+        notes: "",
+        orderItems: [
+          {
+            id: "1",
+            productName: "",
+            weight: 0,
+            quantity: 1,
+          },
+        ],
+      });
+    }
+  }, [isEditMode, order, isOpen, setValue, reset]);
 
   const calculateItemTotalWeight = (weight: number, quantity: number) => {
     return weight * quantity;
@@ -411,18 +468,26 @@ export function CreateOrderModal({
         special_instructions: data.notes,
       };
 
-      const createdOrder = await createOrder(orderData).unwrap();
-      toast.success("Order created successfully");
+      let result;
+      if (isEditMode && order) {
+        // Update existing order
+        result = await updateOrder({ id: order.id, data: orderData }).unwrap();
+        toast.success("Order updated successfully");
+      } else {
+        // Create new order
+        result = await createOrder(orderData).unwrap();
+        toast.success("Order created successfully");
+      }
 
       reset();
       onClose();
 
       if (onSuccess) {
-        onSuccess(createdOrder);
+        onSuccess(result);
       }
     } catch (error: unknown) {
-      console.error("Failed to create order:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to create order";
+      console.error(`Failed to ${isEditMode ? "update" : "create"} order:`, error);
+      const errorMessage = error instanceof Error ? error.message : `Failed to ${isEditMode ? "update" : "create"} order`;
       toast.error(errorMessage);
     }
   };
@@ -444,7 +509,7 @@ export function CreateOrderModal({
     <ModalLayout
       isOpen={isOpen}
       onClose={handleCancel}
-      title="Create New Order"
+      title={isEditMode ? "Edit Order" : "Create New Order"}
       size="xl"
       className="max-h-[90vh] overflow-y-auto m-2 sm:m-4 w-full max-w-6xl"
     >
@@ -847,17 +912,17 @@ export function CreateOrderModal({
             type="submit"
             disabled={
               !isFormValid() ||
-              isCreating ||
+              isLoading ||
               productsLoading ||
               customersLoading
             }
             className="cursor-pointer w-full sm:w-auto order-1 sm:order-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isCreating
-              ? "Creating Order..."
+            {isLoading
+              ? (isEditMode ? "Updating Order..." : "Creating Order...")
               : productsLoading || customersLoading
               ? "Loading Data..."
-              : "Create Order"}
+              : (isEditMode ? "Update Order" : "Create Order")}
           </Button>
         </div>
       </form>
