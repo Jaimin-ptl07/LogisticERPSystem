@@ -39,6 +39,9 @@ export interface User {
     id: string;
     name: string;
     domain?: string;
+    settings?: string; // JSON string of tenant settings (currency, timezone)
+    is_active?: boolean;
+    created_at?: string;
   };
 }
 

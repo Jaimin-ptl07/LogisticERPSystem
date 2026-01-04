@@ -177,7 +177,39 @@ export default function CustomersPage() {
   };
 
   const getBusinessTypeBadge = (customer: any) => {
-    // Use business_type_relation (new) if available, fallback to business_type (old enum)
+    // Use business_types (new multiple) if available, fallback to business_type_relation (single), then business_type (old enum)
+    const businessTypes = customer.business_types || [];
+
+    if (businessTypes.length > 0) {
+      // Display first 2 business types and count for remaining
+      const displayTypes = businessTypes.slice(0, 2);
+      const remainingCount = businessTypes.length - 2;
+
+      const colors: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
+        individual: "default",
+        small_business: "info",
+        corporate: "success",
+        government: "warning",
+      };
+
+      return (
+        <div className="space-y-1">
+          {displayTypes.map((bt: any) => {
+            const badgeColor = colors[bt.code] || "info";
+            return (
+              <Badge key={bt.id} variant={badgeColor}>
+                {bt.name}
+              </Badge>
+            );
+          })}
+          {remainingCount > 0 && (
+            <div className="text-xs text-gray-500">+{remainingCount} more</div>
+          )}
+        </div>
+      );
+    }
+
+    // Fallback to old single business type display
     const businessTypeName =
       customer.business_type_relation?.name ||
       customer.business_type?.replace("_", " ") ||
@@ -193,7 +225,6 @@ export default function CustomersPage() {
       government: "warning",
     };
 
-    // Determine badge color based on business type name (for dynamic types)
     let badgeColor: "default" | "success" | "warning" | "danger" | "info" =
       "default";
 
@@ -360,11 +391,17 @@ export default function CustomersPage() {
             <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
               {isLoading
                 ? "..."
-                : customers.filter(
-                    (c) =>
+                : customers.filter((c) => {
+                    // Check if customer has 'corporate' in business_types array
+                    if (c.business_types && c.business_types.length > 0) {
+                      return c.business_types.some((bt: any) => bt.code === "corporate");
+                    }
+                    // Fallback to old single business type fields
+                    return (
                       c.business_type_relation?.code === "corporate" ||
                       c.business_type === "corporate"
-                  ).length}
+                    );
+                  }).length}
             </p>
           </div>
         </div>

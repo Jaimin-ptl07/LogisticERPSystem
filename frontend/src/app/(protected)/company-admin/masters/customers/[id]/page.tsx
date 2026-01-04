@@ -81,7 +81,33 @@ export default function CustomerDetailsPage() {
   );
 
   const getBusinessTypeBadge = (customer: any) => {
-    // Use business_type_relation (new) if available, fallback to business_type (old enum)
+    // Use business_types (new multiple) if available, fallback to business_type_relation (single), then business_type (old enum)
+    const businessTypes = customer.business_types || [];
+
+    if (businessTypes.length > 0) {
+      // Display all business types as badges
+      const colors: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
+        individual: "default",
+        small_business: "info",
+        corporate: "success",
+        government: "warning",
+      };
+
+      return (
+        <div className="space-y-1">
+          {businessTypes.map((bt: any) => {
+            const badgeColor = colors[bt.code] || "info";
+            return (
+              <Badge key={bt.id} variant={badgeColor}>
+                {bt.name}
+              </Badge>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // Fallback to old single business type display
     const businessTypeName = customer.business_type_relation?.name ||
       customer.business_type?.replace("_", " ") ||
       "N/A";

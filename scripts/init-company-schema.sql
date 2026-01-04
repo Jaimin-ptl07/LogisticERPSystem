@@ -665,6 +665,35 @@ CREATE TRIGGER update_business_types_updated_at BEFORE UPDATE ON business_types
 ALTER TABLE business_types ENABLE ROW LEVEL SECURITY;
 
 -- ================================================================================
+-- MIGRATION 017: Add customer_business_types junction table for multiple business types
+-- ================================================================================
+
+-- Create junction table for customer-business type relationships (many-to-many)
+CREATE TABLE IF NOT EXISTS customer_business_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    business_type_id UUID NOT NULL REFERENCES business_types(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255),
+    UNIQUE(customer_id, business_type_id)  -- Prevent duplicate relationships
+);
+
+-- Create indexes for customer_business_types table
+CREATE INDEX IF NOT EXISTS idx_customer_business_types_customer_id ON customer_business_types(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_business_types_business_type_id ON customer_business_types(business_type_id);
+CREATE INDEX IF NOT EXISTS idx_customer_business_types_tenant_id ON customer_business_types(tenant_id);
+
+-- Add comments
+COMMENT ON TABLE customer_business_types IS 'Junction table for many-to-many relationship between customers and business types';
+COMMENT ON COLUMN customer_business_types.customer_id IS 'Reference to customers table';
+COMMENT ON COLUMN customer_business_types.business_type_id IS 'Reference to business_types table';
+COMMENT ON COLUMN customer_business_types.tenant_id IS 'Tenant ID for multi-tenancy';
+
+-- Enable Row Level Security for customer_business_types
+ALTER TABLE customer_business_types ENABLE ROW LEVEL SECURITY;
+
+-- ================================================================================
 -- MIGRATION 011: Add vehicle_types table for dynamic vehicle type management
 -- ================================================================================
 -- Make the old vehicle_type column nullable to support the new vehicle_type_id

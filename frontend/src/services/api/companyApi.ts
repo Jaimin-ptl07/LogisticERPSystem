@@ -230,14 +230,16 @@ export interface Customer {
   state?: string
   postal_code?: string
   business_type?: string  // Deprecated - old enum
-  business_type_id?: string  // New foreign key to business_types table
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
   credit_limit: number
   pricing_tier: string
   is_active: boolean
   created_at: string
   updated_at?: string
   home_branch?: Branch
-  business_type_relation?: BusinessTypeModel
+  business_type_relation?: BusinessTypeModel  // Deprecated - single business type
+  business_types?: BusinessTypeModel[]  // New - multiple business types
 }
 
 export interface Vehicle {
@@ -377,7 +379,10 @@ export interface CustomerCreate {
   state?: string
   postal_code?: string
   business_type?: string  // Deprecated - old enum
-  business_type_id?: string  // New foreign key to business_types table
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
+  branch_ids?: string[]
+  available_for_all_branches?: boolean
   credit_limit?: number
   pricing_tier?: string
   is_active?: boolean

@@ -13,7 +13,7 @@ interface TripOrder {
   customer: string;
   customer_address?: string;
   delivery_status: string;
-  total: number;
+  // total: number;
   weight: number;
   items: number;
   priority: string;
@@ -276,10 +276,10 @@ export default function DriverDashboard() {
                           <span className="font-medium">Weight:</span>{" "}
                           {order.weight || 0} kg
                         </p>
-                        <p>
+                        {/* <p>
                           <span className="font-medium">Total:</span>{" "}
                           <CurrencyDisplay amount={order.total || 0} />
-                        </p>
+                        </p> */}
                       </div>
                       {order.address && (
                         <p className="text-black mb-3">

@@ -214,6 +214,7 @@ export function CreateOrderModal({
   onSuccess,
 }: CreateOrderModalProps) {
   const [showBranchNote, setShowBranchNote] = useState(false);
+  const lastItemRef = useRef<HTMLDivElement>(null);
 
   const {
     control,
@@ -320,6 +321,11 @@ export function CreateOrderModal({
       shouldValidate: true,
       shouldDirty: true,
     });
+
+    // Scroll to the new item after a short delay to ensure it's rendered
+    setTimeout(() => {
+      lastItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
   };
 
   const removeOrderItem = (id: string) => {
@@ -625,25 +631,13 @@ export function CreateOrderModal({
 
         {/* Order Items */}
         <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border-2 border-green-200 p-6 shadow-lg">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3 mb-6">
             <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
               <div className="bg-green-600 p-2 rounded-lg">
                 <Box className="w-6 h-6 text-white" />
               </div>
               Order Items
             </h3>
-            {selectedBranch && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addOrderItem}
-                className="cursor-pointer w-full sm:w-auto bg-white border-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white font-bold transition-all duration-200 shadow-md hover:shadow-lg"
-              >
-                <Plus className="w-5 h-5 mr-2" />
-                Add Item
-              </Button>
-            )}
           </div>
 
           {!selectedBranch && (
@@ -658,6 +652,7 @@ export function CreateOrderModal({
           {orderItems.map((item, index) => (
             <div
               key={item.id}
+              ref={index === orderItems.length - 1 ? lastItemRef : null}
               className={`border-2 rounded-xl p-5 space-y-4 mb-4 transition-all duration-200 ${
                 selectedBranch
                   ? "border-green-200 bg-white shadow-md hover:shadow-lg"
@@ -788,6 +783,22 @@ export function CreateOrderModal({
               </div>
             </div>
           ))}
+
+          {/* Add Item Button - Below items list, aligned right */}
+          {selectedBranch && (
+            <div className="flex justify-end mb-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addOrderItem}
+                className="cursor-pointer bg-white border-2 border-green-600 text-green-700 hover:bg-green-600 hover:text-white font-bold transition-all duration-200 shadow-md hover:shadow-lg"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Item
+              </Button>
+            </div>
+          )}
 
           {/* Summary Section */}
           {selectedBranch && (

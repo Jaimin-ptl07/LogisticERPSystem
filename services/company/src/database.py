@@ -184,7 +184,29 @@ class Customer(Base):
 
     # Relationships
     business_type_relation = relationship("BusinessTypeModel", back_populates="customers")
+    business_types = relationship("CustomerBusinessType", back_populates="customer", cascade="all, delete-orphan")
     branches = relationship("CustomerBranch", back_populates="customer")
+
+    @property
+    def business_type_list(self):
+        """Flatten business_types relationship to return list of BusinessTypeModel objects"""
+        return [cbt.business_type for cbt in self.business_types if cbt.business_type]
+
+
+class CustomerBusinessType(Base):
+    """Junction table for customer-business type many-to-many relationship"""
+    __tablename__ = "customer_business_types"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    business_type_id = Column(UUID(as_uuid=True), ForeignKey("business_types.id", ondelete="CASCADE"), nullable=False)
+    tenant_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_by = Column(String)  # User ID who created the relationship
+
+    # Relationships
+    customer = relationship("Customer", back_populates="business_types")
+    business_type = relationship("BusinessTypeModel")
 
 
 class Vehicle(Base):
