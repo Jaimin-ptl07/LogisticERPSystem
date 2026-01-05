@@ -20,6 +20,7 @@ import {
   CreditCard,
   User,
   GitBranch,
+  Megaphone,
 } from "lucide-react";
 import {
   useGetCustomerQuery,
@@ -65,6 +66,9 @@ export default function EditCustomerPage() {
     credit_limit: 0,
     pricing_tier: "",
     is_active: true,
+    marketing_person_name: "",
+    marketing_person_phone: "",
+    marketing_person_email: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -95,6 +99,9 @@ export default function EditCustomerPage() {
         credit_limit: customer.credit_limit || 0,
         pricing_tier: customer.pricing_tier || "",
         is_active: customer.is_active,
+        marketing_person_name: customer.marketing_person_name || "",
+        marketing_person_phone: customer.marketing_person_phone || "",
+        marketing_person_email: customer.marketing_person_email || "",
       });
 
       setIsAvailableForAllBranches(customer.available_for_all_branches ?? true);
@@ -126,6 +133,18 @@ export default function EditCustomerPage() {
     }
     if (formData.credit_limit && formData.credit_limit < 0) {
       newErrors.credit_limit = "Credit limit must be positive";
+    }
+    if (
+      formData.marketing_person_email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.marketing_person_email)
+    ) {
+      newErrors.marketing_person_email = "Invalid email address";
+    }
+    if (
+      formData.marketing_person_phone &&
+      !/^[+]?[\d\s-()]+$/.test(formData.marketing_person_phone)
+    ) {
+      newErrors.marketing_person_phone = "Invalid phone number";
     }
 
     // Validate branches if not available for all
@@ -172,6 +191,10 @@ export default function EditCustomerPage() {
         // Only include branch_ids if not available for all branches
         ...(!isAvailableForAllBranches &&
           selectedBranches.length > 0 && { branch_ids: selectedBranches }),
+        // Marketing person contact details
+        marketing_person_name: formData.marketing_person_name || undefined,
+        marketing_person_phone: formData.marketing_person_phone || undefined,
+        marketing_person_email: formData.marketing_person_email || undefined,
       };
 
       await updateCustomer({
@@ -620,6 +643,61 @@ export default function EditCustomerPage() {
                 </p>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Marketing Contact Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Megaphone className="w-5 h-5 mr-2" />
+              Marketing Contact
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="marketing_person_name">Marketing Person Name</Label>
+                <Input
+                  id="marketing_person_name"
+                  type="text"
+                  value={formData.marketing_person_name}
+                  onChange={(e) => handleInputChange("marketing_person_name", e.target.value)}
+                  placeholder="e.g., John Smith"
+                />
+              </div>
+              <div>
+                <Label htmlFor="marketing_person_phone">Marketing Person Phone</Label>
+                <Input
+                  id="marketing_person_phone"
+                  type="tel"
+                  value={formData.marketing_person_phone}
+                  onChange={(e) => handleInputChange("marketing_person_phone", e.target.value)}
+                  placeholder="e.g., +91 98765 43210"
+                  className={errors.marketing_person_phone ? "border-red-500" : ""}
+                />
+                {errors.marketing_person_phone && (
+                  <p className="text-sm text-red-600 mt-1">{errors.marketing_person_phone}</p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="marketing_person_email">Marketing Person Email</Label>
+                <Input
+                  id="marketing_person_email"
+                  type="email"
+                  value={formData.marketing_person_email}
+                  onChange={(e) => handleInputChange("marketing_person_email", e.target.value)}
+                  placeholder="e.g., marketing@company.com"
+                  className={errors.marketing_person_email ? "border-red-500" : ""}
+                />
+                {errors.marketing_person_email && (
+                  <p className="text-sm text-red-600 mt-1">{errors.marketing_person_email}</p>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">
+              Optional: Contact details of the marketing person handling this customer
+            </p>
           </CardContent>
         </Card>
 

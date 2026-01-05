@@ -179,6 +179,10 @@ class Customer(Base):
     pricing_tier = Column(String(20), default="standard")
     is_active = Column(Boolean, default=True)
     available_for_all_branches = Column(Boolean, default=True)
+    # Marketing person contact details
+    marketing_person_name = Column(String(100))
+    marketing_person_phone = Column(String(20))
+    marketing_person_email = Column(String(100))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
