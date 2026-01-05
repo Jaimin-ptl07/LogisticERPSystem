@@ -1030,7 +1030,26 @@ async def assign_orders_to_trip(
         )
 
     # Calculate total weight for new orders
-    total_new_weight = sum(order.weight for order in order_request.orders)
+    # If items_json is provided, calculate weight from items (quantity × weight_per_unit)
+    # Otherwise use the order.weight field
+    total_new_weight = 0
+    for order in order_request.orders:
+        if order.items_json and len(order.items_json) > 0:
+            # Calculate weight from items_json: sum of (quantity × weight) for each item
+            for item in order.items_json:
+                item_qty = item.get("quantity", 1)
+                # weight can be per-unit weight or total_weight for the item
+                item_weight = item.get("weight", 0)
+                # Check if this is per-unit weight or total weight
+                # If total_weight is provided, use it; otherwise calculate from weight × quantity
+                if "total_weight" in item and item["total_weight"]:
+                    total_new_weight += item["total_weight"]
+                else:
+                    total_new_weight += item_qty * item_weight
+        else:
+            # No items_json provided, use order.weight (should be total weight)
+            total_new_weight += order.weight
+
     new_capacity_used = (trip.capacity_used or 0) + total_new_weight
 
     # Check capacity
@@ -1258,7 +1277,20 @@ async def assign_orders_to_trip(
                 )
 
         # Update trip capacity_used
-        total_weight = sum(order.weight for order in created_orders)
+        # Calculate weight from items_json if available, otherwise use order.weight
+        total_weight = 0
+        for order in created_orders:
+            if order.items_json and len(order.items_json) > 0:
+                # Calculate weight from items_json
+                for item in order.items_json:
+                    item_qty = item.get("quantity", 1)
+                    if "total_weight" in item and item["total_weight"]:
+                        total_weight += item["total_weight"]
+                    else:
+                        total_weight += item_qty * item.get("weight", 0)
+            else:
+                total_weight += order.weight
+
         trip.capacity_used = (trip.capacity_used or 0) + total_weight
         db.add(trip)
 

@@ -24,7 +24,9 @@ class OrderStatus(str, enum.Enum):
     LOGISTICS_REJECTED = "logistics_rejected"
     ASSIGNED = "assigned"
     PICKED_UP = "picked_up"
+    PARTIAL_IN_TRANSIT = "partial_in_transit"  # Some items on-route, others still planning/loading
     IN_TRANSIT = "in_transit"
+    PARTIAL_DELIVERED = "partial_delivered"  # Some items delivered, others still in transit
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
 

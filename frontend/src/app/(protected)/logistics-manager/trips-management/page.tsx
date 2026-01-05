@@ -261,27 +261,32 @@ export default function Trips() {
       // (not the TripOrder status which is for delivery progress)
       if (trip && trip.orders && trip.orders.length > 0) {
         // Check each order's original status from availableOrders
-        const hasNonFinanceApprovedOrders = trip.orders.some(
+        // Valid statuses for changing trip status: finance_approved, logistics_approved, assigned, partial_in_transit, partial_delivered, in_transit
+        const validOrderStatuses = ["finance_approved", "logistics_approved", "assigned", "partial_in_transit", "partial_delivered", "in_transit"];
+        const hasInvalidOrderStatus = trip.orders.some(
           (tripOrder) => {
             // Find the original order in availableOrders to check its finance status
             const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
-            console.log(`Validating order ${tripOrder.order_id}: originalOrder=`, originalOrder, `status=`, originalOrder?.status);
-            return !originalOrder || originalOrder.status !== "finance_approved";
+            const orderStatus = originalOrder?.status;
+            const isValid = orderStatus && validOrderStatuses.includes(orderStatus);
+            console.log(`Validating order ${tripOrder.order_id}: originalOrder=`, originalOrder, `status=`, orderStatus, `isValid=`, isValid);
+            return !isValid;
           }
         );
 
-        if (hasNonFinanceApprovedOrders) {
-          // Find the first non-finance_approved order to show in the error message
-          const nonApprovedOrder = trip.orders.find(
+        if (hasInvalidOrderStatus) {
+          // Find the first invalid order to show in the error message
+          const invalidOrder = trip.orders.find(
             (tripOrder) => {
               const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
-              return !originalOrder || originalOrder.status !== "finance_approved";
+              const orderStatus = originalOrder?.status;
+              return !orderStatus || !validOrderStatuses.includes(orderStatus);
             }
           );
 
-          const originalOrderForMsg = availableOrders.find(o => o.id === nonApprovedOrder?.order_id);
+          const originalOrderForMsg = availableOrders.find(o => o.id === invalidOrder?.order_id);
           alert(
-            `Cannot change trip status. Order "${nonApprovedOrder?.order_id || "N/A"}" has status "${originalOrderForMsg?.status || "unknown"}". All assigned orders must be "finance_approved" before the trip status can be changed.`
+            `Cannot change trip status. Order "${invalidOrder?.order_id || "N/A"}" has status "${originalOrderForMsg?.status || "unknown"}". Orders must be in one of these statuses: ${validOrderStatuses.join(", ")}.`
           );
           return;
         }
@@ -497,6 +502,16 @@ export default function Trips() {
         return "default";
       case "finance_approved":
         return "success";
+      case "logistics_approved":
+        return "success";
+      case "assigned":
+        return "info";
+      case "partial_in_transit":
+        return "warning";
+      case "in_transit":
+        return "info";
+      case "partial_delivered":
+        return "warning";
       default:
         return "default";
     }
@@ -508,6 +523,20 @@ export default function Trips() {
         return "Submitted";
       case "finance_approved":
         return "Finance Approved";
+      case "logistics_approved":
+        return "Logistics Approved";
+      case "logistics_rejected":
+        return "Logistics Rejected";
+      case "finance_rejected":
+        return "Finance Rejected";
+      case "assigned":
+        return "Assigned";
+      case "partial_in_transit":
+        return "Partial In Transit";
+      case "in_transit":
+        return "In Transit";
+      case "partial_delivered":
+        return "Partial Delivered";
       default:
         return (
           status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ")
@@ -518,7 +547,13 @@ export default function Trips() {
   const getApprovedOrders = () => {
     const filtered = availableOrders.filter(
       (order) =>
-        (order.status === "submitted" || order.status === "finance_approved") &&
+        (order.status === "submitted" ||
+         order.status === "finance_approved" ||
+         order.status === "logistics_approved" ||
+         order.status === "assigned" ||
+         order.status === "partial_in_transit" ||
+         order.status === "in_transit" ||
+         order.status === "partial_delivered") &&
         order.tms_order_status !== "fully_assigned" // Exclude fully_assigned orders (undefined/null means available)
     );
     console.log("getApprovedOrders - total orders:", availableOrders.length);
@@ -643,7 +678,13 @@ export default function Trips() {
   const getAvailableOrders = () => {
     return availableOrders.filter((order) => {
       const isApprovedStatus =
-        order.status === "submitted" || order.status === "finance_approved";
+        order.status === "submitted" ||
+        order.status === "finance_approved" ||
+        order.status === "logistics_approved" ||
+        order.status === "assigned" ||
+        order.status === "partial_in_transit" ||
+        order.status === "in_transit" ||
+        order.status === "partial_delivered";
       const isNotAssigned = !isOrderAssigned(order.id);
       const isNotFullyAssigned = order.tms_order_status !== "fully_assigned"; // Exclude fully assigned orders
       const matchesSearch =
@@ -895,45 +936,60 @@ export default function Trips() {
       itemsArray.forEach((item: OrderItem, idx: number) => {
         // Use composite key to match what's stored in selectedSplitItems
         const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
-        const originalQuantity = item.quantity || 1;
 
-        // Validate weight calculation
-        const totalWeight = (item.total_weight || item.weight || 0);
-        const weightPerUnit = originalQuantity > 0 ? totalWeight / originalQuantity : 0;
-        const volumePerUnit = originalQuantity > 0 ? (item.volume || 0) / originalQuantity : 0;
+        // CRITICAL: For partially assigned orders, use remaining_quantity instead of quantity
+        // quantity is the full original (30), remaining_quantity is what's available to assign (20)
+        const availableQuantity = (item as any).remaining_quantity !== undefined
+          ? (item as any).remaining_quantity
+          : (item.quantity || 1);
+
+        const originalQuantity = (item as any).original_quantity || item.quantity || 1;
+
+        // Validate weight calculation - use per-unit weight from API
+        const weightPerUnit = item.weight || (originalQuantity > 0 ? (item.total_weight || 0) / originalQuantity : 0);
+        const volumePerUnit = (item as any).volume || (originalQuantity > 0 ? ((item as any).total_volume || 0) / originalQuantity : 0);
         const pricePerUnit = originalQuantity > 0 ? (item.total_price || 0) / originalQuantity : 0;
 
         if (selectedSplitItems.includes(itemId)) {
-          // This item is selected - assign the specified quantity
-          const assignQuantity = splitItemQuantities[itemId] || originalQuantity;
+          // This item is selected - assign the specified quantity (max is availableQuantity)
+          const assignQuantity = splitItemQuantities[itemId] || availableQuantity;
 
           if (assignQuantity > 0) {
             // Create item with assigned quantity
             itemsToAssign.push({
               ...item,
               quantity: assignQuantity,
-              weight: weightPerUnit * assignQuantity,
-              total_weight: weightPerUnit * assignQuantity,
+              original_quantity: assignQuantity,  // CRITICAL: This is the original quantity for THIS assignment
+              weight: weightPerUnit,  // Store weight PER UNIT (not total)
+              total_weight: weightPerUnit * assignQuantity,  // Total weight for assigned quantity
               volume: volumePerUnit * assignQuantity,
               total_price: pricePerUnit * assignQuantity,
             });
           }
 
           // If there's remaining quantity, add to remaining items
-          if (assignQuantity < originalQuantity) {
-            const remainingQuantity = originalQuantity - assignQuantity;
+          if (assignQuantity < availableQuantity) {
+            const remainingQuantity = availableQuantity - assignQuantity;
             itemsRemaining.push({
               ...item,
               quantity: remainingQuantity,
-              weight: weightPerUnit * remainingQuantity,
-              total_weight: weightPerUnit * remainingQuantity,
+              original_quantity: originalQuantity,  // CRITICAL: Store original quantity for correct weight calculations
+              weight: weightPerUnit,  // Store weight PER UNIT (not total)
+              total_weight: weightPerUnit * remainingQuantity,  // Total weight for remaining quantity
               volume: volumePerUnit * remainingQuantity,
               total_price: pricePerUnit * remainingQuantity,
             });
           }
         } else {
-          // This item is not selected - all quantity remains
-          itemsRemaining.push(item);
+          // This item is not selected - all available quantity remains
+          // IMPORTANT: Ensure original_quantity and total_weight are set correctly
+          itemsRemaining.push({
+            ...item,
+            quantity: availableQuantity,
+            original_quantity: originalQuantity,
+            weight: weightPerUnit,
+            total_weight: weightPerUnit * availableQuantity,
+          });
         }
       });
 
@@ -943,13 +999,13 @@ export default function Trips() {
         return;
       }
 
-      // Calculate totals
-      const assignedWeight = itemsToAssign.reduce((sum: number, item: { weight?: number }) => sum + (item.weight || 0), 0);
+      // Calculate totals - use total_weight (not weight per unit)
+      const assignedWeight = itemsToAssign.reduce((sum: number, item: { total_weight?: number }) => sum + (item.total_weight || 0), 0);
       const assignedVolume = itemsToAssign.reduce((sum: number, item: { volume?: number }) => sum + (item.volume || 0), 0);
       const assignedTotal = itemsToAssign.reduce((sum: number, item: { total_price?: number }) => sum + (item.total_price || 0), 0);
       const assignedQuantity = itemsToAssign.reduce((sum: number, item: { quantity?: number }) => sum + (item.quantity || 0), 0);
 
-      const remainingWeight = itemsRemaining.reduce((sum: number, item: { weight?: number }) => sum + (item.weight || 0), 0);
+      const remainingWeight = itemsRemaining.reduce((sum: number, item: { total_weight?: number }) => sum + (item.total_weight || (item.weight || 0) * (item.quantity || 1)), 0);
       const remainingQuantity = itemsRemaining.reduce((sum: number, item: { quantity?: number }) => sum + (item.quantity || 0), 0);
 
       // Create split order data
@@ -1022,7 +1078,25 @@ export default function Trips() {
   const calculateTotalWeight = (orderIds: string[]) => {
     return orderIds.reduce((total, orderId) => {
       const order = availableOrders.find((o) => o.id === orderId);
-      return total + (order?.weight || 0);
+      if (!order) return total;
+
+      // If items_json exists, calculate weight from individual items
+      // For partial orders, use remaining_quantity to calculate available weight
+      if (order.items_json && Array.isArray(order.items_json) && order.items_json.length > 0) {
+        const itemsWeight = order.items_json.reduce((itemSum: number, item: any) => {
+          // Use remaining_quantity if available (for partially assigned orders)
+          // Otherwise use the full quantity
+          const availableQty = item.remaining_quantity !== undefined
+            ? item.remaining_quantity
+            : (item.quantity || 1);
+          // Calculate weight: weight per unit × available quantity
+          return itemSum + ((item.weight || 0) * availableQty);
+        }, 0);
+        return total + itemsWeight;
+      }
+
+      // Fall back to order.weight for orders without items_json
+      return total + (order.weight || 0);
     }, 0);
   };
 
@@ -1077,9 +1151,24 @@ export default function Trips() {
             continue;
           }
 
-          // Calculate weight from the items we're actually assigning
-          const assignedWeight = validItems.reduce((sum: number, item: { weight?: number }) => sum + (item.weight || 0), 0);
-          const assignedVolume = validItems.reduce((sum: number, item: { volume?: number }) => sum + (item.volume || 0), 0);
+          // Calculate weight, volume, and total from the items we're actually assigning
+          // IMPORTANT: Calculate based on quantity × weight per unit (or use total_weight if available)
+          const assignedWeight = validItems.reduce((sum: number, item: any) => {
+            const itemQty = item.quantity || 1;
+            // Use total_weight if available (already calculated), otherwise calculate from weight × quantity
+            if (item.total_weight) {
+              return sum + item.total_weight;
+            }
+            return sum + (itemQty * (item.weight || 0));
+          }, 0);
+          const assignedVolume = validItems.reduce((sum: number, item: any) => {
+            const itemQty = item.quantity || 1;
+            // Use total_volume if available, otherwise calculate from volume × quantity
+            if (item.total_volume) {
+              return sum + item.total_volume;
+            }
+            return sum + (itemQty * (item.volume || 0));
+          }, 0);
           const assignedTotal = validItems.reduce((sum: number, item: { total_price?: number }) => sum + (item.total_price || 0), 0);
 
           // Validate calculated values
@@ -1087,6 +1176,18 @@ export default function Trips() {
             errors.push(`Order ${order.id} has invalid weight: ${assignedWeight}`);
             continue;
           }
+
+          // IMPORTANT: Ensure items_json includes original_quantity and weight PER UNIT
+          // This prevents the Orders service from recalculating wrong weight per unit
+          const itemsJsonWithOriginalQuantity = validItems.map((item: any) => ({
+            ...item,
+            // Ensure original_quantity is set (for correct weight per unit calculations)
+            original_quantity: item.original_quantity || item.quantity || item.original_quantity,
+            // Ensure weight is PER UNIT (not total)
+            weight: item.weight || (item.total_weight ? item.total_weight / (item.quantity || 1) : 0),
+            // Calculate total_weight if not present
+            total_weight: item.total_weight || ((item.quantity || 1) * (item.weight || 0)),
+          }));
 
           ordersData.push({
             order_id: order.id,
@@ -1096,7 +1197,7 @@ export default function Trips() {
             weight: assignedWeight,
             volume: assignedVolume,
             items: validItems.length,
-            items_json: validItems, // Items we're assigning (with adjusted quantities if partial)
+            items_json: itemsJsonWithOriginalQuantity, // Items with original_quantity and per-unit weight
             remaining_items_json: [], // Will be empty since we're assigning all remaining items
             original_items: order.items_count || order.items || validItems.length,
             original_weight: order.weight || assignedWeight,
@@ -2723,7 +2824,16 @@ export default function Trips() {
                                   <div className="flex items-center gap-3">
                                     <div className="text-right text-sm">
                                       <p className="font-medium text-black">
-                                        {order.weight}kg
+                                        {(() => {
+                                          // Calculate available weight from remaining_quantity for partial orders
+                                          const availableWeight = itemsArray.reduce((sum: number, item: any) => {
+                                            const availableQty = item.remaining_quantity !== undefined
+                                              ? item.remaining_quantity
+                                              : (item.quantity || 1);
+                                            return sum + ((item.weight || 0) * availableQty);
+                                          }, 0);
+                                          return availableWeight.toFixed(2);
+                                        })()}kg
                                       </p>
                                       <p className="text-gray-600">
                                         {itemsArray.length} items
@@ -2909,14 +3019,11 @@ export default function Trips() {
                           {(() => {
                             const orderItems = splitOrder.items_data || splitOrder.items_json || splitOrder.items;
                             const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                            return itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                            return itemsArray.reduce((sum: number, item: any, idx: number) => {
                               const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                               if (selectedSplitItems.includes(itemId)) {
-                                const quantity = splitItemQuantities[itemId] || item.quantity || 1;
-                                const originalQuantity = item.quantity || 1;
-                                // Use total_weight if available, otherwise calculate from per-unit weight
-                                const totalWeight = item.total_weight || item.weight || 0;
-                                const weightPerUnit = totalWeight / originalQuantity;
+                                const quantity = splitItemQuantities[itemId] || (item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity || 1);
+                                const weightPerUnit = item.weight || 0;
                                 return sum + (weightPerUnit * quantity);
                               }
                               return sum;
@@ -2957,24 +3064,23 @@ export default function Trips() {
                         const currentSelectedWeight = itemsArray.reduce((sum: number, i: any, iIdx: number) => {
                           const iid = `${splitOrder.id}-${i.id || i.product_id || iIdx}`;
                           if (selectedSplitItems.includes(iid)) {
-                            const qty = splitItemQuantities[iid] || i.quantity || 1;
-                            const originalQty = i.quantity || 1;
-                            const totalWeight = i.total_weight || i.weight || 0;
-                            const weightPerUnit = totalWeight / originalQty;
+                            const qty = splitItemQuantities[iid] || (i.remaining_quantity !== undefined ? i.remaining_quantity : i.quantity || 1);
+                            const weightPerUnit = i.weight || (i.total_weight ? i.total_weight / (i.quantity || 1) : 0);
                             return sum + (weightPerUnit * qty);
                           }
                           return sum;
                         }, 0);
 
-                        // Calculate weight per unit for this item
-                        const originalQuantity = item.quantity || 1;
-                        const totalItemWeight = item.total_weight || item.weight || 0;
-                        const weightPerUnit = totalItemWeight / originalQuantity;
+                        // Calculate weight per unit for this item (from API)
+                        const weightPerUnit = item.weight || 0;
+                        const availableQuantity = item.remaining_quantity !== undefined
+                          ? item.remaining_quantity
+                          : (item.quantity || 1);
 
                         // Calculate max quantity that can fit for this item
                         const remainingCapacity = availableCapacity - currentSelectedWeight;
-                        const maxQuantityForItem = isSelected ? originalQuantity : Math.floor(remainingCapacity / weightPerUnit);
-                        const clampedMaxQuantity = Math.max(0, Math.min(maxQuantityForItem, originalQuantity));
+                        const maxQuantityForItem = isSelected ? availableQuantity : Math.floor(remainingCapacity / weightPerUnit);
+                        const clampedMaxQuantity = Math.max(0, Math.min(maxQuantityForItem, availableQuantity));
 
                         const canSelect = remainingCapacity >= 0 && clampedMaxQuantity > 0;
 
@@ -3043,7 +3149,7 @@ export default function Trips() {
                                   {/* Quantity Split Input */}
                                   <div className="mb-3">
                                     <label className="block text-xs font-medium text-black mb-1">
-                                      Quantity to Assign (Max: {clampedMaxQuantity} {clampedMaxQuantity < originalQuantity ? `- Limited by capacity` : ''})
+                                      Quantity to Assign (Max: {clampedMaxQuantity} {clampedMaxQuantity < availableQuantity ? `- Limited by capacity` : ''})
                                     </label>
                                     <input
                                       type="number"
@@ -3062,7 +3168,7 @@ export default function Trips() {
                                       }}
                                       className="w-32 px-2 py-1 text-sm text-black border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500"
                                     />
-                                    {clampedMaxQuantity < originalQuantity && (
+                                    {clampedMaxQuantity < availableQuantity && (
                                       <p className="text-xs text-orange-600 mt-1">
                                         ⚠️ Only {clampedMaxQuantity} units can fit in remaining capacity ({remainingCapacity.toFixed(2)} kg available)
                                       </p>
@@ -3085,11 +3191,8 @@ export default function Trips() {
                                       <p className="font-medium text-black">
                                         {(() => {
                                           if (!isSelected) return '0 kg';
-                                          const quantity = splitItemQuantities[itemId] || item.quantity || 1;
-                                          const originalQuantity = item.quantity || 1;
-                                          // Use total_weight if available, otherwise calculate from per-unit weight
-                                          const totalWeight = item.total_weight || item.weight || 0;
-                                          const weightPerUnit = totalWeight / originalQuantity;
+                                          const quantity = splitItemQuantities[itemId] || availableQuantity;
+                                          // Use weight per unit from API
                                           return (weightPerUnit * quantity).toFixed(2) + ' kg';
                                         })()}
                                       </p>
@@ -3097,7 +3200,7 @@ export default function Trips() {
                                     <div className="bg-purple-50 p-2 rounded border border-purple-200">
                                       <p className="text-black">Remaining</p>
                                       <p className="font-medium text-black">
-                                        {isSelected ? ((item.quantity || 1) - (splitItemQuantities[itemId] || item.quantity || 1)) : (item.quantity || 1)} {item.unit || 'pcs'}
+                                        {isSelected ? (availableQuantity - (splitItemQuantities[itemId] || availableQuantity)) : availableQuantity} {item.unit || 'pcs'}
                                       </p>
                                     </div>
                                   </div>
@@ -3128,11 +3231,8 @@ export default function Trips() {
                               return itemsArray.reduce((sum: number, item: any, idx: number) => {
                                 const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
-                                  const quantity = splitItemQuantities[itemId] || item.quantity || 1;
-                                  const originalQuantity = item.quantity || 1;
-                                  // Use total_weight if available, otherwise calculate from per-unit weight
-                                  const totalWeight = item.total_weight || item.weight || 0;
-                                  const weightPerUnit = totalWeight / originalQuantity;
+                                  const quantity = splitItemQuantities[itemId] || (item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity || 1);
+                                  const weightPerUnit = item.weight || 0;
                                   return sum + (weightPerUnit * quantity);
                                 }
                                 return sum;
@@ -3149,7 +3249,7 @@ export default function Trips() {
                               return itemsArray.reduce((sum: number, item: any, idx: number) => {
                                 const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
-                                  return sum + (splitItemQuantities[itemId] || item.quantity || 1);
+                                  return sum + (splitItemQuantities[itemId] || (item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity || 1));
                                 }
                                 return sum;
                               }, 0);
@@ -3185,19 +3285,31 @@ export default function Trips() {
                             {(() => {
                               const orderItems = splitOrder.items;
                               const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                              const selectedWeight = itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                              const selectedWeight = itemsArray.reduce((sum: number, item: any, idx: number) => {
                                 const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
-                                  const quantity = splitItemQuantities[itemId] || item.quantity || 1;
-                                  const originalQuantity = item.quantity || 1;
-                                  // Use total_weight if available, otherwise calculate from per-unit weight
-                                  const totalWeight = item.total_weight || item.weight || 0;
-                                  const weightPerUnit = totalWeight / originalQuantity;
+                                  const quantity = splitItemQuantities[itemId] || (item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity || 1);
+                                  const weightPerUnit = item.weight || 0;
                                   return sum + (weightPerUnit * quantity);
                                 }
                                 return sum;
                               }, 0);
-                              return ((splitOrder.weight || 0) - selectedWeight).toFixed(2);
+                              // Calculate remaining weight from items
+                              const remainingWeight = itemsArray.reduce((sum: number, item: any, idx: number) => {
+                                const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
+                                if (selectedSplitItems.includes(itemId)) {
+                                  const assignedQty = splitItemQuantities[itemId] || (item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity || 1);
+                                  const availableQty = item.remaining_quantity !== undefined ? item.remaining_quantity : (item.quantity || 1);
+                                  const remainingQty = availableQty - assignedQty;
+                                  const weightPerUnit = item.weight || 0;
+                                  return sum + (weightPerUnit * remainingQty);
+                                }
+                                // Item not selected - all available quantity remains
+                                const availableQty = item.remaining_quantity !== undefined ? item.remaining_quantity : (item.quantity || 1);
+                                const weightPerUnit = item.weight || 0;
+                                return sum + (weightPerUnit * availableQty);
+                              }, 0);
+                              return remainingWeight.toFixed(2);
                             })()} kg
                           </span>
                         </div>
@@ -3207,15 +3319,17 @@ export default function Trips() {
                             {(() => {
                               const orderItems = splitOrder.items;
                               const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                              const selectedQty = itemsArray.reduce((sum: number, item: { id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                              const selectedQty = itemsArray.reduce((sum: number, item: any, idx: number) => {
                                 const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                                 if (selectedSplitItems.includes(itemId)) {
-                                  return sum + (splitItemQuantities[itemId] || item.quantity || 1);
+                                  return sum + (splitItemQuantities[itemId] || (item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity || 1));
                                 }
                                 return sum;
                               }, 0);
-                              const totalQty = itemsArray.reduce((sum: number, item: { quantity?: number }) => sum + (item.quantity || 1), 0);
-                              return totalQty - selectedQty;
+                              const totalAvailableQty = itemsArray.reduce((sum: number, item: any) => {
+                                return sum + (item.remaining_quantity !== undefined ? item.remaining_quantity : (item.quantity || 1));
+                              }, 0);
+                              return totalAvailableQty - selectedQty;
                             })()} units
                           </span>
                         </div>
@@ -3230,13 +3344,11 @@ export default function Trips() {
                   {(() => {
                     const orderItems = splitOrder.items;
                     const itemsArray = Array.isArray(orderItems) ? orderItems : [];
-                    const selectedWeight = itemsArray.reduce((sum: number, item: { total_weight?: number; weight?: number; id?: string; product_id?: string; quantity?: number }, idx: number) => {
+                    const selectedWeight = itemsArray.reduce((sum: number, item: any, idx: number) => {
                       const itemId = `${splitOrder.id}-${item.id || item.product_id || idx}`;
                       if (selectedSplitItems.includes(itemId)) {
-                        const quantity = splitItemQuantities[itemId] || item.quantity || 1;
-                        const originalQuantity = item.quantity || 1;
-                        const totalWeight = item.total_weight || item.weight || 0;
-                        const weightPerUnit = totalWeight / originalQuantity;
+                        const quantity = splitItemQuantities[itemId] || (item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity || 1);
+                        const weightPerUnit = item.weight || 0;
                         return sum + (weightPerUnit * quantity);
                       }
                       return sum;

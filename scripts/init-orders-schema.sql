@@ -248,6 +248,201 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Create function to update item statuses for an order (called by TMS service)
+CREATE OR REPLACE FUNCTION update_order_items_status(
+    p_order_id VARCHAR,
+    p_trip_id VARCHAR,
+    p_new_status VARCHAR
+) RETURNS INTEGER AS $$
+DECLARE
+    updated_count INTEGER;
+BEGIN
+    -- Update items status for this order
+    UPDATE order_items
+    SET item_status = p_new_status,
+        trip_id = COALESCE(p_trip_id, trip_id)
+    WHERE order_id = p_order_id
+    AND p_new_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned');
+
+    GET DIAGNOSTICS updated_count = ROW_COUNT;
+    RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create function to update specific items by IDs (for partial order updates)
+CREATE OR REPLACE FUNCTION update_specific_items_status(
+    p_item_ids VARCHAR[],
+    p_trip_id VARCHAR,
+    p_new_status VARCHAR
+) RETURNS INTEGER AS $$
+DECLARE
+    updated_count INTEGER;
+BEGIN
+    UPDATE order_items
+    SET item_status = p_new_status,
+        trip_id = COALESCE(p_trip_id, trip_id)
+    WHERE id = ANY(p_item_ids)
+    AND p_new_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned');
+
+    GET DIAGNOSTICS updated_count = ROW_COUNT;
+    RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger to automatically update order status based on item statuses
+-- NOTE: 'loading' item status does NOT change order status (orders stay in their current state like 'finance_approved')
+-- Handles split orders with partial_in_transit and partial_delivered statuses
+-- Handles partial quantity assignments via trip_item_assignments table
+CREATE OR REPLACE FUNCTION update_order_status_from_items()
+RETURNS TRIGGER AS $$
+DECLARE
+    all_delivered BOOLEAN;
+    all_on_route BOOLEAN;
+    any_delivered BOOLEAN;
+    any_on_route BOOLEAN;
+    any_loading BOOLEAN;
+    any_planning BOOLEAN;
+    any_pending BOOLEAN;
+    has_partial_assignment BOOLEAN;
+    order_current_status VARCHAR(50);
+    order_id_to_check VARCHAR;
+BEGIN
+    -- Determine which order_id to check (could be from order_items or trip_item_assignments)
+    IF TG_TABLE_NAME = 'trip_item_assignments' THEN
+        order_id_to_check := NEW.order_id;
+    ELSE
+        order_id_to_check := NEW.order_id;
+    END IF;
+
+    -- Get current order status
+    SELECT status INTO order_current_status
+    FROM orders
+    WHERE id = order_id_to_check;
+
+    -- Skip if order is cancelled (but allow delivered to be updated for partial assignments)
+    IF order_current_status = 'cancelled' THEN
+        RETURN NEW;
+    END IF;
+
+    -- Check if there are partial assignments (some quantity assigned, some remaining)
+    SELECT BOOL_OR(
+        EXISTS (
+            SELECT 1
+            FROM trip_item_assignments tia
+            WHERE tia.order_id = order_id_to_check
+            AND tia.assigned_quantity < (
+                SELECT oi2.quantity
+                FROM order_items oi2
+                WHERE oi2.id = tia.order_item_id
+                LIMIT 1
+            )
+        )
+    ) INTO has_partial_assignment;
+
+    -- If no trip_item_assignments exist yet, set to false
+    IF has_partial_assignment IS NULL THEN
+        has_partial_assignment := FALSE;
+    END IF;
+
+    -- Check item statuses across all items (from order_items table)
+    SELECT BOOL_AND(item_status = 'delivered') INTO all_delivered
+    FROM order_items
+    WHERE order_id = order_id_to_check;
+
+    SELECT BOOL_AND(item_status IN ('on_route', 'delivered')) INTO all_on_route
+    FROM order_items
+    WHERE order_id = order_id_to_check;
+
+    SELECT BOOL_OR(item_status = 'delivered') INTO any_delivered
+    FROM order_items
+    WHERE order_id = order_id_to_check;
+
+    SELECT BOOL_OR(item_status = 'on_route') INTO any_on_route
+    FROM order_items
+    WHERE order_id = order_id_to_check;
+
+    SELECT BOOL_OR(item_status = 'loading') INTO any_loading
+    FROM order_items
+    WHERE order_id = order_id_to_check;
+
+    SELECT BOOL_OR(item_status = 'planning') INTO any_planning
+    FROM order_items
+    WHERE order_id = order_id_to_check;
+
+    SELECT BOOL_OR(item_status = 'pending_to_assign') INTO any_pending
+    FROM order_items
+    WHERE order_id = order_id_to_check;
+
+    -- Update the parent order status based on item statuses and partial assignments
+    -- Priority: partial_delivered > delivered > in_transit > partial_in_transit > assigned
+    -- KEY: Check partial assignments FIRST, before checking if all delivered
+
+    IF has_partial_assignment AND any_delivered THEN
+        -- Has partial quantity assignments AND some items delivered
+        UPDATE orders
+        SET status = 'partial_delivered'
+        WHERE id = order_id_to_check AND status != 'partial_delivered';
+
+    ELSIF has_partial_assignment AND any_on_route THEN
+        -- Has partial quantity assignments - treat as partial_in_transit
+        UPDATE orders
+        SET status = 'partial_in_transit'
+        WHERE id = order_id_to_check AND status NOT IN ('partial_in_transit', 'in_transit', 'partial_delivered', 'delivered');
+
+    ELSIF has_partial_assignment AND (any_loading OR any_planning OR any_pending) THEN
+        -- Has partial quantity assignments but not yet on route
+        UPDATE orders
+        SET status = 'assigned'
+        WHERE id = order_id_to_check AND status = 'submitted';
+
+    ELSIF all_delivered AND NOT has_partial_assignment THEN
+        -- All items are FULLY delivered (no partials)
+        UPDATE orders
+        SET status = 'delivered',
+            delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP)
+        WHERE id = order_id_to_check AND status != 'delivered';
+
+    ELSIF any_delivered AND (any_on_route OR any_loading OR any_planning OR any_pending) THEN
+        -- Some items delivered, others still in transit/loading/planning
+        UPDATE orders
+        SET status = 'partial_delivered'
+        WHERE id = order_id_to_check AND status NOT IN ('partial_delivered', 'delivered');
+
+    ELSIF all_on_route AND NOT (any_loading OR any_planning OR any_pending OR has_partial_assignment) THEN
+        -- All items are fully on-route or delivered (no partials, no remaining)
+        UPDATE orders
+        SET status = 'in_transit'
+        WHERE id = order_id_to_check AND status NOT IN ('in_transit', 'partial_delivered', 'delivered');
+
+    ELSIF any_on_route AND (any_loading OR any_planning OR any_pending) THEN
+        -- Some items on-route, others still loading/planning/pending
+        UPDATE orders
+        SET status = 'partial_in_transit'
+        WHERE id = order_id_to_check AND status NOT IN ('partial_in_transit', 'in_transit', 'partial_delivered', 'delivered');
+
+    ELSIF any_planning THEN
+        -- Items are in planning phase
+        UPDATE orders
+        SET status = 'assigned'
+        WHERE id = order_id_to_check AND status = 'submitted';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for automatic order status updates on order_items
+CREATE TRIGGER trigger_update_order_status_from_items
+    AFTER INSERT OR UPDATE OF item_status ON order_items
+    FOR EACH ROW
+    EXECUTE FUNCTION update_order_status_from_items();
+
+-- Create trigger for automatic order status updates on trip_item_assignments (for partial quantity tracking)
+CREATE TRIGGER trigger_update_order_status_from_trip_assignments
+    AFTER INSERT OR UPDATE OF item_status ON trip_item_assignments
+    FOR EACH ROW
+    EXECUTE FUNCTION update_order_status_from_items();
+
 -- Grant permissions to the application user
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres;

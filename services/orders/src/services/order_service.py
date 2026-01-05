@@ -716,9 +716,13 @@ class OrderService:
             OrderStatus.SUBMITTED: [OrderStatus.FINANCE_APPROVED, OrderStatus.FINANCE_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_APPROVED: [OrderStatus.LOGISTICS_APPROVED, OrderStatus.LOGISTICS_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
-            OrderStatus.ASSIGNED: [OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
-            OrderStatus.PICKED_UP: [OrderStatus.IN_TRANSIT],
-            OrderStatus.IN_TRANSIT: [OrderStatus.DELIVERED],
+            OrderStatus.LOGISTICS_APPROVED: [OrderStatus.ASSIGNED, OrderStatus.CANCELLED],
+            OrderStatus.LOGISTICS_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
+            OrderStatus.ASSIGNED: [OrderStatus.PARTIAL_IN_TRANSIT, OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED],
+            OrderStatus.PICKED_UP: [OrderStatus.PARTIAL_IN_TRANSIT, OrderStatus.IN_TRANSIT],
+            OrderStatus.PARTIAL_IN_TRANSIT: [OrderStatus.PARTIAL_DELIVERED, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED],
+            OrderStatus.IN_TRANSIT: [OrderStatus.PARTIAL_DELIVERED, OrderStatus.DELIVERED],
+            OrderStatus.PARTIAL_DELIVERED: [OrderStatus.DELIVERED],
             OrderStatus.DELIVERED: [],  # Terminal state
             OrderStatus.CANCELLED: [],  # Terminal state
         }

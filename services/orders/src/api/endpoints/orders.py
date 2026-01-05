@@ -234,6 +234,7 @@ async def list_orders(
 
     # Fetch trip_item_assignments for ALL orders to get status breakdown
     from src.models.trip_item_assignment import TripItemAssignment
+    from src.models.order_item import OrderItem
     order_ids = [order.id for order in orders]
 
     trip_assignments_query = select(TripItemAssignment).where(
@@ -245,6 +246,21 @@ async def list_orders(
 
     trip_assignments_result = await db.execute(trip_assignments_query)
     all_trip_assignments = trip_assignments_result.scalars().all()
+
+    # Fetch order_items to get original weight and volume values (critical for correct per-unit calculations)
+    order_items_query = select(OrderItem).where(
+        OrderItem.order_id.in_(order_ids)
+    )
+    order_items_result = await db.execute(order_items_query)
+    all_order_items = order_items_result.scalars().all()
+
+    # Create a map of order_item_id -> original weight per unit (from database)
+    original_weight_by_item_id = {item.id: float(item.weight) if item.weight else 0 for item in all_order_items}
+    # Create a map of order_item_id -> original volume per unit (from database)
+    original_volume_by_item_id = {item.id: float(item.volume) if item.volume else 0 for item in all_order_items}
+    # Create a map of order_item_id -> original quantity (from database)
+    # This is the TRUE original quantity before any splits/assignments
+    original_quantity_by_item_id = {item.id: item.quantity for item in all_order_items}
 
     # Group assignments by order_item_id for quick lookup
     assignments_by_item = {}
@@ -277,12 +293,17 @@ async def list_orders(
         # Prepare items data - handle split orders with remaining items
         items_data = []
 
-        # Check if this is a partial order with remaining items
+        # Check if this is a partial order with split items
+        # This includes orders with tms_order_status "partial" OR "fully_assigned" when items_json has data
+        # Because items_json contains the split item data (even when fully assigned)
+        # EXCLUDE: Delivered orders should show complete order from order_items, not items_json
         is_partial_order = (
             hasattr(order, 'tms_order_status') and
-            order.tms_order_status == "partial" and
-            hasattr(order, 'remaining_items_json') and
-            order.remaining_items_json is not None
+            order.tms_order_status in ("partial", "fully_assigned") and
+            hasattr(order, 'items_json') and
+            order.items_json is not None and
+            len(order.items_json) > 0 and
+            order.status not in ("delivered", "partial_delivered")  # Delivered orders show complete data
         )
 
         if is_partial_order:
@@ -302,8 +323,38 @@ async def list_orders(
 
                     # For items in items_json, the quantity is the ASSIGNED quantity
                     assigned_qty_from_json = item.get('quantity', 0)
-                    original_qty = item.get('original_quantity') or assigned_qty_from_json
-                    remaining_qty = 0  # Items in items_json are fully assigned
+
+                    # CRITICAL: Use the TRUE original quantity from the database, not from items_json
+                    # items_json.original_quantity is the quantity of the assigned portion (10)
+                    # But we need the FULL original quantity from order_items (30)
+                    original_qty = original_quantity_by_item_id.get(item_id, item.get('original_quantity') or assigned_qty_from_json)
+                    remaining_qty = original_qty - assigned_qty  # Calculate remaining from original
+
+                    # CRITICAL FIX: Use original weight from order_items table in database
+                    # This ensures weight per unit is always correct
+                    if item_id in original_weight_by_item_id:
+                        # Use the original weight per unit from the database
+                        weight_per_unit = original_weight_by_item_id[item_id]
+                    elif item.get('original_quantity'):
+                        # Fallback: If weight field has original_quantity, treat weight as per-unit
+                        weight_per_unit = float(item.get('weight', 0)) if item.get('weight') else 0
+                    else:
+                        # Last resort: Use the weight field directly (might be per-unit or total)
+                        weight_per_unit = float(item.get('weight', 0)) if item.get('weight') else 0
+
+                    # CRITICAL FIX: Use original volume from order_items table in database
+                    # This ensures volume per unit is always correct
+                    if item_id in original_volume_by_item_id:
+                        # Use the original volume per unit from the database
+                        volume_per_unit = original_volume_by_item_id[item_id]
+                    else:
+                        # Fallback: Use the volume field from items_json
+                        volume_per_unit = float(item.get('volume', 0)) if item.get('volume') else 0
+
+                    # Calculate total_weight and total_volume based on original_qty (displayed quantity)
+                    # NOT based on assigned_qty_from_json, because we display original_qty to the user
+                    total_weight = weight_per_unit * original_qty
+                    total_volume = volume_per_unit * original_qty
 
                     # items_json contains the ASSIGNED items
                     item_dict = {
@@ -312,19 +363,19 @@ async def list_orders(
                         'product_name': item.get('product_name'),
                         'product_code': item.get('product_code'),
                         'description': item.get('description'),
-                        'original_quantity': original_qty,  # True original quantity
+                        'original_quantity': original_qty,  # True original quantity from database
                         'assigned_quantity': assigned_qty,  # Sum of all trip assignments
-                        'remaining_quantity': remaining_qty,  # Fully assigned
+                        'remaining_quantity': remaining_qty,  # Calculated from original - assigned
                         'quantity': original_qty,  # Display original quantity
                         'unit': item.get('unit'),
                         'unit_price': float(item.get('unit_price')) if item.get('unit_price') else None,
                         'total_price': float(item.get('total_price')) if item.get('total_price') else None,
-                        'weight': float(item.get('weight', 0)) if item.get('weight') else None,  # Weight per unit from items_json
+                        'weight': weight_per_unit,  # Weight per unit from database
                         'weight_type': item.get('weight_type', 'fixed'),
                         'fixed_weight': float(item.get('fixed_weight', 0)) if item.get('fixed_weight') else None,
                         'weight_unit': item.get('weight_unit', 'kg'),
-                        'total_weight': float(item.get('total_weight')) if item.get('total_weight') else None,
-                        'volume': float(item.get('volume')) if item.get('volume') else None,
+                        'total_weight': total_weight,  # Total weight for displayed quantity (original_qty)
+                        'volume': volume_per_unit,  # Volume per unit from database
                         'assignments': item_assignments,  # Include trip assignments with status breakdown
                     }
                     items_dict_by_id[item_id] = item_dict
@@ -339,7 +390,6 @@ async def list_orders(
                     existing_item = items_dict_by_id[item_id]
                     # Add the remaining quantity to the existing item
                     existing_item['remaining_quantity'] = item.get('quantity')
-                    existing_item['original_quantity'] = item.get('original_quantity')
                     # The assigned quantity is already calculated from trip_item_assignments
                     continue
 
@@ -347,15 +397,37 @@ async def list_orders(
                 item_assignments = assignments_by_item.get(item_id, [])
                 assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
 
-                # Use original_quantity from remaining_items_json if available, otherwise calculate
-                original_qty = item.get('original_quantity') or (item.get('quantity') + assigned_qty)
+                # CRITICAL: Use the TRUE original quantity from the database, not from remaining_items_json
+                original_qty = original_quantity_by_item_id.get(item_id, item.get('original_quantity') or (item.get('quantity') + assigned_qty))
                 remaining_qty = item.get('quantity')  # This is the current remaining quantity
 
-                # For partial orders, the 'weight' field in remaining_items_json is the TOTAL weight
-                # for the remaining items (not per unit). Calculate weight per unit.
-                total_weight_for_remaining = float(item.get('weight', 0)) if item.get('weight') else 0
-                weight_per_unit = total_weight_for_remaining / remaining_qty if remaining_qty > 0 else 0
-                total_weight_for_original = weight_per_unit * original_qty
+                # CRITICAL FIX: Use original weight from order_items table in database
+                # This prevents weight per unit corruption (e.g., 200 kg becoming 66.67 kg)
+                # The remaining_items_json may have incorrect weight due to partial assignments
+                if item_id in original_weight_by_item_id:
+                    # Use the original weight per unit from the database
+                    weight_per_unit = original_weight_by_item_id[item_id]
+                    total_weight_for_original = weight_per_unit * original_qty
+                elif item.get('original_quantity'):
+                    # Fallback: If weight field has original_quantity, treat weight as per-unit
+                    weight_per_unit = float(item.get('weight', 0)) if item.get('weight') else 0
+                    total_weight_for_original = weight_per_unit * original_qty
+                else:
+                    # Last resort: Calculate from total weight (old format)
+                    total_weight_for_remaining = float(item.get('weight', 0)) if item.get('weight') else 0
+                    weight_per_unit = total_weight_for_remaining / remaining_qty if remaining_qty > 0 else 0
+                    total_weight_for_original = weight_per_unit * original_qty
+
+                # CRITICAL FIX: Use original volume from order_items table in database
+                # This prevents volume per unit corruption
+                if item_id in original_volume_by_item_id:
+                    # Use the original volume per unit from the database
+                    volume_per_unit = original_volume_by_item_id[item_id]
+                    total_volume_for_original = volume_per_unit * original_qty
+                else:
+                    # Fallback: Use the volume field from remaining_items_json
+                    volume_per_unit = float(item.get('volume', 0)) if item.get('volume') else 0
+                    total_volume_for_original = volume_per_unit * original_qty
 
                 # remaining_items_json contains stored item data directly
                 item_dict = {
@@ -364,7 +436,7 @@ async def list_orders(
                     'product_name': item.get('product_name'),
                     'product_code': item.get('product_code'),
                     'description': item.get('description'),
-                    'original_quantity': original_qty,  # True original quantity
+                    'original_quantity': original_qty,  # True original quantity from database
                     'assigned_quantity': assigned_qty,  # Sum of all trip assignments
                     'remaining_quantity': remaining_qty,  # Current remaining
                     'quantity': original_qty,  # Display original quantity
@@ -376,7 +448,7 @@ async def list_orders(
                     'fixed_weight': float(item.get('fixed_weight', 0)) if item.get('fixed_weight') else None,
                     'weight_unit': item.get('weight_unit', 'kg'),
                     'total_weight': total_weight_for_original,  # Total weight for original quantity
-                    'volume': float(item.get('volume')) if item.get('volume') else None,
+                    'volume': volume_per_unit,  # Volume per unit from database
                     'assignments': item_assignments,  # Include trip assignments with status breakdown
                 }
                 items_dict_by_id[item_id] = item_dict
@@ -391,7 +463,10 @@ async def list_orders(
 
                 # Get assignments from trip_item_assignments for this item
                 item_assignments = assignments_by_item.get(item.id, [])
-                assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
+
+                # Split assignments by status - only count active assignments (planning/loading/on_route)
+                assigned_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] in ('planning', 'loading', 'on_route'))
+                delivered_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'delivered')
 
                 item_dict = {
                     'id': item.id,
@@ -400,8 +475,9 @@ async def list_orders(
                     'product_code': product_data.get('code', item.product_code),
                     'description': product_data.get('description', item.description),
                     'original_quantity': item.quantity,  # Original quantity
-                    'assigned_quantity': assigned_qty,  # Sum of all trip assignments
-                    'remaining_quantity': item.quantity - assigned_qty,  # Remaining after assignments
+                    'assigned_quantity': assigned_qty,  # Active assignments (planning/loading/on_route)
+                    'delivered_quantity': delivered_qty,  # Completed deliveries
+                    'remaining_quantity': item.quantity - assigned_qty - delivered_qty,  # Remaining after assignments and deliveries
                     'quantity': item.quantity,
                     'unit': product_data.get('unit', item.unit),
                     'unit_price': float(product_data.get('unit_price', item.unit_price)) if product_data.get('unit_price') or item.unit_price else None,
@@ -877,11 +953,22 @@ async def update_tms_order_status(
     # Update items_json and remaining_items_json if provided
     # NOTE: For split/partial orders, TMS is the source of truth. We store what TMS sends us.
     # The TMS service calculates remaining_items_json based on all trip_orders for this order.
+
+    # CRITICAL: Clean the JSON data before storing to remove computed fields like remaining_quantity, assigned_quantity
+    # These fields should NOT be stored in the database as they are calculated dynamically
+    def clean_item_json(item_data):
+        """Remove computed fields from item JSON before storing in database"""
+        fields_to_remove = ['remaining_quantity', 'assigned_quantity', 'delivered_quantity',
+                           'is_fully_assigned', 'is_partially_assigned', 'is_available', 'assignments']
+        return {k: v for k, v in item_data.items() if k not in fields_to_remove}
+
     if status_data.items_json is not None:
-        order.items_json = status_data.items_json
+        # Clean items_json before storing
+        order.items_json = [clean_item_json(item) for item in status_data.items_json]
 
     if status_data.remaining_items_json is not None:
-        order.remaining_items_json = status_data.remaining_items_json
+        # Clean remaining_items_json before storing
+        order.remaining_items_json = [clean_item_json(item) for item in status_data.remaining_items_json]
 
     # If items_json is provided but remaining_items_json is not, recalculate it
     # This happens when TMS sends a simplified update
@@ -1260,13 +1347,22 @@ async def get_order_item_assignments(
     assignments_result = await db.execute(assignments_query)
     assignments = assignments_result.scalars().all()
 
-    # Build a map of assigned quantities per item
-    assigned_quantities = {}  # order_item_id -> total assigned quantity
+    # Build a map of assigned quantities per item, split by status
+    # Only count planning/loading/on_route as "assigned" - delivered/failed/returned are completed
+    assigned_quantities = {}  # order_item_id -> total assigned quantity (active)
+    delivered_quantities = {}  # order_item_id -> total delivered quantity
     assignment_details = {}   # order_item_id -> list of assignments
 
     for assignment in assignments:
         item_id = assignment.order_item_id
-        assigned_quantities[item_id] = assigned_quantities.get(item_id, 0) + assignment.assigned_quantity
+
+        # Only count active assignments (planning, loading, on_route) as "assigned"
+        # Delivered, failed, returned items are completed and should not be subtracted from remaining
+        if assignment.item_status in ('planning', 'loading', 'on_route'):
+            assigned_quantities[item_id] = assigned_quantities.get(item_id, 0) + assignment.assigned_quantity
+        elif assignment.item_status == 'delivered':
+            delivered_quantities[item_id] = delivered_quantities.get(item_id, 0) + assignment.assigned_quantity
+        # failed and returned statuses are also completed - don't count as assigned
 
         if item_id not in assignment_details:
             assignment_details[item_id] = []
@@ -1281,17 +1377,21 @@ async def get_order_item_assignments(
     items_status = []
     total_original_quantity = 0
     total_assigned_quantity = 0
+    total_delivered_quantity = 0
     total_remaining_quantity = 0
 
     for item in original_items:
         # The order_items.quantity is the ORIGINAL quantity (not reduced)
         # trip_item_assignments tracks what has been assigned to trips
-        assigned_qty = assigned_quantities.get(item.id, 0)
+        assigned_qty = assigned_quantities.get(item.id, 0)  # Only active assignments
+        delivered_qty = delivered_quantities.get(item.id, 0)  # Completed deliveries
         original_qty = item.quantity  # This is the original quantity
-        remaining_qty = item.quantity - assigned_qty  # Remaining after assignments
+        # Remaining = original - active_assignments - delivered
+        remaining_qty = item.quantity - assigned_qty - delivered_qty
 
         total_original_quantity += original_qty
         total_assigned_quantity += assigned_qty
+        total_delivered_quantity += delivered_qty
         total_remaining_quantity += remaining_qty
 
         item_dict = {
@@ -1300,8 +1400,9 @@ async def get_order_item_assignments(
             "product_name": item.product_name,
             "product_code": item.product_code,
             "original_quantity": original_qty,  # Original quantity from order_items
-            "assigned_quantity": assigned_qty,  # Sum of all trip assignments
-            "remaining_quantity": remaining_qty,  # Remaining after assignments
+            "assigned_quantity": assigned_qty,  # Active assignments (planning/loading/on_route)
+            "delivered_quantity": delivered_qty,  # Completed deliveries
+            "remaining_quantity": remaining_qty,  # Remaining after assignments and deliveries
             "is_fully_assigned": remaining_qty == 0,
             "is_partially_assigned": 0 < remaining_qty < original_qty,
             "is_available": remaining_qty > 0,
@@ -1321,6 +1422,7 @@ async def get_order_item_assignments(
         "summary": {
             "total_original_quantity": total_original_quantity,
             "total_assigned_quantity": total_assigned_quantity,
+            "total_delivered_quantity": total_delivered_quantity,
             "total_remaining_quantity": total_remaining_quantity,
             "is_fully_assigned": is_fully_assigned,
             "is_partially_assigned": is_partially_assigned,
@@ -1428,12 +1530,16 @@ async def bulk_get_order_item_assignments(
 
         for item in items:
             item_assignments = assignments_for_order.get(item.id, [])
-            assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
+
+            # Split assignments by status - only count active assignments
+            assigned_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] in ('planning', 'loading', 'on_route'))
+            delivered_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'delivered')
 
             # The order_items.quantity is the ORIGINAL quantity (not reduced)
             # trip_item_assignments tracks what has been assigned to trips
             original_qty = item.quantity  # This is the original quantity
-            remaining_qty = item.quantity - assigned_qty  # Remaining after assignments
+            # Remaining = original - active_assignments - delivered
+            remaining_qty = item.quantity - assigned_qty - delivered_qty
 
             total_original_quantity += original_qty
             total_assigned_quantity += assigned_qty
@@ -1445,8 +1551,9 @@ async def bulk_get_order_item_assignments(
                 "product_name": item.product_name,
                 "product_code": item.product_code,
                 "original_quantity": original_qty,  # Original quantity from order_items
-                "assigned_quantity": assigned_qty,  # Sum of all trip assignments
-                "remaining_quantity": remaining_qty,  # Remaining after assignments
+                "assigned_quantity": assigned_qty,  # Active assignments (planning/loading/on_route)
+                "delivered_quantity": delivered_qty,  # Completed deliveries
+                "remaining_quantity": remaining_qty,  # Remaining after assignments and deliveries
                 "is_fully_assigned": remaining_qty == 0,
                 "is_partially_assigned": 0 < remaining_qty < original_qty,
                 "is_available": remaining_qty > 0,
@@ -1560,13 +1667,16 @@ async def get_order_items_with_assignments(
 
     for item in items:
         item_assignments = assignments_by_item.get(item.id, [])
-        # Sum assigned quantities (each trip-item pair appears once after grouping)
-        assigned_qty = sum(a["assigned_quantity"] for a in item_assignments)
+
+        # Split assignments by status - only count active assignments
+        assigned_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] in ('planning', 'loading', 'on_route'))
+        delivered_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'delivered')
 
         # The order_items.quantity is the ORIGINAL quantity (not reduced)
         # trip_item_assignments tracks what has been assigned to trips
         original_qty = item.quantity  # This is the original quantity
-        remaining_qty = item.quantity - assigned_qty  # Remaining after assignments
+        # Remaining = original - active_assignments - delivered
+        remaining_qty = item.quantity - assigned_qty - delivered_qty
 
         total_original_quantity += original_qty
         total_assigned_quantity += assigned_qty
@@ -1583,8 +1693,9 @@ async def get_order_items_with_assignments(
             "product_code": item.product_code,
             "description": item.description,
             "original_quantity": original_qty,  # Original quantity from order_items
-            "assigned_quantity": assigned_qty,  # Sum of all trip assignments
-            "remaining_quantity": remaining_qty,  # Remaining after assignments
+            "assigned_quantity": assigned_qty,  # Active assignments (planning/loading/on_route)
+            "delivered_quantity": delivered_qty,  # Completed deliveries
+            "remaining_quantity": remaining_qty,  # Remaining after assignments and deliveries
             "unit": item.unit,
             "unit_price": float(item.unit_price) if item.unit_price else None,
             "total_price": float(item.total_price) if item.total_price else None,
