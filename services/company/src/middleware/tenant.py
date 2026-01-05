@@ -128,7 +128,7 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
                 "TENANT_ACCESS_DENIED",
                 f"User {user_id} denied access to tenant {resource_tenant_id}",
                 user_id=user_id,
-                user_tenant_id=user_tenant_id,
+                tenant_id=user_tenant_id,
                 details={
                     "resource_tenant_id": resource_tenant_id,
                     "request_path": request.url.path,

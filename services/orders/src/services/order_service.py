@@ -369,7 +369,7 @@ class OrderService:
         order_data: OrderUpdate,
         user_id: str
     ) -> Order:
-        """Update an existing order"""
+        """Update an existing order (including items for draft orders)"""
         query = select(Order).where(
             Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
@@ -378,8 +378,74 @@ class OrderService:
         if not order:
             raise ValueError("Order not found")
 
-        # Update order fields
-        update_data = order_data.model_dump(exclude_unset=True)
+        # Extract items from update data before processing other fields
+        items_data = order_data.items if hasattr(order_data, 'items') else None
+
+        # Update order fields (excluding items which are handled separately)
+        update_data = order_data.model_dump(exclude_unset=True, exclude={'items'})
+
+        # Recalculate totals if items are being updated
+        if items_data is not None:
+            total_weight = 0.0
+            total_volume = 0.0
+            package_count = 0
+            total_amount = 0.0
+
+            # Process new items
+            order_items = []
+            for i, item_data in enumerate(items_data):
+                # Fetch product details
+                product = await self._fetch_product_details(item_data.product_id)
+
+                # Use user-entered weight if provided, otherwise use product weight
+                item_weight = item_data.weight if hasattr(item_data, 'weight') and item_data.weight and item_data.weight > 0 else product.get("weight", 0)
+
+                # Calculate item totals
+                item_total_price = product["unit_price"] * item_data.quantity
+                item_total_weight = item_weight * item_data.quantity
+                item_total_volume = product.get("volume", 0) * item_data.quantity
+
+                # Update order totals
+                total_weight += item_total_weight
+                total_volume += item_total_volume
+                package_count += item_data.quantity
+                total_amount += item_total_price
+
+                # Create OrderItem object (only use fields that exist in OrderItem model)
+                order_item = OrderItem(
+                    id=str(uuid4()),
+                    order_id=str(order.id),
+                    product_id=item_data.product_id,
+                    product_name=product.get("name", ""),
+                    product_code=product.get("code", ""),
+                    description=product.get("description", ""),
+                    quantity=item_data.quantity,
+                    unit=product.get("unit", "pcs"),
+                    unit_price=product.get("unit_price", 0),
+                    total_price=item_total_price,
+                    weight=item_weight,
+                    volume=item_total_volume,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                order_items.append(order_item)
+
+            # Delete existing items and add new ones
+            from sqlalchemy import delete
+            delete_query = delete(OrderItem).where(OrderItem.order_id == str(order.id))
+            await self.db.execute(delete_query)
+
+            # Add new items
+            for order_item in order_items:
+                self.db.add(order_item)
+
+            # Update calculated totals in the order data
+            update_data['total_weight'] = total_weight
+            update_data['total_volume'] = total_volume
+            update_data['package_count'] = package_count
+            update_data['total_amount'] = total_amount
+
+        # Apply other field updates
         for field, value in update_data.items():
             setattr(order, field, value)
 

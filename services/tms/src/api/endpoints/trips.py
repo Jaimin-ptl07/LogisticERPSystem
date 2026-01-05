@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update
-from datetime import date
+from datetime import date, datetime
 from httpx import AsyncClient
 import uuid
 import logging
@@ -15,7 +15,8 @@ from src.database import get_db, Trip, TripOrder
 from src.schemas import (
     TripCreate, TripUpdate, TripResponse, TripWithOrders,
     AssignOrdersRequest, TripOrderCreate, TripOrderResponse,
-    MessageResponse, ReorderOrdersRequest
+    MessageResponse, ReorderOrdersRequest,
+    TripPause, TripResume
 )
 from src.security import (
     TokenData,
@@ -197,6 +198,8 @@ async def _update_resource_statuses_for_trip(
     - planning/created: truck=assigned, driver=assigned
     - planning -> loading: truck=assigned, driver=assigned (reinforce)
     - loading -> on-route: truck=on_trip, driver=on-trip
+    - on-route -> paused: truck=maintenance, driver=unavailable
+    - paused -> on-route: truck=on_trip, driver=on-trip
     - on-route -> completed: truck=available, driver=available
     - any -> cancelled: truck=available, driver=available
     """
@@ -210,8 +213,12 @@ async def _update_resource_statuses_for_trip(
             "driver": "assigned"
         },
         "on-route": {
-            "truck": "on-route",
+            "truck": "on-trip",
             "driver": "on-trip"
+        },
+        "paused": {
+            "truck": "maintenance",
+            "driver": "unavailable"
         },
         "completed": {
             "truck": "available",
@@ -956,6 +963,214 @@ async def delete_trip(
     )
 
     return {"message": "Trip deleted successfully"}
+
+
+@router.post("/{trip_id}/pause", response_model=TripResponse)
+async def pause_trip(
+    trip_id: str,
+    pause_data: TripPause,
+    request: Request,
+    token_data: TokenData = Depends(require_any_permission(["trips:update", "trips:pause"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Pause a trip due to maintenance or issues"""
+    # Get authorization header for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    # Get existing trip
+    query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    trip = result.scalar_one_or_none()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    # Validate trip can be paused (only loading or on-route can be paused)
+    if trip.status not in ["loading", "on-route"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only pause trips in 'loading' or 'on-route' status. Current status: {trip.status}"
+        )
+
+    # Store old status for audit
+    old_status = trip.status
+
+    # Update trip to paused status
+    trip.status = "paused"
+    trip.paused_reason = pause_data.reason
+    trip.maintenance_note = pause_data.note
+    trip.paused_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(trip)
+
+    # Update truck and driver statuses
+    await _update_resource_statuses_for_trip(
+        "paused",
+        trip.truck_plate,
+        trip.driver_id,
+        auth_headers,
+        tenant_id
+    )
+
+    # Send audit log
+    audit_client = AuditClient(auth_headers)
+    await audit_client.log_event(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        user_role=token_data.role,
+        action="pause",
+        module="trips",
+        entity_type="trip",
+        entity_id=str(trip.id),
+        description=f"Trip {trip.id} paused due to {pause_data.reason}",
+        old_values={"status": old_status},
+        new_values={
+            "status": "paused",
+            "paused_reason": pause_data.reason,
+            "maintenance_note": pause_data.note,
+            "paused_at": trip.paused_at.isoformat()
+        }
+    )
+    await audit_client.close()
+
+    return TripResponse(
+        id=trip.id,
+        user_id=trip.user_id,
+        company_id=trip.company_id,
+        branch=trip.branch,
+        truck_plate=trip.truck_plate,
+        truck_model=trip.truck_model,
+        truck_capacity=trip.truck_capacity,
+        driver_id=trip.driver_id,
+        driver_name=trip.driver_name,
+        driver_phone=trip.driver_phone,
+        status=trip.status,
+        origin=trip.origin,
+        destination=trip.destination,
+        distance=trip.distance,
+        estimated_duration=trip.estimated_duration,
+        pre_trip_time=trip.pre_trip_time,
+        post_trip_time=trip.post_trip_time,
+        capacity_used=trip.capacity_used or 0,
+        capacity_total=trip.capacity_total,
+        trip_date=trip.trip_date,
+        created_at=trip.created_at,
+        updated_at=trip.updated_at
+    )
+
+
+@router.post("/{trip_id}/resume", response_model=TripResponse)
+async def resume_trip(
+    trip_id: str,
+    resume_data: TripResume,
+    request: Request,
+    token_data: TokenData = Depends(require_any_permission(["trips:update", "trips:resume"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Resume a paused trip"""
+    # Get authorization header for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    # Get existing trip
+    query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    trip = result.scalar_one_or_none()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    # Validate trip is paused
+    if trip.status != "paused":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only resume trips in 'paused' status. Current status: {trip.status}"
+        )
+
+    # Update trip to on-route status
+    trip.status = "on-route"
+    trip.resumed_at = datetime.utcnow()
+
+    # If resume note is provided, update maintenance_note
+    if resume_data.note:
+        trip.maintenance_note = resume_data.note
+
+    await db.commit()
+    await db.refresh(trip)
+
+    # Update truck and driver statuses back to on-trip
+    await _update_resource_statuses_for_trip(
+        "on-route",
+        trip.truck_plate,
+        trip.driver_id,
+        auth_headers,
+        tenant_id
+    )
+
+    # Send audit log
+    audit_client = AuditClient(auth_headers)
+    await audit_client.log_event(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        user_role=token_data.role,
+        action="resume",
+        module="trips",
+        entity_type="trip",
+        entity_id=str(trip.id),
+        description=f"Trip {trip.id} resumed",
+        old_values={"status": "paused"},
+        new_values={
+            "status": "on-route",
+            "resumed_at": trip.resumed_at.isoformat(),
+            "maintenance_note": trip.maintenance_note
+        }
+    )
+    await audit_client.close()
+
+    return TripResponse(
+        id=trip.id,
+        user_id=trip.user_id,
+        company_id=trip.company_id,
+        branch=trip.branch,
+        truck_plate=trip.truck_plate,
+        truck_model=trip.truck_model,
+        truck_capacity=trip.truck_capacity,
+        driver_id=trip.driver_id,
+        driver_name=trip.driver_name,
+        driver_phone=trip.driver_phone,
+        status=trip.status,
+        origin=trip.origin,
+        destination=trip.destination,
+        distance=trip.distance,
+        estimated_duration=trip.estimated_duration,
+        pre_trip_time=trip.pre_trip_time,
+        post_trip_time=trip.post_trip_time,
+        capacity_used=trip.capacity_used or 0,
+        capacity_total=trip.capacity_total,
+        trip_date=trip.trip_date,
+        created_at=trip.created_at,
+        updated_at=trip.updated_at
+    )
 
 
 @router.get("/{trip_id}/orders", response_model=List[TripOrderResponse])

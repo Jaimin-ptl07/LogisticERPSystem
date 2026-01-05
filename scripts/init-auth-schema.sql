@@ -743,6 +743,16 @@ VALUES
     'track',
     'Track trip status'
 ),
+(
+    'trips',
+    'pause',
+    'Pause a trip due to maintenance or issues'
+),
+(
+    'trips',
+    'resume',
+    'Resume a paused trip'
+),
 -- Order specific permissions for TMS
 (
     'orders',
@@ -1383,7 +1393,7 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource = 'trips'
-  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'assign', 'track')
+  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'assign', 'track', 'pause', 'resume')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Resource Management Permissions
@@ -2397,6 +2407,26 @@ VALUES
             SELECT id
             FROM permissions
             WHERE
+                resource = 'trips'
+                AND action = 'pause'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'resume'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
                 resource = 'orders'
                 AND action = 'split'
         )
@@ -2853,6 +2883,27 @@ VALUES
             WHERE
                 resource = 'driver'
                 AND action = 'update'
+        )
+    ),
+    -- Trips pause and resume permissions
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'pause'
+        )
+    ),
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'resume'
         )
     ),
     -- Dashboard

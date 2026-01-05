@@ -13,6 +13,7 @@ from src.security import (
     require_permissions,
     require_any_permission
 )
+from src.schemas import TripPause, TripResume
 import logging
 
 logger = logging.getLogger(__name__)
@@ -292,4 +293,174 @@ async def mark_order_delivered(
         raise
     except Exception as e:
         logger.error(f"Error marking order as delivered: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/trips/{trip_id}/pause")
+async def pause_trip(
+    trip_id: str,
+    pause_data: TripPause,
+    request: Request,
+    token_data: TokenData = Depends(require_permissions(["driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    driver_service=Depends(get_driver_service)
+):
+    """
+    Pause a trip due to maintenance or issues.
+
+    Allows the driver to pause their active trip when issues occur,
+    such as accidents, breakdowns, or other problems.
+    """
+    # Get authorization header for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    try:
+        # Validate trip_id
+        if not trip_id or trip_id == "undefined" or trip_id.strip() == "":
+            raise HTTPException(status_code=400, detail="Invalid trip ID")
+
+        # Call TMS service to pause the trip
+        from httpx import AsyncClient
+        from src.config import settings
+
+        async with AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{settings.TMS_API_URL}/api/v1/trips/{trip_id}/pause",
+                headers=auth_headers,
+                json={
+                    "reason": pause_data.reason,
+                    "note": pause_data.note
+                }
+            )
+
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Trip not found")
+            elif response.status_code == 400:
+                error_detail = response.json().get("detail", "Cannot pause trip")
+                raise HTTPException(status_code=400, detail=error_detail)
+            elif response.status_code != 200:
+                logger.error(f"TMS service error: {response.text}")
+                raise HTTPException(status_code=500, detail="Failed to pause trip")
+
+            result = response.json()
+
+        # Send audit log
+        audit_client = AuditClient(auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="pause",
+            module="trips",
+            entity_type="trip",
+            entity_id=trip_id,
+            description=f"Driver paused trip {trip_id} due to {pause_data.reason}",
+            new_values={
+                "trip_id": trip_id,
+                "paused_reason": pause_data.reason,
+                "maintenance_note": pause_data.note
+            }
+        )
+        await audit_client.close()
+
+        return {
+            "success": True,
+            "message": "Trip paused successfully",
+            "data": {
+                "trip_id": trip_id,
+                "status": "paused",
+                "reason": pause_data.reason
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error pausing trip: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/trips/{trip_id}/resume")
+async def resume_trip(
+    trip_id: str,
+    resume_data: TripResume,
+    request: Request,
+    token_data: TokenData = Depends(require_permissions(["driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    driver_service=Depends(get_driver_service)
+):
+    """
+    Resume a paused trip.
+
+    Allows the driver to resume their trip after it has been paused
+    due to maintenance or other issues.
+    """
+    # Get authorization header for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    try:
+        # Validate trip_id
+        if not trip_id or trip_id == "undefined" or trip_id.strip() == "":
+            raise HTTPException(status_code=400, detail="Invalid trip ID")
+
+        # Call TMS service to resume the trip
+        from httpx import AsyncClient
+        from src.config import settings
+
+        async with AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{settings.TMS_API_URL}/api/v1/trips/{trip_id}/resume",
+                headers=auth_headers,
+                json={
+                    "note": resume_data.note
+                }
+            )
+
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Trip not found")
+            elif response.status_code == 400:
+                error_detail = response.json().get("detail", "Cannot resume trip")
+                raise HTTPException(status_code=400, detail=error_detail)
+            elif response.status_code != 200:
+                logger.error(f"TMS service error: {response.text}")
+                raise HTTPException(status_code=500, detail="Failed to resume trip")
+
+            result = response.json()
+
+        # Send audit log
+        audit_client = AuditClient(auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="resume",
+            module="trips",
+            entity_type="trip",
+            entity_id=trip_id,
+            description=f"Driver resumed trip {trip_id}",
+            new_values={
+                "trip_id": trip_id,
+                "status": "on-route",
+                "maintenance_note": resume_data.note
+            }
+        )
+        await audit_client.close()
+
+        return {
+            "success": True,
+            "message": "Trip resumed successfully",
+            "data": {
+                "trip_id": trip_id,
+                "status": "on-route"
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resuming trip: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

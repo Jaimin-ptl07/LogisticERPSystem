@@ -681,7 +681,7 @@ async def update_order(
     if auth_header:
         auth_headers["Authorization"] = auth_header
 
-    order_service = OrderService(db, auth_headers=auth_headers)
+    order_service = OrderService(db, auth_headers=auth_headers, tenant_id=tenant_id)
 
     # Check if order exists and belongs to tenant
     existing_order = await order_service.get_order_by_id(str(order_id), tenant_id)

@@ -33,7 +33,8 @@ import {
   CheckCircle,
   AlertCircle,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Edit
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
@@ -44,6 +45,7 @@ export default function Orders() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | undefined>(undefined);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
   // Fetch real orders data
@@ -124,16 +126,28 @@ export default function Orders() {
   };
 
   const handleCreateOrder = () => {
+    setEditingOrder(undefined);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order);
     setIsCreateModalOpen(true);
   };
 
   const handleCloseCreateModal = () => {
     setIsCreateModalOpen(false);
+    setEditingOrder(undefined);
   };
 
   const handleCreateOrderSuccess = () => {
     refetchOrders();
-    toast.success("Order created successfully!");
+    if (editingOrder) {
+      toast.success("Order updated successfully!");
+    } else {
+      toast.success("Order created successfully!");
+    }
+    setEditingOrder(undefined);
   };
 
   const handleSubmitOrder = async (orderId: string) => {
@@ -158,11 +172,11 @@ export default function Orders() {
   // Filter orders based on status filter
   const filteredOrders = statusFilter
     ? orders.filter((o) => {
-        if (statusFilter === "approved") {
-          return o.status === "finance_approved" || o.status === "logistics_approved";
-        }
-        return o.status === statusFilter;
-      })
+      if (statusFilter === "approved") {
+        return o.status === "finance_approved" || o.status === "logistics_approved";
+      }
+      return o.status === statusFilter;
+    })
     : orders;
 
   return (
@@ -193,9 +207,8 @@ export default function Orders() {
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card
-            className={`bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === null ? 'ring-4 ring-blue-500' : ''
-            }`}
+            className={`bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === null ? 'ring-4 ring-blue-500' : ''
+              }`}
             onClick={() => setStatusFilter(null)}
           >
             <CardContent className="p-6">
@@ -210,9 +223,8 @@ export default function Orders() {
           </Card>
 
           <Card
-            className={`bg-gradient-to-br from-gray-50 to-slate-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === 'draft' ? 'ring-4 ring-gray-500' : ''
-            }`}
+            className={`bg-gradient-to-br from-gray-50 to-slate-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'draft' ? 'ring-4 ring-gray-500' : ''
+              }`}
             onClick={() => setStatusFilter(statusFilter === 'draft' ? null : 'draft')}
           >
             <CardContent className="p-6">
@@ -227,9 +239,8 @@ export default function Orders() {
           </Card>
 
           <Card
-            className={`bg-gradient-to-br from-yellow-50 to-orange-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === 'submitted' ? 'ring-4 ring-yellow-500' : ''
-            }`}
+            className={`bg-gradient-to-br from-yellow-50 to-orange-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'submitted' ? 'ring-4 ring-yellow-500' : ''
+              }`}
             onClick={() => setStatusFilter(statusFilter === 'submitted' ? null : 'submitted')}
           >
             <CardContent className="p-6">
@@ -244,9 +255,8 @@ export default function Orders() {
           </Card>
 
           <Card
-            className={`bg-gradient-to-br from-green-50 to-emerald-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === 'approved' ? 'ring-4 ring-green-500' : ''
-            }`}
+            className={`bg-gradient-to-br from-green-50 to-emerald-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'approved' ? 'ring-4 ring-green-500' : ''
+              }`}
             onClick={() => setStatusFilter(statusFilter === 'approved' ? null : 'approved')}
           >
             <CardContent className="p-6">
@@ -390,11 +400,10 @@ export default function Orders() {
                                 <div className="mt-3">
                                   <Badge
                                     variant={itemsData.tms_order_status === 'available' ? 'success' : itemsData.tms_order_status === 'partial' ? 'warning' : 'default'}
-                                    className={`${
-                                      itemsData.tms_order_status === 'available' ? 'bg-green-50 text-green-700 border-green-200' :
-                                      itemsData.tms_order_status === 'partial' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                      'bg-blue-50 text-blue-700 border-blue-200'
-                                    } text-xs font-semibold px-2 py-1`}
+                                    className={`${itemsData.tms_order_status === 'available' ? 'bg-green-50 text-green-700 border-green-200' :
+                                        itemsData.tms_order_status === 'partial' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                          'bg-blue-50 text-blue-700 border-blue-200'
+                                      } text-xs font-semibold px-2 py-1`}
                                   >
                                     {itemsData.tms_order_status === 'available' ? 'Available' : itemsData.tms_order_status === 'partial' ? 'Partially Assigned' : 'Fully Assigned'}
                                   </Badge>
@@ -411,13 +420,13 @@ export default function Orders() {
                             <p className="text-sm font-bold text-gray-900">
                               {order.items && order.items.length > 0
                                 ? order.items.reduce((sum, item) => {
-                                    // Use total_weight if available (already calculated based on original quantity)
-                                    // If total_weight is not available, calculate using original_quantity or quantity
-                                    const itemWeight = (item as any).total_weight !== undefined
-                                      ? (item as any).total_weight
-                                      : (item.weight || 0) * ((item as any).original_quantity || item.quantity);
-                                    return sum + itemWeight;
-                                  }, 0).toFixed(2) + ' kg'
+                                  // Use total_weight if available (already calculated based on original quantity)
+                                  // If total_weight is not available, calculate using original_quantity or quantity
+                                  const itemWeight = (item as any).total_weight !== undefined
+                                    ? (item as any).total_weight
+                                    : (item.weight || 0) * ((item as any).original_quantity || item.quantity);
+                                  return sum + itemWeight;
+                                }, 0).toFixed(2) + ' kg'
                                 : '0.00 kg'}
                             </p>
                           </div>
@@ -451,7 +460,7 @@ export default function Orders() {
                         <div className="mb-6">
                           <div
                             className="flex items-center justify-between mb-4"
-                            // onClick={() => toggleOrderExpansion(order.id)}
+                          // onClick={() => toggleOrderExpansion(order.id)}
                           >
                             <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                               Order Items ({order.items_count})
@@ -466,7 +475,7 @@ export default function Orders() {
                             ) : (
                               <ChevronRight className="w-5 h-5 text-gray-500" />
                             )} */}
-                          </div>
+                          </div>  
 
                           {/* Order Items Table with Assignments */}
                           {(itemsWithAssignments && itemsWithAssignments.length > 0) || (order.items && order.items.length > 0) ? (
@@ -631,16 +640,29 @@ export default function Orders() {
                       </div>
                     </div>
                   </CardContent>
-                  {/* Menu Button - Absolutely positioned in top-right */}
-                  <div className="absolute top-4 right-4 z-10">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-2 h-auto"
-                    >
-                      <span className="text-lg leading-none">⋮</span>
-                    </Button>
-                  </div>
+                  {/* Edit Button for Draft Orders - Absolutely positioned in top-right */}
+                  {order.status === "draft" ? (
+                    <div className="absolute top-4 right-4 z-10">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditOrder(order)}
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-2 h-auto font-medium"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="absolute top-4 right-4 z-10">
+                      {/* <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-2 h-auto"
+                      >
+                        <span className="text-lg leading-none">⋮</span>
+                      </Button> */}
+                    </div>
+                  )}
                 </Card>
               );
             })
@@ -682,6 +704,7 @@ export default function Orders() {
         isOpen={isCreateModalOpen}
         onClose={handleCloseCreateModal}
         onSuccess={handleCreateOrderSuccess}
+        order={editingOrder}
       />
     </>
   );

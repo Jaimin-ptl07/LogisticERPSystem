@@ -44,7 +44,7 @@ class Trip(Base):
     driver_phone = Column(String(20), nullable=False)
     status = Column(
         String(50),
-        CheckConstraint("status IN ('planning', 'loading', 'on-route', 'completed', 'cancelled', 'truck-malfunction')", name="check_trip_status"),
+        CheckConstraint("status IN ('planning', 'loading', 'on-route', 'paused', 'completed', 'cancelled', 'truck-malfunction')", name="check_trip_status"),
         nullable=False,
         default="planning"
     )
@@ -57,6 +57,13 @@ class Trip(Base):
     capacity_used = Column(Integer, default=0)
     capacity_total = Column(Integer, nullable=False)
     trip_date = Column(Date, nullable=False)
+
+    # Maintenance/pause tracking
+    maintenance_note = Column(Text, nullable=True)
+    paused_at = Column(DateTime, nullable=True)
+    paused_reason = Column(String(500), nullable=True)
+    resumed_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
