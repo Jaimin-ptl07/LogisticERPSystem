@@ -319,25 +319,18 @@ BEGIN
     FROM orders
     WHERE id = order_id_to_check;
 
-    -- Skip if order is cancelled (but allow delivered to be updated for partial assignments)
-    IF order_current_status = 'cancelled' THEN
+    -- Skip if order is already delivered or cancelled
+    IF order_current_status IN ('delivered', 'cancelled') THEN
         RETURN NEW;
     END IF;
 
-    -- Check if there are partial assignments (some quantity assigned, some remaining)
-    SELECT BOOL_OR(
-        EXISTS (
-            SELECT 1
-            FROM trip_item_assignments tia
-            WHERE tia.order_id = order_id_to_check
-            AND tia.assigned_quantity < (
-                SELECT oi2.quantity
-                FROM order_items oi2
-                WHERE oi2.id = tia.order_item_id
-                LIMIT 1
-            )
-        )
-    ) INTO has_partial_assignment;
+    -- FIXED: Check if there are partial assignments by summing assigned quantities
+    -- If total assigned quantity < total order quantity, there's a partial assignment
+    SELECT COALESCE(SUM(oi.quantity) > COALESCE(SUM(tia.assigned_quantity), 0), FALSE)
+    INTO has_partial_assignment
+    FROM order_items oi
+    LEFT JOIN trip_item_assignments tia ON tia.order_item_id = oi.id AND tia.order_id = oi.order_id
+    WHERE oi.order_id = order_id_to_check;
 
     -- If no trip_item_assignments exist yet, set to false
     IF has_partial_assignment IS NULL THEN
