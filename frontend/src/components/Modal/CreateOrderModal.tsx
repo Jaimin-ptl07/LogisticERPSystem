@@ -277,16 +277,6 @@ export function CreateOrderModal({
   const customers = customersData || [];
   const products = productsData || [];
 
-  // Generate order number on mount (only in create mode)
-  useEffect(() => {
-    if (isOpen && !isEditMode) {
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const uniqueNumber = uuidv4().slice(0, 8).toUpperCase();
-      const orderNumber = `ORD-${today}-${uniqueNumber}`;
-      setValue("orderNumber", orderNumber);
-    }
-  }, [isOpen, setValue, isEditMode]);
-
   // Populate form with existing order data when editing
   useEffect(() => {
     if (isEditMode && order) {
@@ -332,6 +322,12 @@ export function CreateOrderModal({
           },
         ],
       });
+
+      // Generate order number after reset
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const uniqueNumber = uuidv4().slice(0, 8).toUpperCase();
+      const orderNumber = `ORD-${today}-${uniqueNumber}`;
+      setValue("orderNumber", orderNumber);
     }
   }, [isEditMode, order, isOpen, setValue, reset]);
 

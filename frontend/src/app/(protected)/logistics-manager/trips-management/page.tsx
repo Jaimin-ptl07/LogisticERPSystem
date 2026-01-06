@@ -606,10 +606,8 @@ export default function Trips() {
     const filtered = availableDrivers.filter(
       (driver) => {
         const statusMatch = driver.status === "available";
-        const noTruck = !driver.currentTruck;
-        const branchMatch = !selectedBranch || driver.branch_id === selectedBranch;
-        console.log(`Driver ${driver.name}: status=${driver.status}, branch_id=${driver.branch_id}, statusMatch=${statusMatch}, noTruck=${noTruck}, branchMatch=${branchMatch}`);
-        return statusMatch && noTruck && branchMatch;
+        console.log(`Driver ${driver.name}: status=${driver.status}, branch_id=${driver.branch_id}, statusMatch=${statusMatch}`);
+        return statusMatch;
       }
     );
     console.log("getDriversAvailable - filtered:", filtered);
@@ -667,7 +665,7 @@ export default function Trips() {
       truck.capacity.toString().includes(truckSearchQuery)
   );
 
-  const filteredDrivers = availableDrivers.filter(
+  const filteredDrivers = getDriversAvailable().filter(
     (driver) =>
       driver.name.toLowerCase().includes(driverSearchQuery.toLowerCase()) ||
       (driver.phone && driver.phone.includes(driverSearchQuery)) ||

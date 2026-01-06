@@ -3,6 +3,7 @@ Order Documents API endpoints
 """
 from typing import List
 from uuid import UUID
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,7 @@ from src.security import (
 )
 from src.utils.file_handler import FileHandler
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -303,3 +305,186 @@ async def download_order_document(
         file_name=document.file_name,
         mime_type=document.mime_type
     )
+
+
+@router.post("/{order_id}/documents/delivery-proof", response_model=OrderDocumentResponse, status_code=status.HTTP_201_CREATED)
+async def upload_delivery_proof_document(
+    order_id: str,
+    file: UploadFile = File(...),
+    document_type: str = Form(default="delivery_proof"),
+    title: str = Form(default="Delivery Proof"),
+    description: str = Form(default="Document uploaded by driver upon delivery"),
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission(["order_documents:upload", "driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Upload delivery proof document for an order.
+
+    This endpoint is specifically for drivers to upload delivery confirmation
+    documents (photos, PDFs, etc.) when marking an order as delivered.
+    """
+    document_service = OrderDocumentService(db)
+    file_handler = FileHandler(use_minio=True)  # Use MinIO for delivery documents
+
+    # Verify order exists and belongs to tenant
+    # order_id parameter is actually order_number (e.g., ORD-20260105-53BA49C8)
+    from src.services.order_service import OrderService
+    order_service = OrderService(db)
+    order = await order_service.get_order_by_order_number(order_id, tenant_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    # Validate file type - allow images and PDFs for delivery proof
+    allowed_mime_types = [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/jpg",
+        "image/gif",
+        "image/webp"
+    ]
+
+    if file.content_type not in allowed_mime_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type {file.content_type} is not allowed for delivery proof. Allowed types: PDF, JPEG, PNG, GIF, WebP"
+        )
+
+    # Validate file size (max 10MB for delivery proof)
+    max_delivery_proof_size = 10 * 1024 * 1024  # 10MB
+    if file.size and file.size > max_delivery_proof_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File size exceeds maximum limit of 10MB for delivery proof"
+        )
+
+    # Save file to MinIO
+    file_path, file_hash = await file_handler.save_file(file, str(order_id))
+
+    # Create document record - use order.id (actual database UUID) for foreign key
+    document_data = OrderDocumentCreate(
+        order_id=order.id,
+        document_type=document_type,
+        title=title,
+        description=description,
+        is_required=False,
+        file_name=file.filename,
+        file_path=file_path,
+        file_size=file.size or 0,
+        mime_type=file.content_type,
+        file_hash=file_hash,
+        uploaded_by=user_id
+    )
+
+    document = await document_service.create_document(document_data)
+
+    # Mark order items as delivered - update all items for this specific order only
+    from src.models.order_item import OrderItem
+    from sqlalchemy import update
+
+    await db.execute(
+        update(OrderItem)
+        .where(OrderItem.order_id == order.id)
+        .values(item_status="delivered")
+    )
+    await db.commit()
+
+    return document
+
+
+@router.get("/{order_id}/documents/delivery-proof", response_model=DocumentListResponse)
+async def get_delivery_proof_documents(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission(["order_documents:read", "order_documents:read_own"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Get all delivery proof documents for an order.
+
+    Returns documents uploaded by drivers as proof of delivery.
+    """
+    document_service = OrderDocumentService(db)
+    file_handler = FileHandler(use_minio=True)
+
+    try:
+        # order_id could be a UUID or an order_number (like ORD-20260105-XXX)
+        # First try to get order by order_number, then fall back to UUID
+        from src.services.order_service import OrderService
+        order_service = OrderService(db)
+        order = None
+
+        # Try getting by order_number first (for order numbers like ORD-20260105-XXX)
+        try:
+            order = await order_service.get_order_by_order_number(order_id, tenant_id)
+        except Exception:
+            pass
+
+        # If not found by order_number, try by UUID
+        if not order:
+            try:
+                order_uuid = UUID(order_id)
+                order = await order_service.get_order_by_id(order_uuid, tenant_id)
+            except ValueError:
+                logger.warning(f"Invalid order ID format: {order_id}")
+                return DocumentListResponse(documents=[], total=0)
+
+        if not order:
+            logger.warning(f"Order not found: {order_id}")
+            return DocumentListResponse(documents=[], total=0)
+
+        # Get all documents for this order (using the actual database UUID)
+        all_documents = await document_service.get_order_documents(order.id)
+
+        # Filter for delivery proof documents
+        delivery_proofs = [
+            doc for doc in all_documents
+            if doc.document_type == "delivery_proof"
+        ]
+
+        # Generate presigned URLs for each document
+        documents_with_urls = []
+        for doc in delivery_proofs:
+            try:
+                download_url = file_handler.generate_presigned_url(doc.file_path, expires_in=7200)  # 2 hours
+                doc_dict = {
+                    "id": str(doc.id),
+                    "order_id": str(doc.order_id),
+                    "uploaded_by": str(doc.uploaded_by),
+                    "file_name": doc.file_name,
+                    "file_path": doc.file_path,
+                    "file_size": doc.file_size,
+                    "mime_type": doc.mime_type,
+                    "file_hash": doc.file_hash,
+                    "is_verified": doc.is_verified,
+                    "verified_by": str(doc.verified_by) if doc.verified_by else None,
+                    "verified_at": doc.verified_at.isoformat() if doc.verified_at else None,
+                    "verification_notes": doc.verification_notes,
+                    "created_at": doc.created_at,
+                    "updated_at": doc.updated_at,
+                    # DocumentBase fields
+                    "document_type": doc.document_type,
+                    "title": doc.title,
+                    "description": doc.description,
+                    "is_required": doc.is_required,
+                    # Additional field for frontend
+                    "download_url": download_url
+                }
+                documents_with_urls.append(doc_dict)
+            except Exception as e:
+                logger.error(f"Error generating URL for document {doc.id}: {str(e)}")
+
+        return DocumentListResponse(documents=documents_with_urls, total=len(documents_with_urls))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching delivery proof documents for order {order_id}: {str(e)}")
+        # Return empty list instead of raising error
+        return DocumentListResponse(documents=[], total=0)

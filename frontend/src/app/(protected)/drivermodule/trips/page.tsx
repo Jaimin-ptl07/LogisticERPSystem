@@ -5,11 +5,13 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { driverAPI } from "@/lib/api";
 import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import { Truck, AlertTriangle, RefreshCw, Wrench, Play, AlertCircle } from "lucide-react";
+import { DocumentUploadModal } from "@/components/driver";
 
 // Type definitions
 interface TripOrder {
   id: number;
   order_id: string;
+  order_number?: string;
   customer: string;
   customer_address?: string;
   delivery_status: string;
@@ -59,6 +61,14 @@ export default function DriverDashboard() {
   const [pauseReason, setPauseReason] = useState("");
   const [pauseNote, setPauseNote] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Document upload state
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [selectedOrderForDocument, setSelectedOrderForDocument] = useState<{
+    tripId: string;
+    orderId: string;
+    orderNumber?: string;
+  } | null>(null);
 
   // Load data on component mount
   useEffect(() => {
@@ -115,21 +125,23 @@ export default function DriverDashboard() {
     }
   };
 
-  const markOrderDelivered = async (tripId: string, orderId: string) => {
-    try {
-      // Validate inputs before making API call
-      if (!tripId || tripId === "undefined" || tripId.trim() === "") {
-        console.error("Invalid trip ID:", tripId);
-        setError("Invalid trip ID");
-        return;
-      }
-      if (!orderId || orderId === "undefined" || orderId.trim() === "") {
-        console.error("Invalid order ID:", orderId);
-        setError("Invalid order ID");
-        return;
-      }
+  const markOrderDelivered = async (tripId: string, orderId: string, orderNumber?: string) => {
+    // Open document upload modal instead of directly marking as delivered
+    console.log("markOrderDelivered called with:", { tripId, orderId, orderNumber });
+    setSelectedOrderForDocument({
+      tripId,
+      orderId,
+      orderNumber
+    });
+    setShowDocumentModal(true);
+    console.log("showDocumentModal set to true");
+  };
 
-      console.log("Marking order as delivered:", { tripId, orderId });
+  const handleDocumentUploadComplete = async (documentData: any) => {
+    const { tripId, orderId } = selectedOrderForDocument!;
+    try {
+      // Now mark the order as delivered after document upload
+      console.log("Document uploaded, marking order as delivered:", { tripId, orderId });
       await driverAPI.markOrderDelivered(tripId, orderId);
 
       // Refresh trip details if exists
@@ -430,7 +442,7 @@ export default function DriverDashboard() {
                               );
                               console.log("Trip details:", activeTrip);
                               console.log("All trip orders:", tripOrders);
-                              markOrderDelivered(activeTrip.id, order.order_id);
+                              markOrderDelivered(activeTrip.id, order.order_id, order.order_number);
                             }}
                             className="px-6 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700"
                           >
@@ -685,6 +697,25 @@ export default function DriverDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Document Upload Modal */}
+      {selectedOrderForDocument && (
+        <>
+          {console.log("Rendering DocumentUploadModal with:", { showDocumentModal, selectedOrderForDocument })}
+          <DocumentUploadModal
+            isOpen={showDocumentModal}
+            onClose={() => {
+              console.log("Modal onClose called");
+              setShowDocumentModal(false);
+              setSelectedOrderForDocument(null);
+            }}
+            onUploadComplete={handleDocumentUploadComplete}
+            tripId={selectedOrderForDocument.tripId}
+            orderId={selectedOrderForDocument.orderId}
+            orderNumber={selectedOrderForDocument.orderNumber}
+          />
+        </>
       )}
     </div>
   );
