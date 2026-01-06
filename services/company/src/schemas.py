@@ -149,6 +149,10 @@ class CustomerBase(BaseSchema):
     credit_limit: float = Field(default=0, ge=0)
     pricing_tier: str = Field(default="standard", max_length=20)
     is_active: bool = True
+    # Marketing person contact details
+    marketing_person_name: Optional[str] = Field(None, max_length=100)
+    marketing_person_phone: Optional[str] = Field(None, max_length=20)
+    marketing_person_email: Optional[str] = Field(None, max_length=100)
 
     @model_validator(mode='before')
     @classmethod
@@ -184,6 +188,10 @@ class CustomerUpdate(BaseSchema):
     credit_limit: Optional[float] = Field(None, ge=0)
     pricing_tier: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
+    # Marketing person contact details
+    marketing_person_name: Optional[str] = Field(None, max_length=100)
+    marketing_person_phone: Optional[str] = Field(None, max_length=20)
+    marketing_person_email: Optional[str] = Field(None, max_length=100)
 
 
 class CustomerInDB(CustomerBase):
@@ -248,6 +256,9 @@ class Customer(CustomerInDB):
                     'business_types_raw': list(obj.business_types) if obj.business_types else None,
                     'business_type_relation': obj.business_type_relation,
                     'branches': obj.branches,
+                    'marketing_person_name': getattr(obj, 'marketing_person_name', None),
+                    'marketing_person_phone': getattr(obj, 'marketing_person_phone', None),
+                    'marketing_person_email': getattr(obj, 'marketing_person_email', None),
                 }
                 return super().model_validate(data, **kwargs)
         return super().model_validate(obj, **kwargs)

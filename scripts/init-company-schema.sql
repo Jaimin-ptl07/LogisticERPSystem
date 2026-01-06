@@ -77,6 +77,9 @@ CREATE TABLE IF NOT EXISTS customers (
     pricing_tier VARCHAR(20) DEFAULT 'standard',
     is_active BOOLEAN DEFAULT true,
     available_for_all_branches BOOLEAN DEFAULT true,
+    marketing_person_name VARCHAR(100),
+    marketing_person_phone VARCHAR(20),
+    marketing_person_email VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE,
     UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint

@@ -240,6 +240,10 @@ export interface Customer {
   home_branch?: Branch
   business_type_relation?: BusinessTypeModel  // Deprecated - single business type
   business_types?: BusinessTypeModel[]  // New - multiple business types
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface Vehicle {
@@ -386,6 +390,10 @@ export interface CustomerCreate {
   credit_limit?: number
   pricing_tier?: string
   is_active?: boolean
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface VehicleCreate {
