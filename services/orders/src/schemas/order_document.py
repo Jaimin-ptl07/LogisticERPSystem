@@ -19,7 +19,13 @@ class OrderDocumentBase(BaseModel):
 
 class OrderDocumentCreate(OrderDocumentBase):
     """Schema for creating an order document"""
-    pass
+    order_id: str
+    file_name: str
+    file_path: str
+    file_size: int
+    mime_type: str
+    file_hash: Optional[str] = None
+    uploaded_by: str
 
 
 class OrderDocumentUpdate(BaseModel):
@@ -34,16 +40,16 @@ class OrderDocumentResponse(OrderDocumentBase):
     """Schema for order document response"""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    order_id: UUID
-    uploaded_by: UUID
+    id: str
+    order_id: str
+    uploaded_by: str
     file_name: str
     file_path: str
     file_size: int
     mime_type: str
     file_hash: Optional[str]
     is_verified: bool
-    verified_by: Optional[UUID]
+    verified_by: Optional[str]
     verified_at: Optional[datetime]
     verification_notes: Optional[str]
     created_at: datetime
@@ -58,7 +64,7 @@ class DocumentVerificationRequest(BaseModel):
 
 class DocumentUploadResponse(BaseModel):
     """Schema for document upload response"""
-    document_id: UUID
+    document_id: str
     file_name: str
     file_size: int
     mime_type: str

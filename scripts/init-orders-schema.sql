@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 
 -- Create order_documents table
+-- Supported document_type values: 'invoice', 'packing_list', 'delivery_note', 'delivery_proof',
+-- 'purchase_order', 'quotation', 'contract', 'receipt', 'other'
 CREATE TABLE IF NOT EXISTS order_documents (
     id VARCHAR(255) PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_id VARCHAR(255) NOT NULL REFERENCES orders(id) ON DELETE CASCADE,

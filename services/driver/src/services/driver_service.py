@@ -2,7 +2,7 @@
 
 from typing import Optional, Dict, Any, List
 from datetime import date
-from src.http_client import TMSClient
+from src.http_client import TMSClient, OrdersClient
 from src.config import settings
 from src.security.auth import verify_token
 import logging
@@ -31,6 +31,7 @@ class DriverService:
         self.company_id = "company-001"  # Default company_id for driver operations
         self.auth_token = auth_token
         self.tms_client = TMSClient(auth_token=auth_token)
+        self.orders_client = OrdersClient(auth_token=auth_token)
 
     async def get_driver_trips(
         self,
@@ -229,6 +230,66 @@ class DriverService:
             return result
         except Exception as e:
             logger.error(f"Error marking order {order_id} as delivered: {str(e)}")
+            raise
+
+    async def upload_delivery_proof(
+        self,
+        order_id: str,
+        file_content: bytes,
+        filename: str,
+        content_type: str,
+        document_type: str = "delivery_proof",
+        title: str = "Delivery Proof",
+        description: str = "Document uploaded by driver upon delivery"
+    ) -> Dict[str, Any]:
+        """
+        Upload delivery proof document for an order.
+
+        Args:
+            order_id: The order ID
+            file_content: File content as bytes
+            filename: Original filename
+            content_type: MIME type of the file
+            document_type: Type of document (default: delivery_proof)
+            title: Document title
+            description: Document description
+
+        Returns:
+            Document metadata from orders service
+        """
+        try:
+            result = await self.orders_client.upload_delivery_proof(
+                order_id=order_id,
+                file_content=file_content,
+                filename=filename,
+                content_type=content_type,
+                document_type=document_type,
+                title=title,
+                description=description
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Error uploading delivery proof for order {order_id}: {str(e)}")
+            raise
+
+    async def get_delivery_documents(
+        self,
+        order_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get delivery proof documents for an order.
+
+        Args:
+            order_id: The order ID
+
+        Returns:
+            List of delivery documents
+        """
+        try:
+            result = await self.orders_client.get_delivery_documents(order_id=order_id)
+            return result
+        except Exception as e:
+            logger.error(f"Error getting delivery documents for order {order_id}: {str(e)}")
             raise
 
 

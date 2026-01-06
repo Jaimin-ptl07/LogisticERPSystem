@@ -88,6 +88,27 @@ class OrderService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_order_by_order_number(
+        self,
+        order_number: str,
+        tenant_id: str
+    ) -> Optional[Order]:
+        """Get order by order_number and tenant"""
+        query = select(Order).where(
+            and_(
+                Order.order_number == order_number,
+                Order.tenant_id == tenant_id,
+                Order.is_active == True
+            )
+        ).options(
+            selectinload(Order.items),
+            selectinload(Order.documents),
+            selectinload(Order.status_history)
+        )
+
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
     async def _fetch_product_details(self, product_id: str) -> Dict[str, Any]:
         """
         Fetch product details from company service.

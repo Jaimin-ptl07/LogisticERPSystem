@@ -2,7 +2,7 @@
 
 from typing import Optional, Dict, Any
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, Form
 from src.services.driver_service import DriverService
 from src.services.audit_client import AuditClient
 from src.config import settings
@@ -14,6 +14,7 @@ from src.security import (
     require_any_permission
 )
 from src.schemas import TripPause, TripResume
+from src.http_client import CompanyClient
 import logging
 
 logger = logging.getLogger(__name__)
@@ -293,6 +294,166 @@ async def mark_order_delivered(
         raise
     except Exception as e:
         logger.error(f"Error marking order as delivered: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/trips/{trip_id}/orders/{order_id}/upload-document")
+async def upload_delivery_document(
+    request: Request,
+    trip_id: str,
+    order_id: str,
+    file: UploadFile = File(...),
+    document_type: str = Form(default="delivery_proof"),
+    title: str = Form(default="Delivery Proof"),
+    description: str = Form(default="Document uploaded by driver upon delivery"),
+    token_data: TokenData = Depends(require_permissions(["driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    driver_service=Depends(get_driver_service)
+):
+    """
+    Upload delivery proof document for an order.
+
+    This endpoint allows drivers to upload delivery confirmation documents
+    (photos, PDFs, etc.) when delivering an order.
+    """
+    # Get authorization header for audit client
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    try:
+        # Validate trip_id and order_id
+        if not trip_id or trip_id == "undefined" or trip_id.strip() == "":
+            raise HTTPException(status_code=400, detail="Invalid trip ID")
+        if not order_id or order_id == "undefined" or order_id.strip() == "":
+            raise HTTPException(status_code=400, detail="Invalid order ID")
+
+        # Validate file type - allow images and PDFs
+        allowed_mime_types = [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+            "image/jpg",
+            "image/gif",
+            "image/webp"
+        ]
+
+        if file.content_type not in allowed_mime_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type {file.content_type} is not allowed. Allowed types: PDF, JPEG, PNG, GIF, WebP"
+            )
+
+        # Validate file size (max 10MB)
+        max_file_size = 10 * 1024 * 1024  # 10MB
+        file_content = await file.read()
+        if len(file_content) > max_file_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File size exceeds maximum limit of 10MB"
+            )
+
+        # Upload document via orders service
+        result = await driver_service.upload_delivery_proof(
+            order_id=order_id,
+            file_content=file_content,
+            filename=file.filename,
+            content_type=file.content_type,
+            document_type=document_type,
+            title=title,
+            description=description
+        )
+
+        # After successful document upload, update truck and driver status to "available"
+        # Get trip details to extract truck_plate and driver_id
+        auth_token = get_auth_token(request)
+        company_client = CompanyClient(auth_token=auth_token)
+
+        try:
+            trip_detail = await driver_service.get_trip_detail(trip_id)
+            if trip_detail:
+                truck_plate = trip_detail.get("truck_plate")
+                driver_id_from_trip = trip_detail.get("driver_id")  # This is user_id from auth service
+
+                # Update truck status to "available"
+                if truck_plate:
+                    vehicle_id = await company_client.get_vehicle_id_by_plate(truck_plate, tenant_id)
+                    if vehicle_id:
+                        await company_client.update_vehicle_status(vehicle_id, "available", tenant_id)
+                        logger.info(f"Updated truck {truck_plate} (ID: {vehicle_id}) status to available")
+
+                # Update driver status to "available"
+                if driver_id_from_trip:
+                    driver_profile = await company_client.get_driver_profile_by_user_id(driver_id_from_trip, tenant_id)
+                    if driver_profile:
+                        driver_profile_id = driver_profile.get("id")
+                        if driver_profile_id:
+                            await company_client.update_driver_status(driver_profile_id, "available", tenant_id)
+                            logger.info(f"Updated driver {driver_id_from_trip} (profile: {driver_profile_id}) status to available")
+        except Exception as e:
+            # Log error but don't fail the upload if status update fails
+            logger.error(f"Error updating truck/driver status after document upload: {str(e)}")
+
+        # Send audit log
+        audit_client = AuditClient(auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="upload",
+            module="documents",
+            entity_type="order_document",
+            entity_id=result.get("id", order_id),
+            description=f"Driver uploaded delivery proof document for order {order_id}",
+            new_values={
+                "order_id": order_id,
+                "trip_id": trip_id,
+                "document_type": document_type,
+                "file_name": file.filename
+            }
+        )
+        await audit_client.close()
+
+        return {
+            "success": True,
+            "message": "Document uploaded successfully",
+            "data": result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading delivery document: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/trips/{trip_id}/orders/{order_id}/documents")
+async def get_order_documents(
+    trip_id: str,
+    order_id: str,
+    token_data: TokenData = Depends(require_any_permission(["driver:read", "driver:read_all", "trips:read", "trips:read_all"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    driver_service=Depends(get_driver_service)
+):
+    """
+    Get delivery proof documents for an order.
+
+    Returns all delivery proof documents uploaded for this order.
+    """
+    try:
+        # Validate trip_id and order_id
+        if not trip_id or trip_id == "undefined" or trip_id.strip() == "":
+            raise HTTPException(status_code=400, detail="Invalid trip ID")
+        if not order_id or order_id == "undefined" or order_id.strip() == "":
+            raise HTTPException(status_code=400, detail="Invalid order ID")
+
+        result = await driver_service.get_delivery_documents(order_id=order_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting order documents: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

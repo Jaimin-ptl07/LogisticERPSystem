@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateOrderModal } from "@/components/Modal";
+import { OrderDocumentsViewer } from "@/components/branch";
 import {
   useGetOrdersQuery,
   useGetOrderItemsWithAssignmentsQuery,
@@ -106,6 +107,8 @@ export default function Orders() {
       assigned: { variant: "info" as const, label: "Assigned", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-blue-200" },
       picked_up: { variant: "info" as const, label: "Picked Up", color: "text-indigo-600", bgColor: "bg-indigo-50", borderColor: "border-indigo-200" },
       in_transit: { variant: "info" as const, label: "In Transit", color: "text-purple-600", bgColor: "bg-purple-50", borderColor: "border-purple-200" },
+      partial_in_transit: { variant: "warning" as const, label: "Partial Transit", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
+      partial_delivered: { variant: "warning" as const, label: "Partial Delivered", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
       delivered: { variant: "success" as const, label: "Delivered", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-green-200" },
       cancelled: { variant: "destructive" as const, label: "Cancelled", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
     };
@@ -594,6 +597,13 @@ export default function Orders() {
                               <p className="text-xl font-bold text-blue-700">{order.total_amount ? <CurrencyDisplay amount={order.total_amount} /> : 'N/A'}</p>
                             </div>
                           </div>
+
+                          {/* Delivery Documents Section */}
+                          {(order.status === 'delivered' || order.status === 'partial_delivered') && (
+                            <div className="mt-4">
+                              <OrderDocumentsViewer orderId={order.order_number} />
+                            </div>
+                          )}
                         </div>
 
                         {/* Notes Section */}
