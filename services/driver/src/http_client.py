@@ -477,9 +477,8 @@ class CompanyClient:
         try:
             await self._make_request(
                 "PUT",
-                f"/profiles/drivers/{driver_profile_id}",
-                params={"tenant_id": tenant_id},
-                json={"current_status": status}
+                f"/profiles/drivers/{driver_profile_id}/status",
+                params={"status": status, "tenant_id": tenant_id}
             )
             logger.info(f"Updated driver {driver_profile_id} status to {status}")
             return True

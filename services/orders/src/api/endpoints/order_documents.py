@@ -269,44 +269,6 @@ async def verify_order_document(
     return verified_document
 
 
-@router.get("/documents/{document_id}/download")
-async def download_order_document(
-    document_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    token_data: TokenData = Depends(require_any_permission(["order_documents:read", "order_documents:read_own"])),
-    tenant_id: str = Depends(get_current_tenant_id),
-):
-    """Download order document"""
-    document_service = OrderDocumentService(db)
-    file_handler = FileHandler()
-
-    # Get document and verify order belongs to tenant
-    document = await document_service.get_document_by_id(document_id)
-
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found"
-        )
-
-    from src.services.order_service import OrderService
-    order_service = OrderService(db)
-    order = await order_service.get_order_by_id(document.order_id, tenant_id)
-
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Associated order not found"
-        )
-
-    # Return file for download
-    return await file_handler.get_file_response(
-        file_path=document.file_path,
-        file_name=document.file_name,
-        mime_type=document.mime_type
-    )
-
-
 @router.post("/{order_id}/documents/delivery-proof", response_model=OrderDocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_delivery_proof_document(
     order_id: str,
@@ -493,11 +455,12 @@ async def get_delivery_proof_documents(
 async def download_document_proxy(
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission(["order_documents:read", "order_documents:read_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """
     Proxy endpoint to download documents from MinIO.
-    This avoids signature issues with presigned URLs.
+    This streams the actual file content.
     """
     document_service = OrderDocumentService(db)
 
@@ -542,7 +505,8 @@ async def download_document_proxy(
             object_name=document.file_path
         )
 
-        # Stream the file
+        # Stream the file with inline disposition for browser preview
+        # Use 'inline' instead of 'attachment' so images/PDFs display in browser
         def iterfile():
             yield from response.stream(8192)
 
@@ -550,7 +514,8 @@ async def download_document_proxy(
             iterfile(),
             media_type=document.mime_type,
             headers={
-                "Content-Disposition": f'attachment; filename="{document.file_name}"'
+                "Content-Disposition": f'inline; filename="{document.file_name}"',
+                "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
             }
         )
 

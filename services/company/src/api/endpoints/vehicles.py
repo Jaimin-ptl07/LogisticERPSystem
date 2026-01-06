@@ -358,15 +358,16 @@ async def delete_vehicle(
 async def update_vehicle_status(
     vehicle_id: UUID,
     status: VehicleStatus,
-    token_data: TokenData = Depends(require_permissions(["vehicles:update"])),
+    token_data: TokenData = Depends(require_any_permission(["vehicles:update", "tms:status_update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update vehicle status
 
-    Requires:
+    Requires one of:
     - vehicles:update
+    - tms:status_update (special permission for TMS service to update status when trip completes)
     """
 
     # Get existing vehicle

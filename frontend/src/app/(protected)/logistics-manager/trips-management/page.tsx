@@ -257,6 +257,12 @@ export default function Trips() {
       // Get the trip details
       const trip = allTrips.find((t) => t.id === tripId);
 
+      // Prevent changing to loading status if trip has no orders
+      if (newStatus === "loading" && (!trip?.orders || trip.orders.length === 0)) {
+        alert("Cannot change trip status to loading. Trip must have at least one order.");
+        return;
+      }
+
       // Check if trip has orders and validate their ORIGINAL statuses from Orders service
       // (not the TripOrder status which is for delivery progress)
       if (trip && trip.orders && trip.orders.length > 0) {

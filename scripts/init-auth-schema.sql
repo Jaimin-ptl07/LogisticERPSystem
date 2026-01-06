@@ -796,6 +796,11 @@ VALUES
     'read_all',
     'Read all driver information'
 ),
+(
+    'tms',
+    'status_update',
+    'Allow TMS service to update driver/vehicle status when trip completes'
+),
 -- Driver Service permissions
 (
     'driver',
@@ -2915,6 +2920,17 @@ VALUES
             WHERE
                 resource = 'dashboard'
                 AND action = 'read'
+        )
+    ),
+    -- TMS status update permission (for trip completion)
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'tms'
+                AND action = 'status_update'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 

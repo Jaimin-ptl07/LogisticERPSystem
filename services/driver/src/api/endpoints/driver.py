@@ -366,35 +366,26 @@ async def upload_delivery_document(
             description=description
         )
 
-        # After successful document upload, update truck and driver status to "available"
-        # Get trip details to extract truck_plate and driver_id
-        auth_token = get_auth_token(request)
-        company_client = CompanyClient(auth_token=auth_token)
-
+        # Check if trip should be completed (all orders delivered)
+        # This triggers automatic trip completion when all orders have delivery documents
         try:
-            trip_detail = await driver_service.get_trip_detail(trip_id)
-            if trip_detail:
-                truck_plate = trip_detail.get("truck_plate")
-                driver_id_from_trip = trip_detail.get("driver_id")  # This is user_id from auth service
+            from httpx import AsyncClient
+            from src.config import settings
 
-                # Update truck status to "available"
-                if truck_plate:
-                    vehicle_id = await company_client.get_vehicle_id_by_plate(truck_plate, tenant_id)
-                    if vehicle_id:
-                        await company_client.update_vehicle_status(vehicle_id, "available", tenant_id)
-                        logger.info(f"Updated truck {truck_plate} (ID: {vehicle_id}) status to available")
-
-                # Update driver status to "available"
-                if driver_id_from_trip:
-                    driver_profile = await company_client.get_driver_profile_by_user_id(driver_id_from_trip, tenant_id)
-                    if driver_profile:
-                        driver_profile_id = driver_profile.get("id")
-                        if driver_profile_id:
-                            await company_client.update_driver_status(driver_profile_id, "available", tenant_id)
-                            logger.info(f"Updated driver {driver_id_from_trip} (profile: {driver_profile_id}) status to available")
+            async with AsyncClient(timeout=30.0) as client:
+                # Call TMS service to check trip completion
+                response = await client.post(
+                    f"{settings.TMS_API_URL}/api/v1/trips/{trip_id}/check-completion",
+                    headers=auth_headers,
+                    json={"tenant_id": tenant_id}
+                )
+                if response.status_code == 200:
+                    logger.info(f"Trip completion check triggered for {trip_id}")
+                elif response.status_code != 404:  # 404 means endpoint not implemented yet
+                    logger.warning(f"Trip completion check returned status {response.status_code}")
         except Exception as e:
-            # Log error but don't fail the upload if status update fails
-            logger.error(f"Error updating truck/driver status after document upload: {str(e)}")
+            # Log error but don't fail the upload if completion check fails
+            logger.error(f"Error triggering trip completion check: {str(e)}")
 
         # Send audit log
         audit_client = AuditClient(auth_headers)

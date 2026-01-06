@@ -15,20 +15,23 @@ class DriverService:
 
     def __init__(self, auth_token: Optional[str] = None):
         """Initialize driver service"""
-        # Extract user_id from JWT token if available, otherwise fall back to hardcoded DRIVER_ID
+        # Extract user_id and tenant_id from JWT token if available, otherwise fall back to hardcoded values
         if auth_token:
             try:
                 token_data = verify_token(auth_token)
                 self.driver_id = token_data.sub  # Use user_id from JWT token
-                logger.info(f"DriverService initialized with user_id from token: {self.driver_id}")
+                # Use tenant_id from token as company_id
+                self.company_id = token_data.tenant_id or "company-001"
+                logger.info(f"DriverService initialized with user_id from token: {self.driver_id}, tenant_id: {self.company_id}")
             except Exception as e:
-                logger.warning(f"Failed to decode JWT token, falling back to settings.DRIVER_ID: {e}")
+                logger.warning(f"Failed to decode JWT token, falling back to settings: {e}")
                 self.driver_id = settings.DRIVER_ID
+                self.company_id = "company-001"
         else:
-            logger.warning("No auth_token provided, using settings.DRIVER_ID")
+            logger.warning("No auth_token provided, using settings values")
             self.driver_id = settings.DRIVER_ID
+            self.company_id = "company-001"
 
-        self.company_id = "company-001"  # Default company_id for driver operations
         self.auth_token = auth_token
         self.tms_client = TMSClient(auth_token=auth_token)
         self.orders_client = OrdersClient(auth_token=auth_token)

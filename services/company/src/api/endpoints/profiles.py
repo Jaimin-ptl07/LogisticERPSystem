@@ -939,6 +939,74 @@ async def update_driver_profile(
     return DriverProfileSchema(**driver_profile_to_dict(driver))
 
 
+@router.put("/drivers/{driver_id}/status")
+async def update_driver_status_internal(
+    driver_id: str,
+    status: str = Query(..., description="New status (available, assigned, unavailable)"),
+    token_data: TokenData = Depends(require_any_permission([
+        "users:update", "users:update_own", "tms:status_update"
+    ])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Internal endpoint for TMS service to update driver status when trip completes.
+
+    This endpoint is called by TMS service when a driver completes their trip
+    to mark them as available for new assignments.
+
+    Requires one of:
+    - users:update (to update any driver)
+    - users:update_own (to update own profile)
+    - tms:status_update (special permission for TMS service)
+    """
+    # Get driver profile - first try by user_id (through employee_profile), then by driver_profile id
+    # EmployeeProfile is already imported from src.database
+
+    # Try to find driver by joining with employee_profiles using user_id
+    query = select(DriverProfile).join(
+        EmployeeProfile, DriverProfile.employee_profile_id == EmployeeProfile.id
+    ).where(
+        EmployeeProfile.user_id == driver_id,
+        DriverProfile.tenant_id == tenant_id
+    )
+    result = await db.execute(query)
+    driver = result.scalar_one_or_none()
+
+    if not driver:
+        # Try with driver_id directly (using driver_profile id)
+        query = select(DriverProfile).where(
+            DriverProfile.id == driver_id,
+            DriverProfile.tenant_id == tenant_id
+        )
+        result = await db.execute(query)
+        driver = result.scalar_one_or_none()
+
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver profile not found")
+
+    # Validate status
+    valid_statuses = ["available", "assigned", "unavailable", "on_trip", "on_leave"]
+    if status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+
+    # Update status
+    driver.current_status = status
+    await db.commit()
+    await db.refresh(driver)
+
+    logger.info(f"Driver {driver_id} status updated to {status} via internal endpoint")
+
+    return {
+        "id": str(driver.id),
+        "current_status": driver.current_status,
+        "message": f"Driver status updated to {status}"
+    }
+
+
 @router.get("/drivers/", response_model=List[DriverProfileSchema])
 async def list_driver_profiles(
     status: Optional[str] = Query(None),

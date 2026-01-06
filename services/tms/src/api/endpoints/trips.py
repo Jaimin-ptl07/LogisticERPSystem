@@ -95,16 +95,14 @@ async def _update_truck_status(
     - on_trip: When trip is on-route
     - available: When trip is completed or cancelled
     """
-    # Map TMS status to Company Service status
-    status_mapping = {
-        "assigned": "assigned",  # Assigned to a trip
-        "on-route": "on_trip",
-        "available": "available"
-    }
+    # The new_status is already the target status (assigned, on_trip, maintenance, available)
+    # No additional mapping needed - pass it directly to company service
+    company_status = new_status
 
-    company_status = status_mapping.get(new_status)
-    if not company_status:
-        logger.warning(f"No status mapping for truck status: {new_status}")
+    # Validate that the status is supported
+    valid_statuses = ["assigned", "on_trip", "maintenance", "available"]
+    if company_status not in valid_statuses:
+        logger.warning(f"Invalid truck status: {new_status}. Must be one of: {valid_statuses}")
         return
 
     # Get vehicle ID from plate number
@@ -117,7 +115,8 @@ async def _update_truck_status(
         async with AsyncClient(timeout=10.0) as client:
             response = await client.put(
                 f"{COMPANY_SERVICE_URL}/vehicles/{vehicle_id}/status",
-                params={"status": company_status, "tenant_id": tenant_id},
+                params={"tenant_id": tenant_id},
+                json={"status": company_status},
                 headers=auth_headers
             )
 
@@ -140,7 +139,7 @@ async def _update_driver_status(
 
     Status mapping:
     - assigned: When driver is assigned to a trip
-    - on-trip: When trip is on-route
+    - on_trip: When trip is on-route
     - available: When trip is completed or cancelled
 
     Note: driver_id is user_id from auth service. We need to get the driver profile ID first.
@@ -168,12 +167,11 @@ async def _update_driver_status(
 
             logger.info(f"Found driver profile {driver_profile_id} for user_id {driver_id}")
 
-            # Now update the driver profile using the profile_id
+            # Now update the driver profile using the dedicated status endpoint
             update_response = await client.put(
-                f"{COMPANY_SERVICE_URL}/profiles/drivers/{driver_profile_id}",
-                params={"tenant_id": tenant_id},
-                headers=auth_headers,
-                json={"current_status": new_status}
+                f"{COMPANY_SERVICE_URL}/profiles/drivers/{driver_profile_id}/status",
+                params={"status": new_status, "tenant_id": tenant_id},
+                headers=auth_headers
             )
 
             if update_response.status_code == 200:
@@ -197,9 +195,9 @@ async def _update_resource_statuses_for_trip(
     Mapping:
     - planning/created: truck=assigned, driver=assigned
     - planning -> loading: truck=assigned, driver=assigned (reinforce)
-    - loading -> on-route: truck=on_trip, driver=on-trip
+    - loading -> on-route: truck=on_trip, driver=on_trip
     - on-route -> paused: truck=maintenance, driver=unavailable
-    - paused -> on-route: truck=on_trip, driver=on-trip
+    - paused -> on-route: truck=on_trip, driver=on_trip
     - on-route -> completed: truck=available, driver=available
     - any -> cancelled: truck=available, driver=available
     """
@@ -213,8 +211,8 @@ async def _update_resource_statuses_for_trip(
             "driver": "assigned"
         },
         "on-route": {
-            "truck": "on-trip",
-            "driver": "on-trip"
+            "truck": "on_trip",
+            "driver": "on_trip"
         },
         "paused": {
             "truck": "maintenance",
@@ -240,6 +238,56 @@ async def _update_resource_statuses_for_trip(
 
     # Update driver status
     await _update_driver_status(driver_id, mapping["driver"], auth_headers, tenant_id)
+
+
+async def _check_trip_completion_and_update_status(
+    trip_id: str,
+    auth_headers: dict,
+    tenant_id: str
+):
+    """
+    Check if all orders in a trip are delivered.
+    If yes, update trip status to 'completed' which will release driver and truck.
+    """
+    from src.database import async_session_maker
+
+    async with async_session_maker() as db:
+        # Get trip orders
+        orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
+        orders_result = await db.execute(orders_query)
+        trip_orders = orders_result.scalars().all()
+
+        if not trip_orders:
+            logger.info(f"No orders found for trip {trip_id}")
+            return
+
+        # Check if all orders are delivered
+        all_delivered = all(
+            order.delivery_status == "delivered"
+            for order in trip_orders
+        )
+
+        if all_delivered:
+            # Get the trip
+            trip_query = select(Trip).where(Trip.id == trip_id)
+            trip_result = await db.execute(trip_query)
+            trip = trip_result.scalar_one_or_none()
+
+            if trip and trip.status != "completed":
+                old_status = trip.status
+                # Update trip status to completed
+                trip.status = "completed"
+                await db.commit()
+
+                # Update resource statuses (will set to available)
+                await _update_resource_statuses_for_trip(
+                    "completed",
+                    trip.truck_plate,
+                    trip.driver_id,
+                    auth_headers,
+                    tenant_id
+                )
+                logger.info(f"Trip {trip_id} automatically completed (all orders delivered) - status changed from {old_status} to completed, driver and truck set to available")
 
 
 async def _update_order_item_statuses(
@@ -1171,6 +1219,30 @@ async def resume_trip(
         created_at=trip.created_at,
         updated_at=trip.updated_at
     )
+
+
+@router.post("/{trip_id}/check-completion")
+async def check_trip_completion(
+    trip_id: str,
+    request: Request,
+    token_data: TokenData = Depends(require_any_permission(["trips:update", "driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """
+    Check if trip should be marked as completed (all orders delivered).
+    If yes, update trip status and release resources.
+    Called by driver service after order delivery/document upload.
+    """
+    # Get authorization header
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    # Call the completion check function
+    await _check_trip_completion_and_update_status(trip_id, auth_headers, tenant_id)
+
+    return {"message": "Trip completion check completed"}
 
 
 @router.get("/{trip_id}/orders", response_model=List[TripOrderResponse])
