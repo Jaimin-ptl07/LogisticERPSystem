@@ -5,7 +5,7 @@ from typing import List
 from uuid import UUID
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import get_db
@@ -404,6 +404,7 @@ async def get_delivery_proof_documents(
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_any_permission(["order_documents:read", "order_documents:read_own"])),
     tenant_id: str = Depends(get_current_tenant_id),
+    request: Request = None
 ):
     """
     Get all delivery proof documents for an order.
@@ -411,7 +412,6 @@ async def get_delivery_proof_documents(
     Returns documents uploaded by drivers as proof of delivery.
     """
     document_service = OrderDocumentService(db)
-    file_handler = FileHandler(use_minio=True)
 
     try:
         # order_id could be a UUID or an order_number (like ORD-20260105-XXX)
@@ -448,37 +448,36 @@ async def get_delivery_proof_documents(
             if doc.document_type == "delivery_proof"
         ]
 
-        # Generate presigned URLs for each document
+        # Generate backend proxy URLs for each document (use relative URL for frontend proxy)
         documents_with_urls = []
         for doc in delivery_proofs:
-            try:
-                download_url = file_handler.generate_presigned_url(doc.file_path, expires_in=7200)  # 2 hours
-                doc_dict = {
-                    "id": str(doc.id),
-                    "order_id": str(doc.order_id),
-                    "uploaded_by": str(doc.uploaded_by),
-                    "file_name": doc.file_name,
-                    "file_path": doc.file_path,
-                    "file_size": doc.file_size,
-                    "mime_type": doc.mime_type,
-                    "file_hash": doc.file_hash,
-                    "is_verified": doc.is_verified,
-                    "verified_by": str(doc.verified_by) if doc.verified_by else None,
-                    "verified_at": doc.verified_at.isoformat() if doc.verified_at else None,
-                    "verification_notes": doc.verification_notes,
-                    "created_at": doc.created_at,
-                    "updated_at": doc.updated_at,
-                    # DocumentBase fields
-                    "document_type": doc.document_type,
-                    "title": doc.title,
-                    "description": doc.description,
-                    "is_required": doc.is_required,
-                    # Additional field for frontend
-                    "download_url": download_url
-                }
-                documents_with_urls.append(doc_dict)
-            except Exception as e:
-                logger.error(f"Error generating URL for document {doc.id}: {str(e)}")
+            # Use relative path - frontend will proxy through Next.js API route
+            download_url = f"/api/orders/documents/{str(doc.id)}/download"
+
+            doc_dict = {
+                "id": str(doc.id),
+                "order_id": str(doc.order_id),
+                "uploaded_by": str(doc.uploaded_by),
+                "file_name": doc.file_name,
+                "file_path": doc.file_path,
+                "file_size": doc.file_size,
+                "mime_type": doc.mime_type,
+                "file_hash": doc.file_hash,
+                "is_verified": doc.is_verified,
+                "verified_by": str(doc.verified_by) if doc.verified_by else None,
+                "verified_at": doc.verified_at.isoformat() if doc.verified_at else None,
+                "verification_notes": doc.verification_notes,
+                "created_at": doc.created_at,
+                "updated_at": doc.updated_at,
+                # DocumentBase fields
+                "document_type": doc.document_type,
+                "title": doc.title,
+                "description": doc.description,
+                "is_required": doc.is_required,
+                # Additional field for frontend - backend proxy URL
+                "download_url": download_url
+            }
+            documents_with_urls.append(doc_dict)
 
         return DocumentListResponse(documents=documents_with_urls, total=len(documents_with_urls))
 
@@ -488,3 +487,84 @@ async def get_delivery_proof_documents(
         logger.error(f"Error fetching delivery proof documents for order {order_id}: {str(e)}")
         # Return empty list instead of raising error
         return DocumentListResponse(documents=[], total=0)
+
+
+@router.get("/documents/{document_id}/download")
+async def download_document_proxy(
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Proxy endpoint to download documents from MinIO.
+    This avoids signature issues with presigned URLs.
+    """
+    document_service = OrderDocumentService(db)
+
+    # Get document
+    document = await document_service.get_document_by_id(document_id)
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    # Verify order belongs to tenant
+    from src.services.order_service import OrderService
+    order_service = OrderService(db)
+    order = await order_service.get_order_by_id(document.order_id, tenant_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Associated order not found"
+        )
+
+    # Stream file from MinIO to client
+    from fastapi.responses import StreamingResponse
+    from minio import Minio
+    from minio.error import S3Error
+    import os
+
+    try:
+        # Initialize MinIO client
+        minio_client = Minio(
+            endpoint=os.getenv("MINIO_ENDPOINT", "minio:9000"),
+            access_key=os.getenv("MINIO_ROOT_USER", "minioadmin"),
+            secret_key=os.getenv("MINIO_ROOT_PASSWORD", "minioadmin"),
+            secure=False
+        )
+
+        # Get object from MinIO
+        response = minio_client.get_object(
+            bucket_name="order-documents",
+            object_name=document.file_path
+        )
+
+        # Stream the file
+        def iterfile():
+            yield from response.stream(8192)
+
+        return StreamingResponse(
+            iterfile(),
+            media_type=document.mime_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{document.file_name}"'
+            }
+        )
+
+    except S3Error as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve file from storage: {str(e)}"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading document {document_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download document"
+        )

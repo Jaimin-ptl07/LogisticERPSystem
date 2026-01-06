@@ -179,9 +179,20 @@ class MinIOHandler:
             minio_endpoint = settings.MINIO_ENDPOINT
             public_endpoint = settings.MINIO_PUBLIC_ENDPOINT
 
-            if minio_endpoint in url:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Original URL: {url}")
+            logger.info(f"Replacing {minio_endpoint} with {public_endpoint}")
+
+            # Try with and without http:// prefix
+            if f"http://{minio_endpoint}" in url:
+                url = url.replace(f"http://{minio_endpoint}", f"http://{public_endpoint}")
+            elif f"https://{minio_endpoint}" in url:
+                url = url.replace(f"https://{minio_endpoint}", f"https://{public_endpoint}")
+            elif minio_endpoint in url:
                 url = url.replace(minio_endpoint, public_endpoint)
 
+            logger.info(f"Final URL: {url}")
             return url
         except S3Error as e:
             raise HTTPException(

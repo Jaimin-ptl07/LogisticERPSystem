@@ -54,6 +54,7 @@ class OrderDocumentResponse(OrderDocumentBase):
     verification_notes: Optional[str]
     created_at: datetime
     updated_at: datetime
+    download_url: Optional[str] = None  # Presigned URL for downloading the file
 
 
 class DocumentVerificationRequest(BaseModel):
