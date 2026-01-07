@@ -95,6 +95,8 @@ async def _update_truck_status(
     - on_trip: When trip is on-route
     - available: When trip is completed or cancelled
     """
+    logger.info(f"_update_truck_status called: truck_plate={truck_plate}, new_status={new_status}")
+
     # The new_status is already the target status (assigned, on_trip, maintenance, available)
     # No additional mapping needed - pass it directly to company service
     company_status = new_status
@@ -106,26 +108,35 @@ async def _update_truck_status(
         return
 
     # Get vehicle ID from plate number
+    logger.info(f"Getting vehicle_id for plate: {truck_plate}")
     vehicle_id = await _get_vehicle_id_by_plate(truck_plate, auth_headers, tenant_id)
     if not vehicle_id:
         logger.error(f"Cannot update truck status - vehicle not found for plate: {truck_plate}")
         return
 
+    logger.info(f"Found vehicle_id: {vehicle_id} for plate: {truck_plate}")
+
     try:
         async with AsyncClient(timeout=10.0) as client:
+            url = f"{COMPANY_SERVICE_URL}/vehicles/{vehicle_id}/status"
+            params = {"tenant_id": tenant_id, "status": company_status}
+            logger.info(f"Calling PUT {url} with params: {params}")
+
             response = await client.put(
-                f"{COMPANY_SERVICE_URL}/vehicles/{vehicle_id}/status",
-                params={"tenant_id": tenant_id},
-                json={"status": company_status},
+                url,
+                params=params,
                 headers=auth_headers
             )
+
+            logger.info(f"Company Service response status: {response.status_code}")
+            logger.info(f"Company Service response body: {response.text}")
 
             if response.status_code == 200:
                 logger.info(f"Updated truck {truck_plate} (ID: {vehicle_id}) status to {company_status}")
             else:
                 logger.error(f"Failed to update truck status: {response.status_code} - {response.text}")
     except Exception as e:
-        logger.error(f"Error updating truck status: {str(e)}")
+        logger.error(f"Error updating truck status: {str(e)}", exc_info=True)
 
 
 async def _update_driver_status(
@@ -196,11 +207,13 @@ async def _update_resource_statuses_for_trip(
     - planning/created: truck=assigned, driver=assigned
     - planning -> loading: truck=assigned, driver=assigned (reinforce)
     - loading -> on-route: truck=on_trip, driver=on_trip
-    - on-route -> paused: truck=maintenance, driver=unavailable
+    - on-route -> paused: truck=maintenance, driver=available (driver becomes available for other trips)
     - paused -> on-route: truck=on_trip, driver=on_trip
     - on-route -> completed: truck=available, driver=available
     - any -> cancelled: truck=available, driver=available
     """
+    logger.info(f"_update_resource_statuses_for_trip called: trip_status={trip_status}, truck_plate={truck_plate}, driver_id={driver_id}")
+
     status_mappings = {
         "planning": {
             "truck": "assigned",
@@ -216,7 +229,7 @@ async def _update_resource_statuses_for_trip(
         },
         "paused": {
             "truck": "maintenance",
-            "driver": "unavailable"
+            "driver": "available"
         },
         "completed": {
             "truck": "available",
@@ -232,6 +245,8 @@ async def _update_resource_statuses_for_trip(
     if not mapping:
         logger.info(f"No resource status update needed for trip status: {trip_status}")
         return
+
+    logger.info(f"Resource status mapping: truck={mapping['truck']}, driver={mapping['driver']}")
 
     # Update truck status
     await _update_truck_status(truck_plate, mapping["truck"], auth_headers, tenant_id)
@@ -587,6 +602,10 @@ async def get_trips(
             capacity_used=trip.capacity_used,
             capacity_total=trip.capacity_total,
             trip_date=trip.trip_date,
+            maintenance_note=trip.maintenance_note,
+            paused_at=trip.paused_at,
+            paused_reason=trip.paused_reason,
+            resumed_at=trip.resumed_at,
             created_at=trip.created_at,
             updated_at=trip.updated_at
         )
@@ -840,6 +859,10 @@ async def create_trip(
         capacity_used=trip.capacity_used or 0,
         capacity_total=trip.capacity_total,
         trip_date=trip.trip_date,
+        maintenance_note=trip.maintenance_note,
+        paused_at=trip.paused_at,
+        paused_reason=trip.paused_reason,
+        resumed_at=trip.resumed_at,
         created_at=trip.created_at,
         updated_at=trip.updated_at
     )
@@ -1113,6 +1136,10 @@ async def pause_trip(
         capacity_used=trip.capacity_used or 0,
         capacity_total=trip.capacity_total,
         trip_date=trip.trip_date,
+        maintenance_note=trip.maintenance_note,
+        paused_at=trip.paused_at,
+        paused_reason=trip.paused_reason,
+        resumed_at=trip.resumed_at,
         created_at=trip.created_at,
         updated_at=trip.updated_at
     )
@@ -1216,6 +1243,10 @@ async def resume_trip(
         capacity_used=trip.capacity_used or 0,
         capacity_total=trip.capacity_total,
         trip_date=trip.trip_date,
+        maintenance_note=trip.maintenance_note,
+        paused_at=trip.paused_at,
+        paused_reason=trip.paused_reason,
+        resumed_at=trip.resumed_at,
         created_at=trip.created_at,
         updated_at=trip.updated_at
     )

@@ -2932,6 +2932,17 @@ VALUES
                 resource = 'tms'
                 AND action = 'status_update'
         )
+    ),
+    -- Users read permission (for driver profile lookups during status updates)
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'users'
+                AND action = 'read'
+        )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Assign user permissions (ID = 7) - Regular users

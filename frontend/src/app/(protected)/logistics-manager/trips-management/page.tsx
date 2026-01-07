@@ -31,6 +31,7 @@ import {
   CreditCard,
   Scissors,
   AlertTriangle,
+  AlertCircle,
   Trash2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -1672,6 +1673,27 @@ export default function Trips() {
                                   <p className="text-sm text-gray-500 italic ml-7">Not assigned</p>
                                 )}
                               </div>
+
+                              {/* Maintenance Note for Paused Trips */}
+                              {trip.status === "paused" && (
+                                <div className="px-6 py-4 border-b border-gray-200 bg-amber-50">
+                                  <div className="flex items-center gap-2 text-amber-800 mb-2">
+                                    <AlertCircle className="w-4 h-4" />
+                                    <p className="text-sm font-semibold">
+                                      Maintenance Note
+                                    </p>
+                                  </div>
+                                  {trip.maintenanceNote ? (
+                                    <p className="text-sm text-amber-900 ml-6 italic">
+                                      {trip.maintenanceNote}
+                                    </p>
+                                  ) : (
+                                    <p className="text-sm text-amber-700 ml-6 italic">
+                                      No maintenance note provided
+                                    </p>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Driver Section */}
                               <div className="px-6 py-4 border-b border-gray-200 bg-green-50">

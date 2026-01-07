@@ -219,6 +219,10 @@ class TripResponse(BaseSchema):
     capacity_used: int
     capacity_total: int
     trip_date: date
+    maintenance_note: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    paused_reason: Optional[str] = None
+    resumed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     orders: List[TripOrderResponse] = []
