@@ -113,7 +113,7 @@ export default function Trips() {
 
   // Drag and drop states
   const [draggedOrder, setDraggedOrder] = useState<any>(null);
-  const [dragOverTrip, setDragOverTrip] = useState<string | null>(null);
+  const [dragOverOrderIndex, setDragOverOrderIndex] = useState<number | null>(null);
   const [expandedTrips, setExpandedTrips] = useState<Set<string>>(new Set());
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
@@ -819,124 +819,102 @@ export default function Trips() {
     setExpandedTrips(newExpanded);
   };
 
-  // Drag and drop handlers
-  const handleDragStart = (
+  // Drag and drop handlers for reordering orders within a trip
+  const handleOrderDragStart = (
     e: React.DragEvent,
     order: any,
-    sourceTripId?: string,
-    sourceIndex?: number
+    tripId: string,
+    orderIndex: number
   ) => {
-    setDraggedOrder({ ...order, sourceTripId, sourceIndex });
+    // Only allow dragging if trip is in planning status
+    const trip = allTrips.find((t) => t.id === tripId);
+    if (trip?.status !== "planning") {
+      e.preventDefault();
+      return;
+    }
+
+    setDraggedOrder({ ...order, sourceTripId: tripId, sourceIndex: orderIndex });
     e.dataTransfer.effectAllowed = "move";
+    // Set a custom drag image if needed
+    e.dataTransfer.setData("text/plain", order.id);
   };
 
-  const handleDragOver = (
+  const handleOrderDragOver = (
     e: React.DragEvent,
     tripId: string,
-    targetIndex?: number
+    targetIndex: number
   ) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverTrip(tripId);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    // Only clear if we're actually leaving the trip container
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setDragOverTrip(null);
+    // Only allow dropping if it's the same trip
+    if (draggedOrder && draggedOrder.sourceTripId === tripId) {
+      e.dataTransfer.dropEffect = "move";
+      setDragOverOrderIndex(targetIndex);
     }
   };
 
-  const handleDrop = async (
+  const handleOrderDragLeave = (e: React.DragEvent) => {
+    setDragOverOrderIndex(null);
+  };
+
+  const handleOrderDrop = async (
     e: React.DragEvent,
     targetTripId: string,
-    targetIndex?: number
+    targetIndex: number
   ) => {
     e.preventDefault();
-    setDragOverTrip(null);
+    setDragOverOrderIndex(null);
 
-    if (!draggedOrder || !targetTripId) return;
+    if (!draggedOrder) return;
+
+    // Only allow reordering within the same trip
+    if (draggedOrder.sourceTripId !== targetTripId) {
+      alert("Orders can only be reordered within the same trip. Use 'Add Orders' to assign orders to different trips.");
+      setDraggedOrder(null);
+      return;
+    }
+
+    // If dropping at the same position, do nothing
+    if (draggedOrder.sourceIndex === targetIndex) {
+      setDraggedOrder(null);
+      return;
+    }
 
     try {
-      // If dropping on the same trip, we need to reorder
-      if (
-        draggedOrder.sourceTripId === targetTripId &&
-        targetIndex !== undefined
-      ) {
-        const sourceTrip = allTrips.find((t) => t.id === targetTripId);
-        if (!sourceTrip || sourceTrip.status !== "planning") return;
-
-        // Get the current orders
-        const currentOrders = [...sourceTrip.orders];
-
-        // Remove the dragged order from its original position
-        const reorderedOrders = currentOrders.filter(
-          (order) => order.id !== draggedOrder.id
-        );
-
-        // Insert it at the new position
-        reorderedOrders.splice(targetIndex, 0, draggedOrder);
-
-        // Update the order in the UI immediately for better UX
-        const updatedTrips = allTrips.map((trip) => {
-          if (trip.id === targetTripId) {
-            return { ...trip, orders: reorderedOrders };
-          }
-          return trip;
-        });
-        setAllTrips(updatedTrips);
-
-        // Call the reorder API to persist the change
-        await handleReorderOrders(targetTripId, reorderedOrders);
+      const sourceTrip = allTrips.find((t) => t.id === targetTripId);
+      if (!sourceTrip || sourceTrip.status !== "planning") {
+        alert("Can only reorder orders in trips with planning status");
+        setDraggedOrder(null);
+        return;
       }
-      // If dropping on a different trip, move the order
-      else if (draggedOrder.sourceTripId !== targetTripId) {
-        // Get target trip
-        const targetTrip = allTrips.find((t) => t.id === targetTripId);
-        if (!targetTrip || targetTrip.status !== "planning") {
-          alert("Can only add orders to trips in planning status");
-          setDraggedOrder(null);
-          return;
+
+      // Get the current orders
+      const currentOrders = [...sourceTrip.orders];
+
+      // Remove the dragged order from its original position
+      const reorderedOrders = currentOrders.filter(
+        (order) => order.id !== draggedOrder.id
+      );
+
+      // Insert it at the new position
+      reorderedOrders.splice(targetIndex, 0, {
+        ...draggedOrder,
+        sourceTripId: undefined,
+        sourceIndex: undefined
+      });
+
+      // Update the order in the UI immediately for better UX
+      const updatedTrips = allTrips.map((trip) => {
+        if (trip.id === targetTripId) {
+          return { ...trip, orders: reorderedOrders };
         }
+        return trip;
+      });
+      setAllTrips(updatedTrips);
 
-        // Check capacity
-        const newCapacityUsed =
-          (targetTrip.capacityUsed || 0) + draggedOrder.weight;
-        if (newCapacityUsed > (targetTrip.capacityTotal || 0)) {
-          alert("Order exceeds trip capacity");
-          setDraggedOrder(null);
-          return;
-        }
-
-        // If order is from another trip, we need to handle reassignment
-        if (draggedOrder.sourceTripId) {
-          await tmsAPI.removeOrderFromTrip(
-            draggedOrder.sourceTripId,
-            draggedOrder.order_id || draggedOrder.id
-          );
-        }
-
-        // Assign order to new trip
-        const orderData = {
-          order_id: draggedOrder.order_id || draggedOrder.id,
-          customer: draggedOrder.customer,
-          customerAddress: draggedOrder.customerAddress,
-          total: draggedOrder.total,
-          weight: draggedOrder.weight,
-          volume: draggedOrder.volume,
-          items: draggedOrder.items,
-          items_json: draggedOrder.items || [], // Include full items array
-          priority: draggedOrder.priority,
-          address: draggedOrder.address,
-        };
-
-        await tmsAPI.assignOrdersToTrip(targetTripId, [orderData]);
-
-        // Refresh trips
-        fetchTrips();
-      }
+      // Call the reorder API to persist the change
+      await handleReorderOrders(targetTripId, reorderedOrders);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to move order");
+      alert(err instanceof Error ? err.message : "Failed to reorder orders");
       // Refresh to restore original state
       fetchTrips();
     }
@@ -1712,13 +1690,7 @@ export default function Trips() {
                           className={`border border-gray-200 rounded-lg overflow-hidden transition-all ${isTripLocked(trip.status)
                             ? "bg-gray-50"
                             : "bg-white"
-                            } ${dragOverTrip === trip.id
-                              ? "ring-2 ring-blue-400 bg-blue-50"
-                              : ""
                             }`}
-                          onDragOver={(e) => handleDragOver(e, trip.id)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, trip.id)}
                         >
                           {/* Trip Layout - Split into Left Sidebar and Right Content */}
                           <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 min-h-[400px]">
@@ -1932,14 +1904,25 @@ export default function Trips() {
                                   trip.orders.map((order, orderIndex) => (
                                     <div
                                       key={order.id}
-                                      className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                                      draggable={trip.status === "planning"}
+                                      onDragStart={(e) => handleOrderDragStart(e, order, trip.id, orderIndex)}
+                                      onDragOver={(e) => handleOrderDragOver(e, trip.id, orderIndex)}
+                                      onDragLeave={handleOrderDragLeave}
+                                      onDrop={(e) => handleOrderDrop(e, trip.id, orderIndex)}
+                                      className={`bg-white border border-gray-200 rounded-lg overflow-hidden transition-shadow ${
+                                        trip.status === "planning" ? "hover:shadow-md cursor-move" : ""
+                                      } ${
+                                        draggedOrder?.id === order.id ? "opacity-50" : ""
+                                      } ${
+                                        dragOverOrderIndex === orderIndex && draggedOrder?.id !== order.id ? "border-blue-500 border-2" : ""
+                                      }`}
                                     >
                                       {/* Order Header */}
                                       <div className="p-4 bg-gray-50 border-b border-gray-200">
                                         <div className="flex items-center justify-between">
                                           <div className="flex items-center gap-3">
                                             {trip.status === "planning" && (
-                                              <GripVertical className="w-5 h-5 text-gray-400 cursor-move" />
+                                              <GripVertical className="w-5 h-5 text-gray-400 cursor-grab active:cursor-grabbing" />
                                             )}
                                             <span className="text-sm font-bold text-white bg-gray-700 px-3 py-1 rounded">
                                               #{order.sequence_number !== undefined ? order.sequence_number + 1 : orderIndex + 1}
@@ -2094,7 +2077,7 @@ export default function Trips() {
                           {trip.status === "planning" && trip.orders.length > 0 && (
                             <div className="p-4 bg-blue-50 border-t border-blue-200">
                               <p className="text-sm text-blue-800">
-                                <strong>Drag & Drop:</strong> You can drag orders to reorder them within this trip or move them to another trip in planning status.
+                                <strong>Drag & Drop:</strong> Drag orders to reorder them within this trip. Orders can only be reordered while the trip is in planning status.
                               </p>
                             </div>
                           )}
@@ -2129,8 +2112,6 @@ export default function Trips() {
                       <div
                         key={order.id}
                         className="border border-gray-200 rounded-lg bg-white hover:shadow-md transition-all"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, order)}
                       >
                         {/* Order Card Layout */}
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
