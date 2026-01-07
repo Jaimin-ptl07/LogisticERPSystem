@@ -73,6 +73,19 @@ export default function Trips() {
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
   const [tmsOrderStatusFilter, setTmsOrderStatusFilter] = useState<"all" | "available" | "partial" | "fully_assigned">("all");
 
+  // Reassignment modal state for paused trips
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [selectedTripForReassign, setSelectedTripForReassign] = useState<Trip | null>(null);
+  const [reassignTruck, setReassignTruck] = useState("");
+  const [reassignDriver, setReassignDriver] = useState<Driver | null>(null);
+  const [isReassigning, setIsReassigning] = useState(false);
+
+  // Dropdown states for reassignment modal
+  const [reassignTruckDropdownOpen, setReassignTruckDropdownOpen] = useState(false);
+  const [reassignDriverDropdownOpen, setReassignDriverDropdownOpen] = useState(false);
+  const [reassignTruckSearchQuery, setReassignTruckSearchQuery] = useState("");
+  const [reassignDriverSearchQuery, setReassignDriverSearchQuery] = useState("");
+
   // Search states for trip creation
   const [branchSearchTerm, setBranchSearchTerm] = useState("");
   const [truckSearchTerm, setTruckSearchTerm] = useState("");
@@ -237,6 +250,10 @@ export default function Trips() {
             color: "red",
           },
         ];
+      case "paused":
+        return [
+          { value: "reassign-resume", label: "Reassign & Resume", color: "purple" },
+        ];
       case "truck-malfunction":
         return [
           { value: "loading", label: "Resume Loading", color: "yellow" },
@@ -252,6 +269,26 @@ export default function Trips() {
 
   const handleStatusChange = async (tripId: string, newStatus: string) => {
     try {
+      // Handle reassign-resume action specially
+      if (newStatus === "reassign-resume") {
+        const trip = allTrips.find((t) => t.id === tripId);
+        if (trip) {
+          setSelectedTripForReassign(trip);
+          // Pre-select current truck and driver
+          setReassignTruck(trip.truck?.plate || "");
+          setReassignDriver(trip.driver ? {
+            user_id: trip.driver_id || "",
+            name: trip.driver_name || "",
+            phone: trip.driver_phone || "",
+            license: "",
+            status: "available",
+            branch_id: ""
+          } : null);
+          setShowReassignModal(true);
+        }
+        return;
+      }
+
       // Refresh orders data to ensure we have the latest status
       await fetchResources();
 
@@ -445,6 +482,70 @@ export default function Trips() {
 
     // Reset to fetch all trucks again
     await fetchResources();
+  };
+
+  const handleReassignResources = async () => {
+    if (!selectedTripForReassign || !reassignTruck || !reassignDriver) {
+      alert("Please select both a truck and a driver for reassignment");
+      return;
+    }
+
+    try {
+      setIsReassigning(true);
+
+      // Get truck and driver details
+      const truckDetails = availableTrucks.find((t) => t.id === reassignTruck);
+      if (!truckDetails) {
+        alert("Truck not found");
+        return;
+      }
+
+      // Check if resources changed
+      const resourcesChanged =
+        truckDetails.plate !== selectedTripForReassign.truck?.plate ||
+        reassignDriver.user_id !== selectedTripForReassign.driver_id;
+
+      // Call the reassign API if resources changed
+      if (resourcesChanged) {
+        await tmsAPI.reassignTripResources(selectedTripForReassign.id, {
+          truck_plate: truckDetails.plate,
+          truck_model: truckDetails.model,
+          truck_capacity: truckDetails.capacity,
+          driver_id: reassignDriver.user_id,
+          driver_name: reassignDriver.name,
+          driver_phone: reassignDriver.phone,
+        });
+      }
+
+      // Resume the trip after reassignment
+      await tmsAPI.updateTrip(selectedTripForReassign.id, { status: "on-route" });
+
+      // Close modal and refresh trips
+      setShowReassignModal(false);
+      setSelectedTripForReassign(null);
+      setReassignTruck("");
+      setReassignDriver(null);
+
+      await fetchTrips();
+      await fetchResources();
+
+      alert(resourcesChanged
+        ? "Trip resources reassigned and resumed successfully!"
+        : "Trip resumed successfully!");
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "Failed to reassign and resume trip"
+      );
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
+  const handleCloseReassignModal = () => {
+    setShowReassignModal(false);
+    setSelectedTripForReassign(null);
+    setReassignTruck("");
+    setReassignDriver(null);
   };
 
   const getPriorityVariant = (priority: string) => {
@@ -3427,6 +3528,288 @@ export default function Trips() {
                       Assign {selectedSplitItems.length} Item{selectedSplitItems.length !== 1 ? 's' : ''}
                     </Button>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Reassignment Modal for Paused Trips */}
+          {showReassignModal && selectedTripForReassign && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                {/* Modal Header - Purple */}
+                <div className="bg-gradient-to-r from-purple-600 to-purple-500 px-6 py-6">
+                  <h2 className="text-2xl font-bold text-white">Reassign & Resume Trip</h2>
+                  <p className="text-purple-100 mt-1">
+                    Trip: {selectedTripForReassign.id}
+                  </p>
+                </div>
+
+                {/* Modal Body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <p className="text-sm text-amber-800">
+                      <strong>Note:</strong> This trip is currently paused. Select a truck and driver, then click "Reassign & Resume" to continue the delivery.
+                    </p>
+                  </div>
+
+                  {/* Current Assignment Info */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h3 className="font-semibold text-gray-900 mb-3">Current Assignment</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-600">Truck</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedTripForReassign.truck?.plate || 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Driver</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedTripForReassign.driver?.name || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Truck Selection - Dropdown Style */}
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        Select Truck
+                      </label>
+                      <div className="relative">
+                        {/* Input Field with Search Icon and Chevron */}
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            readOnly
+                            value={reassignTruck ? availableTrucks.find(t => t.id === reassignTruck)?.plate || "" : reassignTruckSearchQuery}
+                            placeholder="Select a truck..."
+                            className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            onClick={() => setReassignTruckDropdownOpen(!reassignTruckDropdownOpen)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setReassignTruckDropdownOpen(!reassignTruckDropdownOpen)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                          >
+                            <svg
+                              className={`h-5 w-5 text-gray-400 transition-transform ${reassignTruckDropdownOpen ? 'rotate-180' : ''}`}
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Dropdown Panel */}
+                        {reassignTruckDropdownOpen && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search trucks..."
+                              className="w-full px-3 py-2 border-b border-gray-200"
+                              value={reassignTruckSearchQuery}
+                              onChange={(e) => setReassignTruckSearchQuery(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="py-1">
+                              {availableTrucks
+                                .filter((truck) => truck.status === "available" || truck.id === reassignTruck)
+                                .filter((truck) =>
+                                  truck.plate.toLowerCase().includes(reassignTruckSearchQuery.toLowerCase()) ||
+                                  truck.model.toLowerCase().includes(reassignTruckSearchQuery.toLowerCase())
+                                )
+                                .map((truck) => (
+                                  <button
+                                    key={truck.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setReassignTruck(truck.id);
+                                      setReassignTruckDropdownOpen(false);
+                                      setReassignTruckSearchQuery("");
+                                    }}
+                                    className={`w-full text-left px-4 py-3 hover:bg-purple-50 ${
+                                      reassignTruck === truck.id ? "bg-purple-50" : ""
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div>
+                                        <p className="font-semibold text-gray-900">{truck.plate}</p>
+                                        <p className="text-xs text-gray-600">{truck.model} ({truck.capacity}kg)</p>
+                                      </div>
+                                      {truck.status === "available" && (
+                                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Available</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Selection Card */}
+                        {reassignTruck && !reassignTruckDropdownOpen && (
+                          <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="font-semibold text-purple-900">
+                                  {availableTrucks.find(t => t.id === reassignTruck)?.plate}
+                                </p>
+                                <p className="text-sm text-purple-700">
+                                  {availableTrucks.find(t => t.id === reassignTruck)?.model} • Capacity: {availableTrucks.find(t => t.id === reassignTruck)?.capacity}kg
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setReassignTruck("")}
+                                className="text-purple-400 hover:text-purple-600"
+                              >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Driver Selection - Dropdown Style */}
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        Select Driver
+                      </label>
+                      <div className="relative">
+                        {/* Input Field with Search Icon and Chevron */}
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            readOnly
+                            value={reassignDriver ? reassignDriver.name : reassignDriverSearchQuery}
+                            placeholder="Select a driver..."
+                            className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            onClick={() => setReassignDriverDropdownOpen(!reassignDriverDropdownOpen)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setReassignDriverDropdownOpen(!reassignDriverDropdownOpen)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                          >
+                            <svg
+                              className={`h-5 w-5 text-gray-400 transition-transform ${reassignDriverDropdownOpen ? 'rotate-180' : ''}`}
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Dropdown Panel */}
+                        {reassignDriverDropdownOpen && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search drivers..."
+                              className="w-full px-3 py-2 border-b border-gray-200"
+                              value={reassignDriverSearchQuery}
+                              onChange={(e) => setReassignDriverSearchQuery(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="py-1">
+                              {availableDrivers
+                                .filter((driver) => driver.status === "available" || driver.user_id === reassignDriver?.user_id)
+                                .filter((driver) =>
+                                  driver.name.toLowerCase().includes(reassignDriverSearchQuery.toLowerCase()) ||
+                                  driver.phone.includes(reassignDriverSearchQuery)
+                                )
+                                .map((driver) => (
+                                  <button
+                                    key={driver.user_id}
+                                    type="button"
+                                    onClick={() => {
+                                      setReassignDriver(driver);
+                                      setReassignDriverDropdownOpen(false);
+                                      setReassignDriverSearchQuery("");
+                                    }}
+                                    className={`w-full text-left px-4 py-3 hover:bg-purple-50 ${
+                                      reassignDriver?.user_id === driver.user_id ? "bg-purple-50" : ""
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div>
+                                        <p className="font-semibold text-gray-900">{driver.name}</p>
+                                        <p className="text-xs text-gray-600">{driver.phone}</p>
+                                      </div>
+                                      {driver.status === "available" && (
+                                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Available</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Selection Card */}
+                        {reassignDriver && !reassignDriverDropdownOpen && (
+                          <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="font-semibold text-purple-900">{reassignDriver.name}</p>
+                                <p className="text-sm text-purple-700">📞 {reassignDriver.phone}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setReassignDriver(null)}
+                                className="text-purple-400 hover:text-purple-600"
+                              >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end gap-3">
+                  <Button
+                    onClick={handleCloseReassignModal}
+                    variant="outline"
+                    className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                    disabled={isReassigning}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleReassignResources}
+                    disabled={!reassignTruck || !reassignDriver || isReassigning}
+                    className="bg-purple-600 hover:bg-purple-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {isReassigning ? "Processing..." : "Reassign & Resume"}
+                  </Button>
                 </div>
               </div>
             </div>

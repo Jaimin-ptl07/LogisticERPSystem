@@ -624,6 +624,22 @@ export const tmsAPI = {
     });
   },
 
+  // Reassign trip resources (truck and driver)
+  async reassignTripResources(tripId: string, resourceData: {
+    truck_plate: string;
+    truck_model: string;
+    truck_capacity: number;
+    driver_id: string;
+    driver_name: string;
+    driver_phone: string;
+  }) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/reassign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(resourceData),
+    });
+  },
+
   // Get trip orders
   async getTripOrders(tripId: string) {
     // Note: user_id and company_id will be extracted from JWT token by the backend

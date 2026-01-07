@@ -4,6 +4,7 @@ import os
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update
 from datetime import date, datetime
@@ -1250,6 +1251,135 @@ async def resume_trip(
         created_at=trip.created_at,
         updated_at=trip.updated_at
     )
+
+
+class TripReassignRequest(BaseModel):
+    """Request model for reassigning trip resources"""
+    truck_plate: str
+    truck_model: str
+    truck_capacity: int
+    driver_id: str
+    driver_name: str
+    driver_phone: str
+
+
+@router.post("/{trip_id}/reassign", response_model=TripResponse)
+async def reassign_trip_resources(
+    trip_id: str,
+    resource_data: TripReassignRequest,
+    request: Request,
+    token_data: TokenData = Depends(require_permissions(["trips:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Reassign truck and driver to a paused trip.
+
+    This allows logistics managers to assign new resources to a paused trip
+    when the original truck is under maintenance or driver is unavailable.
+    """
+    logger.info(f"Reassigning resources for trip {trip_id}")
+
+    # Get the trip
+    query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    trip = result.scalar_one_or_none()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    # Verify trip is in paused status
+    if trip.status != "paused":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only reassign resources for paused trips. Current status: {trip.status}"
+        )
+
+    # Store old values for audit
+    old_truck_plate = trip.truck_plate
+    old_driver_id = trip.driver_id
+
+    # Get authorization headers for service calls
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    try:
+        # Update trip with new resources
+        trip.truck_plate = resource_data.truck_plate
+        trip.truck_model = resource_data.truck_model
+        trip.truck_capacity = resource_data.truck_capacity
+        trip.driver_id = resource_data.driver_id
+        trip.driver_name = resource_data.driver_name
+        trip.driver_phone = resource_data.driver_phone
+
+        await db.commit()
+        await db.refresh(trip)
+
+        logger.info(f"Trip {trip_id} resources reassigned successfully")
+
+        # Audit log
+        audit_client = AuditClient(auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            user_role=token_data.role,
+            action="reassign",
+            module="trips",
+            entity_type="trip",
+            entity_id=str(trip.id),
+            description=f"Trip {trip_id} resources reassigned",
+            old_values={
+                "truck_plate": old_truck_plate,
+                "driver_id": old_driver_id
+            },
+            new_values={
+                "truck_plate": trip.truck_plate,
+                "driver_id": trip.driver_id
+            }
+        )
+
+        return TripResponse(
+            id=trip.id,
+            user_id=trip.user_id,
+            company_id=trip.company_id,
+            branch=trip.branch,
+            truck_plate=trip.truck_plate,
+            truck_model=trip.truck_model,
+            truck_capacity=trip.truck_capacity,
+            driver_id=trip.driver_id,
+            driver_name=trip.driver_name,
+            driver_phone=trip.driver_phone,
+            status=trip.status,
+            origin=trip.origin,
+            destination=trip.destination,
+            distance=trip.distance,
+            estimated_duration=trip.estimated_duration,
+            pre_trip_time=trip.pre_trip_time,
+            post_trip_time=trip.post_trip_time,
+            capacity_used=trip.capacity_used or 0,
+            capacity_total=trip.capacity_total,
+            trip_date=trip.trip_date,
+            maintenance_note=trip.maintenance_note,
+            paused_at=trip.paused_at,
+            paused_reason=trip.paused_reason,
+            resumed_at=trip.resumed_at,
+            created_at=trip.created_at,
+            updated_at=trip.updated_at,
+            orders=[]  # Empty orders list for reassign response
+        )
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error reassigning trip resources: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to reassign trip resources: {str(e)}")
 
 
 @router.post("/{trip_id}/check-completion")
