@@ -6,13 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, update
-from datetime import date, datetime
+from sqlalchemy import select, and_, or_, update, func
+from datetime import date, datetime, timezone
 from httpx import AsyncClient
 import uuid
 import logging
 
-from src.database import get_db, Trip, TripOrder
+from src.database import get_db, Trip, TripOrder, TMSAuditLog
 from src.schemas import (
     TripCreate, TripUpdate, TripResponse, TripWithOrders,
     AssignOrdersRequest, TripOrderCreate, TripOrderResponse,
@@ -386,6 +386,68 @@ async def _update_order_item_statuses(
             logger.error(f"Error updating item status for order {trip_order.order_id}: {str(e)}", exc_info=True)
 
 
+async def fetch_latest_trip_status_change(
+    db: AsyncSession,
+    trip_ids: List[str]
+) -> dict:
+    """
+    Fetch the latest status change timestamp for multiple trips from audit logs.
+
+    Returns: Dict mapping trip_id -> most recent status change timestamp
+    """
+    import json
+
+    logger.info(f"TMS - Fetching status changes for {len(trip_ids)} trips: {trip_ids[:3]}...")
+
+    # Subquery to get the latest audit log entry for each trip
+    latest_audit_subquery = (
+        select(
+            TMSAuditLog.record_id,
+            func.max(TMSAuditLog.timestamp).label('latest_timestamp')
+        )
+        .where(
+            and_(
+                TMSAuditLog.record_type == 'trip',
+                TMSAuditLog.record_id.in_(trip_ids)
+            )
+        )
+        .group_by(TMSAuditLog.record_id)
+        .subquery()
+    )
+
+    # Main query to get the latest audit log records
+    query = (
+        select(TMSAuditLog)
+        .join(
+            latest_audit_subquery,
+            and_(
+                TMSAuditLog.record_id == latest_audit_subquery.c.record_id,
+                TMSAuditLog.timestamp == latest_audit_subquery.c.latest_timestamp
+            )
+        )
+    )
+
+    result = await db.execute(query)
+    audit_records = result.scalars().all()
+
+    logger.info(f"TMS - Found {len(audit_records)} audit log records")
+
+    # Build mapping: trip_id -> latest status change timestamp
+    status_change_map = {}
+    for record in audit_records:
+        try:
+            details = json.loads(record.details) if isinstance(record.details, str) else record.details
+            # Only include if this is actually a status change (has to_status)
+            if details and isinstance(details, dict) and details.get('to_status'):
+                status_change_map[record.record_id] = record.timestamp
+        except (json.JSONDecodeError, TypeError):
+            # If JSON parsing fails, use the timestamp anyway
+            status_change_map[record.record_id] = record.timestamp
+
+    logger.info(f"TMS - Built status_change_map with {len(status_change_map)} entries: {list(status_change_map.keys())[:3]}")
+    return status_change_map
+
+
 @router.get(
     "",
     response_model=List[TripResponse],
@@ -469,6 +531,13 @@ async def get_trips(
 
     result = await db.execute(query)
     trips = result.scalars().all()
+
+    # Fetch latest status changes for all trips from audit logs
+    trip_ids = [trip.id for trip in trips]
+    latest_status_changes = await fetch_latest_trip_status_change(db, trip_ids)
+
+    # Get current UTC time once for consistent calculations
+    current_time = datetime.now(timezone.utc)
 
     # Convert to response models with orders
     trip_responses = []
@@ -582,6 +651,28 @@ async def get_trips(
             )
             order_responses.append(order_response)
 
+        # Calculate time in current status
+        try:
+            current_status_since = latest_status_changes.get(trip.id, trip.created_at)
+
+            # Ensure both datetimes are timezone-aware for proper comparison
+            if current_status_since.tzinfo is None:
+                current_status_since = current_status_since.replace(tzinfo=timezone.utc)
+
+            time_in_status_minutes = int(
+                (current_time - current_status_since).total_seconds() / 60
+            )
+        except Exception as e:
+            logger.error(f"Error calculating time_in_status for trip {trip.id}: {str(e)}")
+            current_status_since = trip.created_at
+            time_in_status_minutes = 0
+
+        # Debug: Log first trip time_in_status
+        if trip == list(trips)[0]:
+            logger.info(f"TMS - First trip: {trip.id}, status={trip.status}, "
+                      f"time_in_status_minutes={time_in_status_minutes}, "
+                      f"current_status_since={current_status_since}")
+
         trip_response = TripResponse(
             id=trip.id,
             user_id=trip.user_id,
@@ -608,7 +699,9 @@ async def get_trips(
             paused_reason=trip.paused_reason,
             resumed_at=trip.resumed_at,
             created_at=trip.created_at,
-            updated_at=trip.updated_at
+            updated_at=trip.updated_at,
+            current_status_since=current_status_since.isoformat() if current_status_since else None,
+            time_in_current_status_minutes=time_in_status_minutes
         )
 
         # Add orders to the response
@@ -619,6 +712,13 @@ async def get_trips(
     if trip_responses:
         sample_trip = trip_responses[0]
         logger.info(f"Sample trip response: id={sample_trip.id}, orders_count={len(sample_trip.orders)}")
+        logger.info(f"Sample trip time-in-status: current_status_since={sample_trip.current_status_since}, "
+                   f"time_in_current_status_minutes={sample_trip.time_in_current_status_minutes}")
+        # Log the actual dict that will be serialized to JSON
+        sample_trip_dict = sample_trip.model_dump(mode='json')
+        logger.info(f"Sample trip dict keys: {list(sample_trip_dict.keys())}")
+        logger.info(f"Sample trip dict time-in-status: current_status_since={sample_trip_dict.get('current_status_since')}, "
+                   f"time_in_current_status_minutes={sample_trip_dict.get('time_in_current_status_minutes')}")
         if sample_trip.orders:
             sample_order = sample_trip.orders[0]
             logger.info(f"Sample order: order_id={sample_order.order_id}, items={sample_order.items}, items_data_length={len(sample_order.items_data) if sample_order.items_data else 0}")

@@ -226,6 +226,9 @@ class TripResponse(BaseSchema):
     created_at: datetime
     updated_at: datetime
     orders: List[TripOrderResponse] = []
+    # Time in current status
+    current_status_since: Optional[str] = None
+    time_in_current_status_minutes: Optional[int] = None
 
 
 class TripWithOrders(TripResponse):

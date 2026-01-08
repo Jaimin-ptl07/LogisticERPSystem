@@ -64,7 +64,6 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
     "/branch-manager",
     "/finance-manager",
     "/logistics-manager",
-    "/drivermodule",
   ],
   [ROLES.FINANCE_MANAGER]: ["/finance-manager"],
   [ROLES.LOGISTICS_MANAGER]: ["/logistics-manager"],

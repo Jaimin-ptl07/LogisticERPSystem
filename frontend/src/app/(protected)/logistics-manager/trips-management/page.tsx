@@ -11,6 +11,7 @@ import {
   TripCreateData,
 } from "@/lib/api";
 import { Driver, Trip } from "@/types";
+import { DurationDisplay } from "@/components/DurationDisplay";
 import {
   Truck,
   MapPin,
@@ -33,6 +34,7 @@ import {
   AlertTriangle,
   AlertCircle,
   Trash2,
+  Clock,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -140,6 +142,18 @@ export default function Trips() {
     try {
       setLoading(true);
       const data = await tmsAPI.getAllTrips();
+
+      // Debug: Log first trip to check time_in_status fields
+      if (data && data.length > 0) {
+        console.log('First trip data:', {
+          id: data[0].id,
+          status: data[0].status,
+          time_in_current_status_minutes: data[0].time_in_current_status_minutes,
+          current_status_since: data[0].current_status_since,
+          createdAt: data[0].createdAt
+        });
+      }
+
       // Deduplicate trips by ID in case of duplicates
       const uniqueTrips = Array.from(
         new Map(data.map((trip: Trip) => [trip.id, trip])).values()
@@ -189,6 +203,15 @@ export default function Trips() {
   // Update filtered trips when status filter changes
   useEffect(() => {
     fetchTrips(statusFilter ? { status: statusFilter } : undefined);
+  }, [statusFilter]);
+
+  // Auto-refresh trips every hour (3600000 ms) to update time-in-status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTrips(statusFilter ? { status: statusFilter } : undefined);
+    }, 3600000); // 1 hour
+
+    return () => clearInterval(interval);
   }, [statusFilter]);
 
   // Close dropdowns when clicking outside
@@ -1714,6 +1737,15 @@ export default function Trips() {
                                     LOCKED
                                   </Badge>
                                 )}
+                                {/* Time in current status */}
+                                {(trip.time_in_current_status_minutes !== undefined && trip.time_in_current_status_minutes !== null) && (
+                                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-600">
+                                    <Clock className="w-3 h-3" />
+                                    <span>
+                                      For <DurationDisplay minutes={trip.time_in_current_status_minutes || 0} />
+                                    </span>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Origin */}
@@ -2185,12 +2217,12 @@ export default function Trips() {
                                   {order.weight} kg
                                 </span>
                               </div>
-                              <div className="flex items-center justify-between">
+                              {/* <div className="flex items-center justify-between">
                                 <span className="text-sm text-gray-600">Volume</span>
                                 <span className="text-lg font-bold text-gray-900">
                                   {order.volume} L
                                 </span>
-                              </div>
+                              </div> */}
                               <div className="flex items-center justify-between pt-3 border-t border-gray-200">
                                 <span className="text-sm text-gray-600">Total Amount</span>
                                 <span className="text-2xl font-bold text-gray-900">
@@ -2225,7 +2257,7 @@ export default function Trips() {
                                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Product</th>
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Quantity</th>
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Weight/Unit</th>
-                                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Volume</th>
+                                      {/* <th className="text-right py-3 px-4 font-semibold text-gray-700">Volume</th> */}
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Price/Unit</th>
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Total Weight</th>
                                     </tr>
@@ -2256,9 +2288,9 @@ export default function Trips() {
                                             <span className="text-xs text-gray-400 block">({item.weight_type})</span>
                                           )}
                                         </td>
-                                        <td className="py-3 px-4 text-right text-gray-900">
+                                        {/* <td className="py-3 px-4 text-right text-gray-900">
                                           {item.volume ?? 0} m³
-                                        </td>
+                                        </td> */}
                                         <td className="py-3 px-4 text-right text-gray-900">
                                           {item.unit_price ? `₹${item.unit_price}` : "N/A"}
                                         </td>
@@ -3011,12 +3043,12 @@ export default function Trips() {
                                                   )}
                                                 </span>
                                               </div>
-                                              <div>
+                                              {/* <div>
                                                 <span className="text-gray-500">Volume:</span>
                                                 <span className="ml-1 font-medium text-gray-900">
                                                   {item.volume ?? 0} m³
                                                 </span>
-                                              </div>
+                                              </div> */}
                                               <div>
                                                 <span className="text-gray-500">Price:</span>
                                                 <span className="ml-1 font-medium text-gray-900">

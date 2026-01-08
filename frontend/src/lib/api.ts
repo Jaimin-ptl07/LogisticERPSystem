@@ -595,6 +595,9 @@ export const tmsAPI = {
       capacityUsed: trip.capacity_used,
       capacityTotal: trip.capacity_total,
       maintenanceNote: trip.maintenance_note,
+      // Time in current status
+      current_status_since: trip.current_status_since,
+      time_in_current_status_minutes: trip.time_in_current_status_minutes,
     }));
   },
 

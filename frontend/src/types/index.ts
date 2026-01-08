@@ -52,6 +52,9 @@ export interface Trip {
   createdAt?: string;
   capacityUsed?: number;
   capacityTotal?: number;
+  // Time in current status
+  current_status_since?: string;
+  time_in_current_status_minutes?: number;
 }
 
 export interface OrderItem {
