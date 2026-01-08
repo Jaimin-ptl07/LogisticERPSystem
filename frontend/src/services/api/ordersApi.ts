@@ -37,6 +37,9 @@ export interface Order {
   items: OrderItem[];
   items_count: number;  // Number of items (backward compatibility)
   documents?: OrderDocument[];
+  // Time in current status fields
+  current_status_since?: string;  // ISO timestamp of when current status was set
+  time_in_current_status_minutes?: number;  // Duration in minutes
 }
 
 export interface OrderItem {

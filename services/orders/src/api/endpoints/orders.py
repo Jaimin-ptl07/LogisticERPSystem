@@ -3,7 +3,7 @@ Orders API endpoints
 """
 from typing import List, Optional, Dict
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from httpx import AsyncClient
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
@@ -69,6 +69,56 @@ async def fetch_customers_by_ids(customer_ids: List[str], tenant_id: str, header
                 logger.error(f"Error fetching customer {customer_id}: {str(e)}")
 
     return customers_map
+
+
+async def fetch_latest_status_history(
+    db: AsyncSession,
+    order_ids: List[str],
+    tenant_id: str
+) -> Dict[str, datetime]:
+    """
+    Fetch the latest status change timestamp for multiple orders in a single query.
+
+    Returns: Dict mapping order_id -> most recent status change timestamp
+    """
+    from src.models.order_status_history import OrderStatusHistory
+    from sqlalchemy import func
+
+    # Subquery to get the latest status history entry for each order
+    # Join with orders table to filter by tenant_id
+    latest_history_subquery = (
+        select(
+            OrderStatusHistory.order_id,
+            func.max(OrderStatusHistory.created_at).label('latest_created_at')
+        )
+        .join(Order, Order.id == OrderStatusHistory.order_id)
+        .where(
+            and_(
+                OrderStatusHistory.order_id.in_(order_ids),
+                Order.tenant_id == tenant_id
+            )
+        )
+        .group_by(OrderStatusHistory.order_id)
+        .subquery()
+    )
+
+    # Main query to get the latest history records
+    query = (
+        select(OrderStatusHistory)
+        .join(
+            latest_history_subquery,
+            and_(
+                OrderStatusHistory.order_id == latest_history_subquery.c.order_id,
+                OrderStatusHistory.created_at == latest_history_subquery.c.latest_created_at
+            )
+        )
+    )
+
+    result = await db.execute(query)
+    history_records = result.scalars().all()
+
+    # Build mapping: order_id -> latest status change timestamp
+    return {record.order_id: record.created_at for record in history_records}
 
 
 router = APIRouter()
@@ -191,6 +241,13 @@ async def list_orders(
         page=page,
         page_size=limit
     )
+
+    # Fetch latest status history for all orders
+    order_ids = [order.id for order in orders]
+    latest_status_changes = await fetch_latest_status_history(db, order_ids, tenant_id)
+
+    # Get current UTC time once for consistent calculations
+    current_time = datetime.now(timezone.utc)
 
     # Log query results for debugging
     logger.info(f"ORDERS SERVICE - Query returned {len(orders)} orders (total: {total})")
@@ -503,6 +560,31 @@ async def list_orders(
         if is_partial_order:
             logger.info(f"Order {order.order_number} partial order - calculated_weight: {calculated_weight}, items: {len(items_data)}")
 
+        # Calculate time in current status
+        try:
+            current_status_since = latest_status_changes.get(order.id, order.created_at)
+
+            # Ensure both datetimes are timezone-aware for proper comparison
+            if current_status_since.tzinfo is None:
+                # If created_at is naive, assume it's UTC
+                current_status_since = current_status_since.replace(tzinfo=timezone.utc)
+
+            time_in_status_minutes = int(
+                (current_time - current_status_since).total_seconds() / 60
+            )
+
+            # Debug: Log time_in_status for first order
+            if order == orders[0]:
+                logger.info(f"ORDERS SERVICE - First order: {order.order_number}, "
+                          f"time_in_status_minutes={time_in_status_minutes}, "
+                          f"current_status_since={current_status_since}, "
+                          f"created_at={order.created_at}")
+        except Exception as e:
+            logger.error(f"Error calculating time_in_status for order {order.order_number}: {str(e)}")
+            # Fallback to 0 if calculation fails
+            current_status_since = order.created_at
+            time_in_status_minutes = 0
+
         order_dict = {
             'id': order.id,
             'order_number': order.order_number,
@@ -529,6 +611,9 @@ async def list_orders(
             # Include TMS JSON fields for reference
             'items_json': getattr(order, 'items_json', None),
             'remaining_items_json': getattr(order, 'remaining_items_json', None),
+            # Time in current status
+            'current_status_since': current_status_since.isoformat() if current_status_since else None,
+            'time_in_current_status_minutes': time_in_status_minutes,
         }
         enriched_orders.append(OrderListResponse(**order_dict))
 

@@ -37,10 +37,11 @@ import {
   ChevronRight,
   Edit
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import { DateDisplay } from "@/components/DateDisplay";
+import { DurationDisplay } from "@/components/DurationDisplay";
 
 export default function Orders() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -60,7 +61,28 @@ export default function Orders() {
     per_page: 20,
     search: searchQuery || undefined,
   });
+
+  // Auto-refresh orders every hour (3600000 ms) to update time-in-status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetchOrders();
+    }, 3600000); // 1 hour
+
+    return () => clearInterval(interval);
+  }, [refetchOrders]);
+
   const orders = ordersData?.items || [];
+
+  // Debug: Log first order to check time_in_status fields
+  if (orders.length > 0 && orders[0]) {
+    console.log('First order data:', {
+      order_number: orders[0].order_number,
+      status: orders[0].status,
+      time_in_current_status_minutes: orders[0].time_in_current_status_minutes,
+      current_status_since: orders[0].current_status_since,
+      created_at: orders[0].created_at
+    });
+  }
 
   // Submit order mutation
   const [submitOrder, { isLoading: isSubmitting }] = useSubmitOrderMutation();
@@ -317,6 +339,16 @@ export default function Orders() {
                           >
                             {statusConfig.label}
                           </Badge>
+
+                          {/* Time in current status */}
+                          {(order.time_in_current_status_minutes !== undefined && order.time_in_current_status_minutes !== null) && (
+                            <div className="mt-2 flex items-center gap-1 text-xs text-gray-600">
+                              <Clock className="w-3 h-3" />
+                              <span>
+                                For <DurationDisplay minutes={order.time_in_current_status_minutes || 0} />
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Date and Time */}

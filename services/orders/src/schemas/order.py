@@ -222,6 +222,10 @@ class OrderListResponse(BaseModel):
     items: List[dict] = []  # Order items with product details
     items_count: int = 0  # Number of items in the order (backward compatibility)
 
+    # Time in current status fields
+    current_status_since: Optional[datetime] = None  # Timestamp when current status was set
+    time_in_current_status_minutes: Optional[int] = None  # Duration in minutes
+
 
 class OrderListPaginatedResponse(BaseModel):
     """Schema for paginated order list response"""
