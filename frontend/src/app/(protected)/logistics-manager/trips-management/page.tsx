@@ -10,7 +10,7 @@ import {
   OrderAssignData,
   TripCreateData,
 } from "@/lib/api";
-import { Driver, Trip } from "@/types";
+import { Driver, Trip, LoadingModalData } from "@/types";
 import { DurationDisplay } from "@/components/DurationDisplay";
 import {
   Truck,
@@ -87,6 +87,10 @@ export default function Trips() {
   const [reassignDriverDropdownOpen, setReassignDriverDropdownOpen] = useState(false);
   const [reassignTruckSearchQuery, setReassignTruckSearchQuery] = useState("");
   const [reassignDriverSearchQuery, setReassignDriverSearchQuery] = useState("");
+
+  // Loading stage modal state
+  const [loadingModal, setLoadingModal] = useState<LoadingModalData | null>(null);
+  const [editableQuantities, setEditableQuantities] = useState<Record<string, number>>({});
 
   // Search states for trip creation
   const [branchSearchTerm, setBranchSearchTerm] = useState("");
@@ -333,7 +337,7 @@ export default function Trips() {
         const hasInvalidOrderStatus = trip.orders.some(
           (tripOrder) => {
             // Find the original order in availableOrders to check its finance status
-            const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
+            const originalOrder = availableOrders.find(o => o.order_number === tripOrder.order_id);
             const orderStatus = originalOrder?.status;
             const isValid = orderStatus && validOrderStatuses.includes(orderStatus);
             console.log(`Validating order ${tripOrder.order_id}: originalOrder=`, originalOrder, `status=`, orderStatus, `isValid=`, isValid);
@@ -345,17 +349,47 @@ export default function Trips() {
           // Find the first invalid order to show in the error message
           const invalidOrder = trip.orders.find(
             (tripOrder) => {
-              const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
+              const originalOrder = availableOrders.find(o => o.order_number === tripOrder.order_id);
               const orderStatus = originalOrder?.status;
               return !orderStatus || !validOrderStatuses.includes(orderStatus);
             }
           );
 
-          const originalOrderForMsg = availableOrders.find(o => o.id === invalidOrder?.order_id);
+          const originalOrderForMsg = availableOrders.find(o => o.order_number === invalidOrder?.order_id);
           alert(
             `Cannot change trip status. Order "${invalidOrder?.order_id || "N/A"}" has status "${originalOrderForMsg?.status || "unknown"}". Orders must be in one of these statuses: ${validOrderStatuses.join(", ")}.`
           );
           return;
+        }
+
+        // Special handling for loading status - mandatory item assignment
+        if (newStatus === "loading") {
+          // Call prepare-loading endpoint to get pending items
+          try {
+            const prepareResponse = await tmsAPI.prepareTripForLoading(tripId);
+
+            // Initialize editable quantities from pending items
+            const initialQuantities: Record<string, number> = {};
+            prepareResponse.pending_items.forEach((item: any) => {
+              initialQuantities[item.order_item_id] = item.assigned_quantity;
+            });
+            setEditableQuantities(initialQuantities);
+
+            // Show loading assignment modal (MANDATORY - blocks status change)
+            setLoadingModal({
+              tripId,
+              pendingItems: prepareResponse.pending_items,
+              totalWeight: prepareResponse.total_weight,
+              capacityTotal: prepareResponse.capacity_total,
+              isOverCapacity: prepareResponse.is_over_capacity,
+              capacityShortage: prepareResponse.capacity_shortage
+            });
+
+            return; // Don't proceed with status change yet - modal will handle it
+          } catch (error) {
+            alert(`Failed to prepare loading: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return;
+          }
         }
       }
 
@@ -1327,20 +1361,13 @@ export default function Trips() {
         return;
       }
 
-      // Check capacity
+      // Check capacity (non-blocking warning for planning stage)
       const newCapacityUsed =
         (selectedTripForOrders.capacityUsed || 0) +
         ordersData.reduce((sum, order) => sum + order.weight, 0);
 
-      if (newCapacityUsed > (selectedTripForOrders.capacityTotal || 0)) {
-        if (
-          !confirm(
-            `Warning: Total weight (${newCapacityUsed.toFixed(2)}kg) exceeds truck capacity (${selectedTripForOrders.capacityTotal}kg). Do you want to continue?`
-          )
-        ) {
-          return;
-        }
-      }
+      // Capacity check removed - assignment allowed in planning stage
+      // Warning will be displayed in UI if over capacity
 
       // Assign orders via API
       await tmsAPI.assignOrdersToTrip(selectedTripForOrders.id, ordersData);
@@ -1864,6 +1891,19 @@ export default function Trips() {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Capacity Warning Indicator */}
+                                {trip.capacityUsed && trip.capacityTotal &&
+                                  trip.capacityUsed > trip.capacityTotal && (
+                                  <div className="mt-2 bg-yellow-50 border border-yellow-300 rounded-lg p-2">
+                                    <div className="flex items-center gap-2 text-yellow-800">
+                                      <AlertTriangle className="w-4 h-4" />
+                                      <span className="text-xs font-medium">
+                                        Over capacity: {(trip.capacityUsed - trip.capacityTotal).toFixed(2)}kg
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
 
                                 {/* Add Orders Button */}
                                 {trip.status === "planning" && (
@@ -2923,11 +2963,9 @@ export default function Trips() {
                                       type="checkbox"
                                       checked={selectedOrders.includes(order.id)}
                                       onChange={() => {
-                                        if (!wouldExceedCapacity) {
-                                          handleOrderToggle(order.id);
-                                        }
+                                        // Allow selection regardless of capacity (planning stage)
+                                        handleOrderToggle(order.id);
                                       }}
-                                      disabled={wouldExceedCapacity}
                                       className="w-4 h-4 text-blue-600 rounded"
                                     />
                                     <div className="flex-1">
@@ -3823,6 +3861,191 @@ export default function Trips() {
                   >
                     {isReassigning ? "Processing..." : "Reassign & Resume"}
                   </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Loading Assignment Modal */}
+          {loadingModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              {/* Backdrop */}
+              <div
+                className="fixed inset-0 bg-black/50"
+                onClick={() => setLoadingModal(null)}
+              />
+
+              {/* Modal Content */}
+              <div
+                className="relative z-50 w-full max-w-4xl max-h-[80vh] overflow-y-auto rounded-lg bg-white shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-xl font-semibold text-gray-900">Assign Items for Loading</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {loadingModal.isOverCapacity ? (
+                      <span className="text-red-600 font-semibold">
+                        ⚠️ OVER CAPACITY: Must split {loadingModal.capacityShortage.toFixed(2)}kg across multiple trips
+                      </span>
+                    ) : (
+                      <span>Confirm items to load for this trip</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Modal Body */}
+                <div className="px-6 py-4">
+                  {/* Capacity Summary */}
+                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-sm text-gray-600">Total Weight</p>
+                        <p className="text-2xl font-bold">
+                          {loadingModal.pendingItems.reduce((sum, item) => {
+                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                            return sum + (qty * item.weight_per_unit);
+                          }, 0).toFixed(2)} kg
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Capacity</p>
+                        <p className="text-2xl font-bold">{loadingModal.capacityTotal} kg</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Status</p>
+                        <p className={`text-2xl font-bold ${
+                          loadingModal.pendingItems.reduce((sum, item) => {
+                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                            return sum + (qty * item.weight_per_unit);
+                          }, 0) > loadingModal.capacityTotal ? 'text-red-600' : 'text-green-600'
+                        }`}>
+                          {loadingModal.pendingItems.reduce((sum, item) => {
+                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                            return sum + (qty * item.weight_per_unit);
+                          }, 0) > loadingModal.capacityTotal ? 'OVER' : 'OK'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items List - Only pending items */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-700 mb-2">
+                      Pending Items ({loadingModal.pendingItems.length})
+                    </p>
+                    {loadingModal.pendingItems.map((item, idx) => {
+                      const currentQty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      const itemWeight = currentQty * item.weight_per_unit;
+
+                      return (
+                      <div key={`${item.order_item_id}-${idx}`} className="border rounded-lg p-3 bg-gray-50">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">{item.product_name}</p>
+                            <p className="text-sm text-gray-600">
+                              Order: {item.order_id} • Customer: {item.customer}
+                            </p>
+                            <div className="flex items-center gap-4 mt-2">
+                              <div className="flex items-center gap-2">
+                                <label className="text-sm text-gray-600">Qty:</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={item.assigned_quantity + item.remaining_quantity}
+                                  value={currentQty}
+                                  onChange={(e) => {
+                                    const newQty = parseInt(e.target.value) || 0;
+                                    setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: newQty
+                                    }));
+                                  }}
+                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+                                />
+                              </div>
+                              <span className="text-sm text-gray-600">
+                                Weight: {itemWeight.toFixed(2)}kg
+                                {item.weight_per_unit > 0 && ` (${item.weight_per_unit}kg/each)`}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            <input
+                              type="checkbox"
+                              checked={currentQty > 0}
+                              disabled
+                              className="w-5 h-5 text-green-600 rounded"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );})}
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end gap-3">
+                  <Button
+                    onClick={() => {
+                      setLoadingModal(null);
+                      setEditableQuantities({});
+                    }}
+                    variant="outline"
+                    className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </Button>
+                  {(() => {
+                    // Calculate current total weight from editable quantities
+                    const currentTotalWeight = loadingModal.pendingItems.reduce((sum, item) => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return sum + (qty * item.weight_per_unit);
+                    }, 0);
+                    const isOverCapacity = currentTotalWeight > loadingModal.capacityTotal;
+
+                    return isOverCapacity ? (
+                      <Button
+                        disabled
+                        className="bg-gray-400 text-white cursor-not-allowed"
+                      >
+                        Over Capacity - Reduce Qty ({currentTotalWeight.toFixed(2)}kg / {loadingModal.capacityTotal}kg)
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={async () => {
+                          try {
+                            // Use editable quantities for the assignment
+                            const itemAssignments = loadingModal.pendingItems.map(item => {
+                              const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                              return {
+                                order_id: item.order_id,
+                                order_item_id: item.order_item_id,
+                                assigned_quantity: qty,
+                                total_weight: qty * item.weight_per_unit
+                              };
+                            }).filter(item => item.assigned_quantity > 0); // Only include items with qty > 0
+
+                            await tmsAPI.confirmLoadingAssignment(loadingModal.tripId, {
+                              item_assignments: itemAssignments
+                            });
+
+                            // Refresh trips to show updated status
+                            await fetchTrips();
+
+                            setLoadingModal(null);
+                            setEditableQuantities({});
+                            alert("Trip successfully moved to loading status!");
+                          } catch (error) {
+                            alert(`Failed to confirm loading: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                          }
+                        }}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        Confirm & Start Loading
+                      </Button>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

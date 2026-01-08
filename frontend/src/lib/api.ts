@@ -683,6 +683,33 @@ export const tmsAPI = {
       method: 'DELETE',
     });
   },
+
+  // Prepare trip for loading - get pending items
+  async prepareTripForLoading(tripId: string) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/prepare-loading`, {
+      method: 'POST',
+    });
+  },
+
+  // Confirm loading assignment and change status
+  async confirmLoadingAssignment(
+    tripId: string,
+    confirmation: {
+      item_assignments: Array<{
+        order_id: string;
+        order_item_id: string;
+        assigned_quantity: number;
+        total_weight: number;
+      }>;
+      split_items?: Array<any>;
+    }
+  ) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/confirm-loading`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(confirmation),
+    });
+  },
 };
 
 // Resources API functions

@@ -180,3 +180,26 @@ export interface Driver {
   branch_id?: string | null;
   user_id?: string | null;
 }
+
+// Loading Stage Types
+export interface PendingItem {
+  order_id: string;
+  customer: string;
+  order_item_id: string;
+  product_name: string;
+  product_code?: string;
+  assigned_quantity: number;
+  remaining_quantity: number;
+  weight_per_unit: number;
+  total_weight: number;
+  item_status: string;
+}
+
+export interface LoadingModalData {
+  tripId: string;
+  pendingItems: PendingItem[];
+  totalWeight: number;
+  capacityTotal: number;
+  isOverCapacity: boolean;
+  capacityShortage: number;
+}

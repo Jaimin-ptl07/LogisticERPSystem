@@ -403,3 +403,22 @@ class TripPause(BaseModel):
 class TripResume(BaseModel):
     """Schema for resuming a trip"""
     note: Optional[str] = Field(None, max_length=2000, description="Resume notes")
+
+
+# Loading Stage Schemas
+class LoadingConfirmationRequest(BaseModel):
+    """Request to confirm item assignments and change status to loading"""
+    item_assignments: List[dict]  # List of {order_item_id, assigned_quantity, target_trip_id, total_weight}
+    split_items: Optional[List[dict]] = None  # Items split across trips
+
+
+class PrepareLoadingResponse(BaseModel):
+    """Response with pending items for loading stage"""
+    trip_id: str
+    pending_items: List[dict]  # List of pending items needing assignment
+    total_weight: float
+    capacity_total: int
+    capacity_used: int
+    is_over_capacity: bool
+    capacity_shortage: float
+    requires_splitting: bool

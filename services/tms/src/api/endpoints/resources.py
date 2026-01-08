@@ -520,6 +520,7 @@ async def get_orders(
 
                 transformed_order = {
                     "id": order.get("order_number", order.get("id")),
+                    "order_number": order.get("order_number"),  # Add order_number explicitly for frontend matching
                     "customer": order.get("customer", {}).get("name", "Unknown Customer") if order.get("customer") else "Unknown Customer",
                     "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
                     "status": order.get("status", "unknown"),

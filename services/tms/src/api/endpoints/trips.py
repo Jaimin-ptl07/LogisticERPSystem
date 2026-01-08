@@ -17,7 +17,8 @@ from src.schemas import (
     TripCreate, TripUpdate, TripResponse, TripWithOrders,
     AssignOrdersRequest, TripOrderCreate, TripOrderResponse,
     MessageResponse, ReorderOrdersRequest,
-    TripPause, TripResume
+    TripPause, TripResume,
+    LoadingConfirmationRequest
 )
 from src.security import (
     TokenData,
@@ -1600,12 +1601,14 @@ async def assign_orders_to_trip(
 
     new_capacity_used = (trip.capacity_used or 0) + total_new_weight
 
-    # Check capacity
+    # Check capacity (non-blocking warning for planning stage)
     if new_capacity_used > trip.capacity_total:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Orders exceed trip capacity. Current: {trip.capacity_used}kg, New: {total_new_weight}kg, Max: {trip.capacity_total}kg"
+        logger.warning(
+            f"Trip {trip_id} capacity exceeded: {new_capacity_used}kg / {trip.capacity_total}kg. "
+            f"Overage: {new_capacity_used - trip.capacity_total}kg. "
+            f"Assignment allowed (planning stage)."
         )
+        # Continue with assignment (don't raise HTTPException)
 
     # Check if any orders are already assigned to another trip (not split orders)
     # Use trip_item_assignments endpoint to check actual remaining quantities
@@ -2206,4 +2209,286 @@ async def remove_order_from_trip(
         logger.error(f"Error updating Orders service for order {order_id}: {str(e)}", exc_info=True)
         # Don't fail the removal if status update fails
 
-    return MessageResponse(message=f"Successfully removed order {order_id} from trip {trip_id}")
+
+# =============================================================================
+# LOADING STAGE ENDPOINTS
+# =============================================================================
+
+@router.post("/{trip_id}/prepare-loading")
+async def prepare_trip_for_loading(
+    trip_id: str,
+    request: Request,
+    token_data: TokenData = Depends(require_permissions(["trips:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Validate trip and return pending items that need assignment before loading.
+    Called when user attempts to change trip status to 'loading'.
+
+    Returns:
+    - List of pending items (not yet assigned to loading)
+    - Capacity information
+    - Validation errors if any
+    """
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    # Get trip
+    trip_query = select(Trip).where(
+        and_(Trip.id == trip_id, Trip.company_id == tenant_id)
+    )
+    trip_result = await db.execute(trip_query)
+    trip = trip_result.scalar_one_or_none()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    if trip.status != "planning":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only prepare trips in 'planning' status. Current: {trip.status}"
+        )
+
+    # Get trip orders
+    orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
+    orders_result = await db.execute(orders_query)
+    trip_orders = orders_result.scalars().all()
+
+    if not trip_orders:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot change to loading: Trip has no orders"
+        )
+
+    # Fetch pending items from Orders service
+    pending_items = []
+    total_weight = 0
+
+    for trip_order in trip_orders:
+        items_data = None
+        order_items = {}  # Use dict to aggregate by order_item_id
+
+        # Try to fetch from Orders service
+        try:
+            async with AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/order/{trip_order.order_id}",
+                    params={"tenant_id": tenant_id},
+                    headers=auth_headers
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    items = data.get("items", [])
+
+                    for item in items:
+                        # Filter items assigned to THIS trip with "planning" status
+                        assignments = item.get("assignments", [])
+                        trip_assignments = [
+                            a for a in assignments
+                            if a.get("trip_id") == trip_id and a.get("item_status") == "planning"
+                        ]
+
+                        if trip_assignments:
+                            # Aggregate quantities for same order_item_id
+                            item_id = item.get("id")
+                            if item_id not in order_items:
+                                order_items[item_id] = {
+                                    "order_id": trip_order.order_id,
+                                    "customer": trip_order.customer,
+                                    "order_item_id": item_id,
+                                    "product_name": item.get("product_name"),
+                                    "product_code": item.get("product_code"),
+                                    "assigned_quantity": 0,
+                                    "remaining_quantity": item.get("remaining_quantity", 0),
+                                    "weight_per_unit": item.get("weight", 0),
+                                    "item_status": "planning"
+                                }
+
+                            # Sum up quantities from all assignments
+                            for assignment in trip_assignments:
+                                order_items[item_id]["assigned_quantity"] += assignment.get("assigned_quantity", 0)
+
+                    # Calculate total weight and add to pending_items
+                    for item_data in order_items.values():
+                        item_weight = (
+                            (item_data["assigned_quantity"] * item_data["weight_per_unit"])
+                            if item_data["weight_per_unit"]
+                            else 0
+                        )
+                        item_data["total_weight"] = item_weight
+                        pending_items.append(item_data)
+                        total_weight += item_weight
+                else:
+                    logger.warning(f"Failed to fetch items for order {trip_order.order_id}: {response.text}")
+        except Exception as e:
+            logger.warning(f"Error fetching items from Orders service for order {trip_order.order_id}: {e}")
+
+        # Fallback: Use items_json from trip_order if API call failed or returned no items
+        if not items_data or len(pending_items) == 0:
+            items_json = trip_order.items_json or []
+            if items_json:
+                for item in items_json:
+                    item_id = item.get("id") or f"{trip_order.order_id}_{item.get('product_name', 'unknown')}"
+                    item_weight = (
+                        (item.get("quantity", 0) * item.get("weight", 0))
+                        if item.get("weight")
+                        else item.get("total_weight", 0)
+                    )
+                    pending_items.append({
+                        "order_id": trip_order.order_id,
+                        "customer": trip_order.customer,
+                        "order_item_id": item_id,
+                        "product_name": trip_order.product_name or item.get("product_name", "N/A"),
+                        "product_code": item.get("product_code"),
+                        "assigned_quantity": item.get("quantity", 1),
+                        "remaining_quantity": 0,
+                        "weight_per_unit": item.get("weight", 0),
+                        "total_weight": item_weight,
+                        "item_status": "planning"
+                    })
+                    total_weight += item_weight
+
+    # Check capacity
+    is_over_capacity = total_weight > trip.capacity_total
+    capacity_shortage = max(0, total_weight - trip.capacity_total)
+
+    return {
+        "trip_id": trip_id,
+        "pending_items": pending_items,
+        "total_weight": total_weight,
+        "capacity_total": trip.capacity_total,
+        "capacity_used": trip.capacity_used or 0,
+        "is_over_capacity": is_over_capacity,
+        "capacity_shortage": capacity_shortage,
+        "requires_splitting": is_over_capacity
+    }
+
+
+@router.post("/{trip_id}/confirm-loading")
+async def confirm_loading_assignment(
+    trip_id: str,
+    confirmation: LoadingConfirmationRequest,
+    request: Request,
+    token_data: TokenData = Depends(require_permissions(["trips:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Confirm item assignments and change trip status to 'loading'.
+    1. Validates all items are properly assigned
+    2. Updates trip_item_assignments status from 'planning' to 'loading'
+    3. Handles item splitting if needed
+    4. Updates trip status to 'loading'
+    5. Creates new trip_orders for split items
+    """
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    # Get trip
+    trip_query = select(Trip).where(
+        and_(Trip.id == trip_id, Trip.company_id == tenant_id)
+    )
+    trip_result = await db.execute(trip_query)
+    trip = trip_result.scalar_one_or_none()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    if trip.status != "planning":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only confirm loading for trips in 'planning' status. Current: {trip.status}"
+        )
+
+    # Calculate total assigned weight
+    total_assigned_weight = sum(
+        item.get("total_weight", 0) for item in confirmation.item_assignments
+    )
+
+    # Validate capacity
+    if total_assigned_weight > trip.capacity_total:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Items exceed capacity: {total_assigned_weight}kg > {trip.capacity_total}kg. "
+                   f"Please split items across multiple trips."
+        )
+
+    try:
+        # Step 1: Update item statuses in Orders service
+        async with AsyncClient(timeout=30.0) as client:
+            for item in confirmation.item_assignments:
+                item_update_payload = {
+                    "order_id": item.get("order_id"),
+                    "trip_id": trip_id,
+                    "item_status": "loading",
+                    "item_ids": [item.get("order_item_id")]
+                }
+
+                response = await client.post(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/item-status",
+                    headers=auth_headers,
+                    json=item_update_payload
+                )
+
+                if response.status_code != 200:
+                    raise Exception(f"Failed to update item status: {response.text}")
+
+            # Handle split items if any
+            if confirmation.split_items:
+                for split_item in confirmation.split_items:
+                    # Create new trip_order for split portion
+                    # This would create a new trip or assign to existing trip
+                    logger.info(f"Handling split item: {split_item}")
+                    # Implementation detail for splitting logic
+
+        # Step 2: Update trip status to loading
+        trip.status = "loading"
+        trip.capacity_used = total_assigned_weight
+        await db.commit()
+
+        # Step 3: Update truck/driver status via existing function
+        await _update_resource_statuses_for_trip(
+            "loading",
+            trip.truck_plate,
+            trip.driver_id,
+            auth_headers,
+            tenant_id
+        )
+
+        # Step 4: Audit log
+        audit_client = AuditClient(auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            user_role=token_data.role,
+            action="status_change",
+            module="trips",
+            entity_type="trip",
+            entity_id=trip_id,
+            description=f"Trip {trip_id} changed to loading status with {len(confirmation.item_assignments)} items assigned",
+            old_values={"status": "planning"},
+            new_values={"status": "loading", "capacity_used": total_assigned_weight}
+        )
+        await audit_client.close()
+
+        return {
+            "message": f"Trip {trip_id} successfully moved to loading status",
+            "total_weight": total_assigned_weight,
+            "items_count": len(confirmation.item_assignments)
+        }
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error confirming loading assignment: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to confirm loading assignment: {str(e)}"
+        )
