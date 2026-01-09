@@ -546,6 +546,8 @@ async def get_trips(
 
     # Fetch all orders from Orders service to get items data (with pagination)
     orders_with_items = {}
+    bulk_assignments_data = {}
+
     try:
         async with AsyncClient(timeout=30.0) as client:
             # Fetch all pages of orders
@@ -580,14 +582,32 @@ async def get_trips(
             logger.info(f"Fetched {len(all_orders)} total orders from Orders service")
 
             # Index orders by order_number for quick lookup
+            order_numbers = []
             for order in all_orders:
                 order_key = order.get("order_number") or order.get("id")
                 orders_with_items[order_key] = order
                 # Also index by 'id' in case order_id matches the UUID
                 if order.get("id"):
                     orders_with_items[order["id"]] = order
+                if order.get("order_number"):
+                    order_numbers.append(order["order_number"])
+
             logger.info(f"Fetched {len(orders_with_items)} orders with items data")
             logger.info(f"Sample orders_with_items keys: {list(orders_with_items.keys())[:5]}")
+
+            # BULK FETCH: Get all trip-item assignments for all orders
+            if order_numbers:
+                bulk_response = await client.post(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/bulk-fetch",
+                    json={"order_numbers": order_numbers},
+                    headers=auth_headers
+                )
+                if bulk_response.status_code == 200:
+                    bulk_assignments_data = bulk_response.json()
+                    logger.info(f"Fetched bulk assignments for {len(bulk_assignments_data)} orders")
+                else:
+                    logger.warning(f"Bulk assignments request failed: {bulk_response.status_code}")
+
     except Exception as e:
         logger.error(f"Error fetching orders with items: {str(e)}", exc_info=True)
 
@@ -611,8 +631,73 @@ async def get_trips(
             order_with_items = orders_with_items.get(order.order_id, {})
             items_data = order_with_items.get("items", [])
 
-            # Use items_json if available (for split orders), otherwise use items_data from Orders service
-            display_items = order.items_json if order.items_json else items_data
+            # Get assignments data for this order
+            order_number = order_with_items.get("order_number", order.order_id)
+            assignments_data = bulk_assignments_data.get(order_number, {})
+            assignment_items = assignments_data.get("items", [])
+
+            # Debug logging
+            logger.info(f"DEBUG order_id={order.order_id}, order_number={order_number}, has items_json={bool(order.items_json)}, has assignment_items={len(assignment_items)}")
+
+            # Build display_items with correct ASSIGNED quantities
+            # ALWAYS use assignment data if available, regardless of items_json
+            # items_json contains stale data and is not updated during loading confirmation
+            if assignment_items:
+                logger.info(f"DEBUG Using assignment data for order {order.order_id}")
+                # Calculate assigned quantities for each item
+                display_items = []
+                total_assigned_qty = 0
+                total_calculated_weight = 0
+
+                for item_info in assignment_items:
+                    # Get assignments for this item
+                    assignments = item_info.get("assignments", [])
+
+                    # Filter to only assignments for THIS trip with active statuses
+                    trip_assignments = [
+                        a for a in assignments
+                        if a.get("trip_id") == trip.id
+                        and a.get("item_status") in ["planning", "loading", "on_route"]
+                    ]
+
+                    if trip_assignments:
+                        # Calculate total assigned quantity for this trip
+                        assigned_qty = sum(a.get("assigned_quantity", 0) for a in trip_assignments)
+                        original_qty = item_info.get("original_quantity", item_info.get("quantity", 0))
+                        weight_per_unit = item_info.get("weight", 0)
+
+                        # Create enriched item with correct assigned quantity
+                        enriched_item = {
+                            "id": item_info.get("id"),
+                            "order_id": order.order_id,
+                            "product_id": item_info.get("product_id"),
+                            "product_name": item_info.get("product_name"),
+                            "product_code": item_info.get("product_code"),
+                            "quantity": assigned_qty,  # Use ASSIGNED quantity, not original
+                            "original_quantity": original_qty,
+                            "remaining_quantity": item_info.get("remaining_quantity", 0),
+                            "weight": weight_per_unit,
+                            "total_weight": assigned_qty * weight_per_unit,  # Recalculate based on assigned qty
+                            "unit": item_info.get("unit"),
+                            "unit_price": item_info.get("unit_price"),
+                            "total_price": assigned_qty * item_info.get("unit_price", 0),  # Recalculate
+                        }
+
+                        display_items.append(enriched_item)
+                        total_assigned_qty += assigned_qty
+                        total_calculated_weight += enriched_item["total_weight"]
+                        logger.info(f"DEBUG Item {item_info.get('product_name')}: assigned_qty={assigned_qty}, original_qty={original_qty}, weight={enriched_item['total_weight']}")
+
+                # Calculate order totals based on assigned quantities
+                order_weight = total_calculated_weight if total_calculated_weight > 0 else order.weight
+                order_quantity = total_assigned_qty if total_assigned_qty > 0 else order.quantity
+                logger.info(f"DEBUG Order {order.order_id}: total_assigned_qty={total_assigned_qty}, total_weight={total_calculated_weight}")
+            else:
+                # Fallback: use items_json if available, otherwise use items_data from Orders service
+                display_items = order.items_json if order.items_json else items_data
+                order_weight = order.weight
+                order_quantity = order.quantity
+                logger.info(f"DEBUG Using fallback data for order {order.order_id}")
 
             # Debug logging
             if order.order_id not in orders_with_items:
@@ -633,13 +718,13 @@ async def get_trips(
                 trip_order_status=order.status,  # Renamed from 'status'
                 tms_order_status=order.tms_order_status,
                 total=order.total,
-                weight=order.weight,
+                weight=order_weight,  # Use calculated weight based on assigned quantities
                 volume=order.volume,
                 items=order.items,  # Use integer count from database
-                items_data=display_items,  # Use items_json if available, otherwise items_data from Orders service
+                items_data=display_items,  # Use enriched items with assigned quantities
                 items_json=order.items_json,
                 remaining_items_json=order.remaining_items_json,
-                quantity=order.quantity,
+                quantity=order_quantity,  # Use calculated quantity based on assigned quantities
                 priority=order.priority,
                 delivery_status=order.delivery_status,
                 sequence_number=order.sequence_number or 0,  # Default to 0 if null
@@ -1530,13 +1615,25 @@ async def check_trip_completion(
 @router.get("/{trip_id}/orders", response_model=List[TripOrderResponse])
 async def get_trip_orders(
     trip_id: str,
+    request: Request,
     token_data: TokenData = Depends(
         require_any_permission(["trips:read_all", "trips:read"])
     ),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all orders for a specific trip"""
+    """
+    Get all orders for a specific trip with real-time item assignment data.
+
+    Fetches trip orders from TMS database and enriches them with real-time
+    trip-item assignment data from Orders service to display correct quantities.
+    """
+    # Get authorization header for Orders service calls
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
     # First verify trip exists and belongs to tenant
     trip_query = select(Trip).where(
         and_(
@@ -1548,18 +1645,210 @@ async def get_trip_orders(
     if not trip_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    # Get orders (also filter by user_id and company_id if provided) ordered by sequence_number
+    # Get orders ordered by sequence_number
     orders_query = select(TripOrder).where(TripOrder.trip_id == trip_id)
-    if user_id:
-        orders_query = orders_query.where(TripOrder.user_id == user_id)
-    if company_id:
-        orders_query = orders_query.where(TripOrder.company_id == company_id)
-
     orders_query = orders_query.order_by(TripOrder.sequence_number)
     result = await db.execute(orders_query)
     orders = result.scalars().all()
 
-    return orders
+    # If no orders, return empty list
+    if not orders:
+        return []
+
+    # BULK FETCH: Get all trip-item assignments in a single request
+    # This solves the N+1 query problem and ensures we get real-time data
+    # Approach: Fetch orders from Orders service and extract order_numbers,
+    # then use bulk-fetch with order_numbers
+    bulk_assignments_data = {}
+
+    try:
+        async with AsyncClient(timeout=30.0) as client:
+            # First, fetch all orders with their order_numbers
+            # We'll filter by tenant_id and paginate to get all orders
+            all_orders_list = []
+            current_page = 1
+            per_page = 100
+
+            while True:
+                params = {
+                    "tenant_id": tenant_id,
+                    "page": current_page,
+                    "per_page": per_page
+                }
+
+                orders_response = await client.get(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/",
+                    params=params,
+                    headers=auth_headers
+                )
+
+                if orders_response.status_code != 200:
+                    logger.warning(f"Failed to fetch orders: {orders_response.status_code}")
+                    break
+
+                data = orders_response.json()
+                page_orders = data.get("items", [])
+                if not page_orders:
+                    break
+
+                all_orders_list.extend(page_orders)
+
+                # Check if we've fetched all pages
+                total_pages = data.get("pages", 1)
+                if current_page >= total_pages:
+                    break
+                current_page += 1
+
+            # Filter to only orders in this trip and build order_numbers map
+            trip_order_ids = {order.order_id for order in orders}
+            order_numbers_map = {}  # order_id -> order_number
+            trip_order_numbers = []
+
+            for order_data in all_orders_list:
+                if order_data.get("id") in trip_order_ids:
+                    order_numbers_map[order_data["id"]] = order_data["order_number"]
+                    trip_order_numbers.append(order_data["order_number"])
+
+            # Now fetch trip-item assignments using order_numbers
+            if trip_order_numbers:
+                bulk_response = await client.post(
+                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/bulk-fetch",
+                    json={"order_numbers": trip_order_numbers},
+                    headers=auth_headers
+                )
+                if bulk_response.status_code == 200:
+                    # Create a map from order_number to assignments data
+                    bulk_assignments_by_number = bulk_response.json()
+                    # Convert to order_id map for easier lookup
+                    bulk_assignments_data = {
+                        order_id: bulk_assignments_by_number[order_number]
+                        for order_id, order_number in order_numbers_map.items()
+                        if order_number in bulk_assignments_by_number
+                    }
+                    logger.info(f"Fetched bulk assignments for {len(bulk_assignments_data)} orders for trip {trip_id}")
+                else:
+                    logger.warning(f"Bulk assignments request failed: {bulk_response.status_code}")
+
+    except Exception as e:
+        logger.error(f"Error fetching bulk assignments for trip {trip_id}: {str(e)}")
+        bulk_assignments_data = {}
+
+    # Enrich each order with real-time assignment data
+    enriched_orders = []
+    for order in orders:
+        # Convert to dict for manipulation
+        order_dict = {
+            "id": order.id,
+            "trip_id": order.trip_id,
+            "user_id": order.user_id,
+            "company_id": order.company_id,
+            "order_id": order.order_id,
+            "customer": order.customer,
+            "customer_address": order.customer_address,
+            "customer_contact": order.customer_contact,
+            "customer_phone": order.customer_phone,
+            "product_name": order.product_name,
+            "trip_order_status": order.trip_order_status,
+            "tms_order_status": order.tms_order_status,
+            "item_status": order.item_status,
+            "total": order.total,
+            "weight": order.weight,
+            "volume": order.volume,
+            "items": order.items,
+            "items_data": order.items_data,
+            "items_json": order.items_json,
+            "remaining_items_json": order.remaining_items_json,
+            "quantity": order.quantity,
+            "priority": order.priority,
+            "delivery_status": order.delivery_status,
+            "sequence_number": order.sequence_number,
+            "address": order.address,
+            "special_instructions": order.special_instructions,
+            "delivery_instructions": order.delivery_instructions,
+            "original_order_id": order.original_order_id,
+            "original_items": order.original_items,
+            "original_weight": order.original_weight,
+            "assigned_at": order.assigned_at
+        }
+
+        # Get assignments data for this order
+        assignments_data = bulk_assignments_data.get(order.order_id)
+
+        if assignments_data and assignments_data.get("items"):
+            items_info = assignments_data.get("items", [])
+
+            # Debug logging
+            logger.info(f"get_trip_orders: order_id={order.order_id}, items_count={len(items_info)}")
+
+            # Filter assignments to only include items for THIS trip
+            # and calculate correct quantities
+            enriched_items = []
+            total_assigned_qty = 0
+            total_calculated_weight = 0
+
+            for item_info in items_info:
+                # Get assignments for this item
+                assignments = item_info.get("assignments", [])
+
+                # Filter to only assignments for THIS trip with active statuses
+                trip_assignments = [
+                    a for a in assignments
+                    if a.get("trip_id") == trip_id
+                    and a.get("item_status") in ["planning", "loading", "on_route"]
+                ]
+
+                if trip_assignments:
+                    # Calculate total assigned quantity for this trip
+                    assigned_qty = sum(a.get("assigned_quantity", 0) for a in trip_assignments)
+                    original_qty = item_info.get("original_quantity", item_info.get("quantity", 0))
+                    weight_per_unit = item_info.get("weight", 0)
+
+                    # Debug logging
+                    logger.info(f"get_trip_orders: item={item_info.get('product_name')}, assigned_qty={assigned_qty}, original_qty={original_qty}")
+
+                    # Create enriched item with correct assigned quantity
+                    enriched_item = {
+                        "id": item_info.get("id"),
+                        "order_id": order.order_id,
+                        "product_id": item_info.get("product_id"),
+                        "product_name": item_info.get("product_name"),
+                        "product_code": item_info.get("product_code"),
+                        "quantity": assigned_qty,  # Use ASSIGNED quantity, not original
+                        "original_quantity": original_qty,
+                        "remaining_quantity": item_info.get("remaining_quantity", 0),
+                        "weight": weight_per_unit,
+                        "total_weight": assigned_qty * weight_per_unit,  # Recalculate based on assigned qty
+                        "unit": item_info.get("unit"),
+                        "unit_price": item_info.get("unit_price"),
+                        "total_price": assigned_qty * item_info.get("unit_price", 0),  # Recalculate
+                    }
+
+                    enriched_items.append(enriched_item)
+                    total_assigned_qty += assigned_qty
+                    total_calculated_weight += enriched_item["total_weight"]
+
+            # Update order dict with enriched data
+            if enriched_items:
+                order_dict["items_json"] = enriched_items
+                order_dict["items_data"] = enriched_items  # Also update items_data for frontend
+                order_dict["quantity"] = total_assigned_qty  # Sum of assigned quantities
+                order_dict["weight"] = total_calculated_weight  # Recalculated from assigned quantities
+                order_dict["items"] = len(enriched_items)
+
+                logger.info(f"get_trip_orders: order {order.order_id} - total_assigned_qty={total_assigned_qty}, total_weight={total_calculated_weight}")
+
+                # Update tms_order_status based on assignments
+                summary = assignments_data.get("summary", {})
+                if summary.get("is_fully_assigned"):
+                    order_dict["tms_order_status"] = "fully_assigned"
+                elif summary.get("is_partially_assigned"):
+                    order_dict["tms_order_status"] = "partial"
+                else:
+                    order_dict["tms_order_status"] = "available"
+
+        enriched_orders.append(TripOrderResponse(**order_dict))
+
+    return enriched_orders
 
 
 @router.post("/{trip_id}/orders", response_model=MessageResponse)
@@ -2502,10 +2791,11 @@ async def confirm_loading_assignment(
                         "order_item_id": order_item_id
                     }
 
-                    response = await client.delete(
+                    response = await client.request(
+                        "DELETE",
                         f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/delete",
                         headers=auth_headers,
-                        content=json.dumps(delete_payload)
+                        json=delete_payload
                     )
 
                     if response.status_code != 200:
