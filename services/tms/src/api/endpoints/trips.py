@@ -648,6 +648,7 @@ async def get_trips(
                 display_items = []
                 total_assigned_qty = 0
                 total_calculated_weight = 0
+                has_any_assignments_to_this_trip = False
 
                 for item_info in assignment_items:
                     # Get assignments for this item
@@ -657,10 +658,11 @@ async def get_trips(
                     trip_assignments = [
                         a for a in assignments
                         if a.get("trip_id") == trip.id
-                        and a.get("item_status") in ["planning", "loading", "on_route"]
+                        and a.get("item_status") in ["planning", "loading", "on_route", "delivered"]
                     ]
 
                     if trip_assignments:
+                        has_any_assignments_to_this_trip = True
                         # Calculate total assigned quantity for this trip
                         assigned_qty = sum(a.get("assigned_quantity", 0) for a in trip_assignments)
                         original_qty = item_info.get("original_quantity", item_info.get("quantity", 0))
@@ -688,10 +690,18 @@ async def get_trips(
                         total_calculated_weight += enriched_item["total_weight"]
                         logger.info(f"DEBUG Item {item_info.get('product_name')}: assigned_qty={assigned_qty}, original_qty={original_qty}, weight={enriched_item['total_weight']}")
 
-                # Calculate order totals based on assigned quantities
-                order_weight = total_calculated_weight if total_calculated_weight > 0 else order.weight
-                order_quantity = total_assigned_qty if total_assigned_qty > 0 else order.quantity
-                logger.info(f"DEBUG Order {order.order_id}: total_assigned_qty={total_assigned_qty}, total_weight={total_calculated_weight}")
+                # Only use calculated values if we actually found assignments to this trip
+                # If no assignments to this trip, use items_json fallback
+                if has_any_assignments_to_this_trip and display_items:
+                    order_weight = total_calculated_weight
+                    order_quantity = total_assigned_qty
+                    logger.info(f"DEBUG Order {order.order_id}: HAS assignments - total_assigned_qty={total_assigned_qty}, total_weight={total_calculated_weight}")
+                else:
+                    # No assignments to this trip found - use items_json as fallback
+                    display_items = order.items_json if order.items_json else items_data
+                    order_weight = order.weight
+                    order_quantity = order.quantity
+                    logger.info(f"DEBUG Order {order.order_id}: NO assignments to this trip - using items_json fallback")
             else:
                 # Fallback: use items_json if available, otherwise use items_data from Orders service
                 display_items = order.items_json if order.items_json else items_data
@@ -1794,7 +1804,7 @@ async def get_trip_orders(
                 trip_assignments = [
                     a for a in assignments
                     if a.get("trip_id") == trip_id
-                    and a.get("item_status") in ["planning", "loading", "on_route"]
+                    and a.get("item_status") in ["planning", "loading", "on_route", "delivered"]
                 ]
 
                 if trip_assignments:
