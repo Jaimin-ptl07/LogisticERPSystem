@@ -123,7 +123,7 @@ async def get_driver_current_trip(
     query = select(Trip).where(
         and_(
             Trip.driver_id == driver_id,
-            Trip.status.in_(['loading', 'on-route'])
+            Trip.status.in_(['on-route'])
         )
     )
     if company_id:

@@ -3877,175 +3877,257 @@ export default function Trips() {
 
               {/* Modal Content */}
               <div
-                className="relative z-50 w-full max-w-4xl max-h-[80vh] overflow-y-auto rounded-lg bg-white shadow-xl"
+                className="relative z-50 w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-lg bg-white shadow-xl flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Modal Header */}
                 <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-xl font-semibold text-gray-900">Assign Items for Loading</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">Loading Stage - Item Assignment</h2>
                   <p className="text-sm text-gray-600 mt-1">
-                    {loadingModal.isOverCapacity ? (
-                      <span className="text-red-600 font-semibold">
-                        ⚠️ OVER CAPACITY: Must split {loadingModal.capacityShortage.toFixed(2)}kg across multiple trips
-                      </span>
-                    ) : (
-                      <span>Confirm items to load for this trip</span>
-                    )}
+                    Decide quantities for each item. You can: assign full, assign partial, or skip items.
                   </p>
                 </div>
 
-                {/* Modal Body */}
-                <div className="px-6 py-4">
-                  {/* Capacity Summary */}
-                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-sm text-gray-600">Total Weight</p>
-                        <p className="text-2xl font-bold">
-                          {loadingModal.pendingItems.reduce((sum, item) => {
-                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
-                            return sum + (qty * item.weight_per_unit);
-                          }, 0).toFixed(2)} kg
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Capacity</p>
-                        <p className="text-2xl font-bold">{loadingModal.capacityTotal} kg</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Status</p>
-                        <p className={`text-2xl font-bold ${
-                          loadingModal.pendingItems.reduce((sum, item) => {
-                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
-                            return sum + (qty * item.weight_per_unit);
-                          }, 0) > loadingModal.capacityTotal ? 'text-red-600' : 'text-green-600'
-                        }`}>
-                          {loadingModal.pendingItems.reduce((sum, item) => {
-                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
-                            return sum + (qty * item.weight_per_unit);
-                          }, 0) > loadingModal.capacityTotal ? 'OVER' : 'OK'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                {/* Capacity Summary */}
+                <div className="px-6 py-4 bg-gray-50 border-b">
+                  {(() => {
+                    const currentTotalWeight = loadingModal.pendingItems.reduce((sum, item) => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return sum + (qty * item.weight_per_unit);
+                    }, 0);
+                    const availableCapacity = loadingModal.capacityTotal - currentTotalWeight;
+                    const utilizationPercentage = (currentTotalWeight / loadingModal.capacityTotal) * 100;
 
-                  {/* Items List - Only pending items */}
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-700 mb-2">
-                      Pending Items ({loadingModal.pendingItems.length})
-                    </p>
+                    return (
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-600">Truck Capacity</p>
+                          <p className="text-lg font-semibold">{loadingModal.capacityTotal}kg</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Current Assigned</p>
+                          <p className="text-lg font-semibold text-blue-600">
+                            {currentTotalWeight.toFixed(2)}kg
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Available</p>
+                          <p className={`text-lg font-semibold ${availableCapacity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {availableCapacity.toFixed(2)}kg
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Utilization</p>
+                          <p className={`text-lg font-semibold ${
+                            utilizationPercentage > 100 ? 'text-red-600' :
+                            utilizationPercentage > 80 ? 'text-yellow-600' :
+                            'text-green-600'
+                          }`}>
+                            {utilizationPercentage.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Modal Body */}
+                <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
+                  <div className="space-y-3">
                     {loadingModal.pendingItems.map((item, idx) => {
                       const currentQty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
                       const itemWeight = currentQty * item.weight_per_unit;
+                      const isPartial = currentQty < item.original_quantity && currentQty > 0;
+                      const isSkipped = currentQty === 0;
 
                       return (
-                      <div key={`${item.order_item_id}-${idx}`} className="border rounded-lg p-3 bg-gray-50">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <p className="font-medium text-gray-900">{item.product_name}</p>
-                            <p className="text-sm text-gray-600">
-                              Order: {item.order_id} • Customer: {item.customer}
-                            </p>
-                            <div className="flex items-center gap-4 mt-2">
-                              <div className="flex items-center gap-2">
-                                <label className="text-sm text-gray-600">Qty:</label>
+                        <div key={`${item.order_item_id}-${idx}`} className="border rounded-lg p-4 bg-white shadow-sm">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="font-semibold text-gray-900">{item.product_name}</h3>
+                                {item.product_code && (
+                                  <span className="text-sm text-gray-500">({item.product_code})</span>
+                                )}
+                                {isPartial && (
+                                  <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-700 rounded-full">Partial Assignment</span>
+                                )}
+                                {isSkipped && (
+                                  <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">Skipped</span>
+                                )}
+                              </div>
+
+                              <p className="text-sm text-gray-600 mb-3">
+                                Order: {item.order_id} • Customer: {item.customer}
+                              </p>
+
+                              <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                                <div>
+                                  <span className="text-gray-600">Original: </span>
+                                  <span className="font-medium">{item.original_quantity}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Planning: </span>
+                                  <span className="font-medium">{item.assigned_quantity}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Remaining: </span>
+                                  <span className="font-medium text-green-600">{item.remaining_quantity}</span>
+                                </div>
+                              </div>
+
+                              {/* Quantity Decision Controls */}
+                              <div className="flex items-center gap-4">
+                                <label className="text-sm font-medium">Assign to Loading:</label>
                                 <input
                                   type="number"
                                   min={0}
-                                  max={item.assigned_quantity + item.remaining_quantity}
+                                  max={item.max_assignable || item.original_quantity}
                                   value={currentQty}
                                   onChange={(e) => {
-                                    const newQty = parseInt(e.target.value) || 0;
+                                    const newQty = Math.min(
+                                      Math.max(0, parseInt(e.target.value) || 0),
+                                      item.max_assignable || item.original_quantity
+                                    );
                                     setEditableQuantities(prev => ({
                                       ...prev,
                                       [item.order_item_id]: newQty
                                     }));
                                   }}
-                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+                                  className="w-32 px-3 py-2 border border-gray-300 rounded text-sm"
                                 />
+                                <span className="text-sm text-gray-600">
+                                  / {item.max_assignable || item.original_quantity} (max)
+                                </span>
+
+                                {/* Quick Action Buttons */}
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: item.max_assignable || item.original_quantity
+                                    }))}
+                                    className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                                  >
+                                    Full
+                                  </button>
+                                  <button
+                                    onClick={() => setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: Math.floor((item.max_assignable || item.original_quantity) / 2)
+                                    }))}
+                                    className="px-3 py-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors"
+                                  >
+                                    Half
+                                  </button>
+                                  <button
+                                    onClick={() => setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: 0
+                                    }))}
+                                    className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                  >
+                                    Skip
+                                  </button>
+                                </div>
                               </div>
-                              <span className="text-sm text-gray-600">
+
+                              <div className="mt-2 text-sm text-gray-600">
                                 Weight: {itemWeight.toFixed(2)}kg
                                 {item.weight_per_unit > 0 && ` (${item.weight_per_unit}kg/each)`}
-                              </span>
+                              </div>
                             </div>
                           </div>
-                          <div className="ml-4">
-                            <input
-                              type="checkbox"
-                              checked={currentQty > 0}
-                              disabled
-                              className="w-5 h-5 text-green-600 rounded"
-                            />
-                          </div>
                         </div>
-                      </div>
-                    );})}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* Modal Footer */}
-                <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end gap-3">
-                  <Button
-                    onClick={() => {
-                      setLoadingModal(null);
-                      setEditableQuantities({});
-                    }}
-                    variant="outline"
-                    className="text-gray-700 border-gray-300 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </Button>
+                <div className="px-6 py-4 border-t bg-gray-50 flex justify-between items-center flex-shrink-0">
                   {(() => {
-                    // Calculate current total weight from editable quantities
-                    const currentTotalWeight = loadingModal.pendingItems.reduce((sum, item) => {
+                    const itemsConfirmed = loadingModal.pendingItems.filter(item => {
                       const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
-                      return sum + (qty * item.weight_per_unit);
-                    }, 0);
-                    const isOverCapacity = currentTotalWeight > loadingModal.capacityTotal;
+                      return qty > 0;
+                    }).length;
+                    const itemsSkipped = loadingModal.pendingItems.filter(item => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return qty === 0;
+                    }).length;
+                    const itemsPartial = loadingModal.pendingItems.filter(item => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return qty > 0 && qty < item.original_quantity;
+                    }).length;
 
-                    return isOverCapacity ? (
-                      <Button
-                        disabled
-                        className="bg-gray-400 text-white cursor-not-allowed"
-                      >
-                        Over Capacity - Reduce Qty ({currentTotalWeight.toFixed(2)}kg / {loadingModal.capacityTotal}kg)
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={async () => {
-                          try {
-                            // Use editable quantities for the assignment
-                            const itemAssignments = loadingModal.pendingItems.map(item => {
-                              const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
-                              return {
-                                order_id: item.order_id,
-                                order_item_id: item.order_item_id,
-                                assigned_quantity: qty,
-                                total_weight: qty * item.weight_per_unit
-                              };
-                            }).filter(item => item.assigned_quantity > 0); // Only include items with qty > 0
-
-                            await tmsAPI.confirmLoadingAssignment(loadingModal.tripId, {
-                              item_assignments: itemAssignments
-                            });
-
-                            // Refresh trips to show updated status
-                            await fetchTrips();
-
-                            setLoadingModal(null);
-                            setEditableQuantities({});
-                            alert("Trip successfully moved to loading status!");
-                          } catch (error) {
-                            alert(`Failed to confirm loading: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                          }
-                        }}
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        Confirm & Start Loading
-                      </Button>
+                    return (
+                      <div className="text-sm text-gray-600">
+                        <span>Items: </span>
+                        <span className="font-medium">{itemsConfirmed}</span> confirmed,
+                        <span className="font-medium">{itemsSkipped}</span> skipped,
+                        <span className="font-medium">{itemsPartial}</span> partial
+                      </div>
                     );
                   })()}
+
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={() => {
+                        setLoadingModal(null);
+                        setEditableQuantities({});
+                      }}
+                      variant="outline"
+                      className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </Button>
+
+                    <Button
+                      onClick={async () => {
+                        try {
+                          // Calculate current total weight from editable quantities
+                          const currentTotalWeight = loadingModal.pendingItems.reduce((sum, item) => {
+                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                            return sum + (qty * item.weight_per_unit);
+                          }, 0);
+                          const capacityTotal = loadingModal.capacityTotal || 0;
+
+                          // Check capacity
+                          if (currentTotalWeight > capacityTotal) {
+                            alert(`Over capacity! Current: ${currentTotalWeight.toFixed(2)}kg, Max: ${capacityTotal.toFixed(2)}kg`);
+                            return;
+                          }
+
+                          // Use editable quantities for the assignment
+                          const itemAssignments = loadingModal.pendingItems.map(item => {
+                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                            return {
+                              order_id: item.order_id,
+                              order_item_id: item.order_item_id,
+                              assigned_quantity: qty,
+                              weight_per_unit: item.weight_per_unit
+                            };
+                          });
+
+                          await tmsAPI.confirmLoadingAssignment(loadingModal.tripId, {
+                            item_assignments: itemAssignments
+                          });
+
+                          // Refresh trips to show updated status
+                          await fetchTrips();
+
+                          setLoadingModal(null);
+                          setEditableQuantities({});
+                          alert("Trip successfully moved to loading status!");
+                        } catch (error) {
+                          alert(`Failed to confirm loading: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        }
+                      }}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      Confirm & Start Loading
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

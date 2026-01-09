@@ -1,6 +1,7 @@
 """Trip API endpoints with reordering functionality"""
 
 import os
+import json
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer
@@ -1012,6 +1013,25 @@ async def update_trip(
 
     # If status changed, update item statuses in Orders service AND truck/driver status in Company service
     if 'status' in update_data and old_status != trip.status:
+        # Special handling: loading -> planning transition
+        # Reset all trip_item_assignments from 'loading' back to 'planning'
+        # This allows user to resplit items
+        if old_status == "loading" and trip.status == "planning":
+            try:
+                async with AsyncClient(timeout=10.0) as client:
+                    response = await client.put(
+                        f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/reset-to-planning",
+                        params={"trip_id": trip_id, "tenant_id": tenant_id},
+                        headers=auth_headers
+                    )
+
+                    if response.status_code == 200:
+                        logger.info(f"Reset trip {trip_id} item assignments from loading to planning - items can be resplit")
+                    else:
+                        logger.warning(f"Failed to reset item statuses: {response.text}")
+            except Exception as e:
+                logger.warning(f"Error resetting item assignments for trip {trip_id}: {e}")
+
         # Update order item statuses
         await _update_order_item_statuses(trip_id, trip.status, auth_headers, token_data, tenant_id)
 
@@ -2283,7 +2303,8 @@ async def prepare_trip_for_loading(
 
                 if response.status_code == 200:
                     data = response.json()
-                    items = data.get("items", [])
+                    items_data = data.get("items", [])
+                    items = items_data
 
                     for item in items:
                         # Filter items assigned to THIS trip with "planning" status
@@ -2297,16 +2318,19 @@ async def prepare_trip_for_loading(
                             # Aggregate quantities for same order_item_id
                             item_id = item.get("id")
                             if item_id not in order_items:
+                                original_quantity = item.get("original_quantity", item.get("quantity", 0))
                                 order_items[item_id] = {
                                     "order_id": trip_order.order_id,
                                     "customer": trip_order.customer,
                                     "order_item_id": item_id,
                                     "product_name": item.get("product_name"),
                                     "product_code": item.get("product_code"),
+                                    "original_quantity": original_quantity,  # From order_items (never modified)
                                     "assigned_quantity": 0,
                                     "remaining_quantity": item.get("remaining_quantity", 0),
                                     "weight_per_unit": item.get("weight", 0),
-                                    "item_status": "planning"
+                                    "item_status": "planning",
+                                    "max_assignable": original_quantity  # Cannot exceed original
                                 }
 
                             # Sum up quantities from all assignments
@@ -2315,6 +2339,10 @@ async def prepare_trip_for_loading(
 
                     # Calculate total weight and add to pending_items
                     for item_data in order_items.values():
+                        # Calculate remaining quantity correctly
+                        # remaining_quantity = original_quantity - assigned_quantity (what's still available to assign)
+                        item_data["remaining_quantity"] = item_data["original_quantity"] - item_data["assigned_quantity"]
+
                         item_weight = (
                             (item_data["assigned_quantity"] * item_data["weight_per_unit"])
                             if item_data["weight_per_unit"]
@@ -2334,8 +2362,9 @@ async def prepare_trip_for_loading(
             if items_json:
                 for item in items_json:
                     item_id = item.get("id") or f"{trip_order.order_id}_{item.get('product_name', 'unknown')}"
+                    original_quantity = item.get("quantity", 1)
                     item_weight = (
-                        (item.get("quantity", 0) * item.get("weight", 0))
+                        (original_quantity * item.get("weight", 0))
                         if item.get("weight")
                         else item.get("total_weight", 0)
                     )
@@ -2345,11 +2374,13 @@ async def prepare_trip_for_loading(
                         "order_item_id": item_id,
                         "product_name": trip_order.product_name or item.get("product_name", "N/A"),
                         "product_code": item.get("product_code"),
-                        "assigned_quantity": item.get("quantity", 1),
+                        "original_quantity": original_quantity,  # From order_items (never modified)
+                        "assigned_quantity": original_quantity,  # Currently assigned (planning)
                         "remaining_quantity": 0,
                         "weight_per_unit": item.get("weight", 0),
                         "total_weight": item_weight,
-                        "item_status": "planning"
+                        "item_status": "planning",
+                        "max_assignable": original_quantity  # Cannot exceed original
                     })
                     total_weight += item_weight
 
@@ -2381,11 +2412,17 @@ async def confirm_loading_assignment(
 ):
     """
     Confirm item assignments and change trip status to 'loading'.
-    1. Validates all items are properly assigned
-    2. Updates trip_item_assignments status from 'planning' to 'loading'
-    3. Handles item splitting if needed
-    4. Updates trip status to 'loading'
-    5. Creates new trip_orders for split items
+
+    DECISION STAGE LOGIC:
+    - User explicitly decides quantities for each item
+    - Can assign: full quantity, partial quantity, or skip (0)
+    - Updates trip_item_assignments with new quantities
+    - Updates item_status from 'planning' to 'loading'
+    - Validates capacity BEFORE confirming
+
+    For each item decision:
+    - If assigned_quantity > 0: Update trip_item_assignment record
+    - If assigned_quantity = 0: Delete the trip_item_assignment record (item skipped)
     """
     auth_headers = {}
     auth_header = request.headers.get("authorization")
@@ -2408,9 +2445,10 @@ async def confirm_loading_assignment(
             detail=f"Can only confirm loading for trips in 'planning' status. Current: {trip.status}"
         )
 
-    # Calculate total assigned weight
+    # Calculate total assigned weight from user decisions
     total_assigned_weight = sum(
-        item.get("total_weight", 0) for item in confirmation.item_assignments
+        item.get("assigned_quantity", 0) * item.get("weight_per_unit", 0)
+        for item in confirmation.item_assignments
     )
 
     # Validate capacity
@@ -2418,36 +2456,72 @@ async def confirm_loading_assignment(
         raise HTTPException(
             status_code=400,
             detail=f"Items exceed capacity: {total_assigned_weight}kg > {trip.capacity_total}kg. "
-                   f"Please split items across multiple trips."
+                   f"Please reduce quantities or split across multiple trips."
         )
 
     try:
-        # Step 1: Update item statuses in Orders service
+        # Step 1: Update trip_item_assignments in Orders service
+        # For each item decision:
+        # - If qty > 0: Update assigned_quantity and set item_status='loading'
+        # - If qty = 0: Delete the trip_item_assignment record (item skipped)
+
+        items_confirmed = 0
+        items_skipped = 0
+
         async with AsyncClient(timeout=30.0) as client:
-            for item in confirmation.item_assignments:
-                item_update_payload = {
-                    "order_id": item.get("order_id"),
-                    "trip_id": trip_id,
-                    "item_status": "loading",
-                    "item_ids": [item.get("order_item_id")]
-                }
+            for item_decision in confirmation.item_assignments:
+                order_item_id = item_decision.get("order_item_id")
+                assigned_qty = item_decision.get("assigned_quantity", 0)
+                order_id = item_decision.get("order_id")
 
-                response = await client.post(
-                    f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/item-status",
-                    headers=auth_headers,
-                    json=item_update_payload
-                )
+                if assigned_qty > 0:
+                    # User confirmed this item - update the assignment
+                    update_payload = {
+                        "trip_id": trip_id,
+                        "order_item_id": order_item_id,
+                        "assigned_quantity": assigned_qty,
+                        "item_status": "loading"
+                    }
 
-                if response.status_code != 200:
-                    raise Exception(f"Failed to update item status: {response.text}")
+                    # Call Orders service to update trip_item_assignment
+                    response = await client.put(
+                        f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/update-quantity",
+                        headers=auth_headers,
+                        json=update_payload
+                    )
 
-            # Handle split items if any
-            if confirmation.split_items:
+                    if response.status_code != 200:
+                        raise Exception(f"Failed to update assignment for item {order_item_id}: {response.text}")
+
+                    items_confirmed += 1
+
+                else:
+                    # User skipped this item (qty = 0) - delete the assignment
+                    delete_payload = {
+                        "trip_id": trip_id,
+                        "order_item_id": order_item_id
+                    }
+
+                    response = await client.delete(
+                        f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/trip-item-assignments/delete",
+                        headers=auth_headers,
+                        content=json.dumps(delete_payload)
+                    )
+
+                    if response.status_code != 200:
+                        logger.warning(f"Failed to delete assignment for item {order_item_id}: {response.text}")
+
+                    items_skipped += 1
+
+            # Handle split items if user decided to split
+            if confirmation.split_items and len(confirmation.split_items) > 0:
+                # Create new trip orders for split portions
+                # This would create a new trip or assign to existing planning trip
+                logger.info(f"Processing {len(confirmation.split_items)} split items")
+                # Implementation: Create new trip_order with remaining quantities
+                # For now, log and continue
                 for split_item in confirmation.split_items:
-                    # Create new trip_order for split portion
-                    # This would create a new trip or assign to existing trip
-                    logger.info(f"Handling split item: {split_item}")
-                    # Implementation detail for splitting logic
+                    logger.info(f"Split item {split_item.get('order_item_id')}: {split_item.get('remaining_quantity')} remaining")
 
         # Step 2: Update trip status to loading
         trip.status = "loading"
@@ -2473,7 +2547,7 @@ async def confirm_loading_assignment(
             module="trips",
             entity_type="trip",
             entity_id=trip_id,
-            description=f"Trip {trip_id} changed to loading status with {len(confirmation.item_assignments)} items assigned",
+            description=f"Trip {trip_id} changed to loading status with {items_confirmed} items confirmed, {items_skipped} skipped (total: {total_assigned_weight}kg)",
             old_values={"status": "planning"},
             new_values={"status": "loading", "capacity_used": total_assigned_weight}
         )
@@ -2482,7 +2556,8 @@ async def confirm_loading_assignment(
         return {
             "message": f"Trip {trip_id} successfully moved to loading status",
             "total_weight": total_assigned_weight,
-            "items_count": len(confirmation.item_assignments)
+            "items_confirmed": items_confirmed,
+            "items_skipped": items_skipped
         }
 
     except Exception as e:
