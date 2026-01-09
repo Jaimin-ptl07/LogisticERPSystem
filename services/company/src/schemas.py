@@ -474,6 +474,7 @@ class ProductBase(BaseSchema):
     branch_ids: Optional[List[UUID]] = None
     available_for_all_branches: bool = True
     category_id: Optional[UUID] = None
+    unit_type_id: Optional[UUID] = None
     code: str = Field(..., min_length=2, max_length=50)
     name: str = Field(..., min_length=2, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
@@ -564,6 +565,7 @@ class Product(ProductInDB):
     available_for_all_branches: bool = True
     branches: Optional[List["ProductBranch"]] = None
     category: Optional[ProductCategory] = None
+    unit_type: Optional["ProductUnitType"] = None
 
 
 class ProductBranch(BaseSchema):

@@ -289,6 +289,7 @@ class Product(Base):
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
     category_id = Column(UUID(as_uuid=True), ForeignKey("product_categories.id"))
     code = Column(String(50), unique=True, nullable=False)
+    unit_type_id = Column(UUID(as_uuid=True), ForeignKey("product_unit_types.id"))
     name = Column(String(100), nullable=False)
     description = Column(String(500))
     unit_price = Column(Float, nullable=False)
@@ -327,6 +328,7 @@ class Product(Base):
     # Relationships
     branches = relationship("ProductBranch", back_populates="product")
     category = relationship("ProductCategory")
+    unit_type = relationship("ProductUnitType")
 
 
 class ProductBranch(Base):
