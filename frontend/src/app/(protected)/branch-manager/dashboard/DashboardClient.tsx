@@ -5,10 +5,13 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateOrderModal } from "@/components/Modal";
+import { OrderDocumentsViewer } from "@/components/branch";
 import {
   useGetOrdersQuery,
+  useGetOrderItemsWithAssignmentsQuery,
   useSubmitOrderMutation,
   Order,
+  OrderItemAssignment,
 } from "@/services/api/ordersApi";
 import {
   Plus,
@@ -26,17 +29,26 @@ import {
   Box,
   Building2,
   Hash,
-  FileText
+  FileText,
+  Truck,
+  CheckCircle,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Edit
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import { DateDisplay } from "@/components/DateDisplay";
+import { DurationDisplay } from "@/components/DurationDisplay";
 
 export default function Orders() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | undefined>(undefined);
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
   // Fetch real orders data
   const {
@@ -49,10 +61,62 @@ export default function Orders() {
     per_page: 20,
     search: searchQuery || undefined,
   });
+
+  // Auto-refresh orders every hour (3600000 ms) to update time-in-status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetchOrders();
+    }, 3600000); // 1 hour
+
+    return () => clearInterval(interval);
+  }, [refetchOrders]);
+
   const orders = ordersData?.items || [];
+
+  // Debug: Log first order to check time_in_status fields
+  if (orders.length > 0 && orders[0]) {
+    console.log('First order data:', {
+      order_number: orders[0].order_number,
+      status: orders[0].status,
+      time_in_current_status_minutes: orders[0].time_in_current_status_minutes,
+      current_status_since: orders[0].current_status_since,
+      created_at: orders[0].created_at
+    });
+  }
 
   // Submit order mutation
   const [submitOrder, { isLoading: isSubmitting }] = useSubmitOrderMutation();
+
+  // Fetch items with assignments for expanded orders
+  const expandedOrderIds = Array.from(expandedOrders);
+
+  // Create individual queries for each expanded order
+  const itemsWithAssignmentsQueries = expandedOrderIds.map(orderId =>
+    useGetOrderItemsWithAssignmentsQuery(orderId, {
+      skip: !expandedOrders.has(orderId),
+    })
+  );
+
+  // Create a map of order_id -> items with assignments data
+  const itemsWithAssignmentsMap: Record<string, any> = {};
+  expandedOrderIds.forEach((orderId, index) => {
+    const data = itemsWithAssignmentsQueries[index]?.data;
+    if (data) {
+      itemsWithAssignmentsMap[orderId] = data;
+    }
+  });
+
+  const toggleOrderExpansion = (orderId: string) => {
+    setExpandedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
 
   const getStatusConfig = (status: string) => {
     const configs = {
@@ -65,23 +129,50 @@ export default function Orders() {
       assigned: { variant: "info" as const, label: "Assigned", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-blue-200" },
       picked_up: { variant: "info" as const, label: "Picked Up", color: "text-indigo-600", bgColor: "bg-indigo-50", borderColor: "border-indigo-200" },
       in_transit: { variant: "info" as const, label: "In Transit", color: "text-purple-600", bgColor: "bg-purple-50", borderColor: "border-purple-200" },
+      partial_in_transit: { variant: "warning" as const, label: "Partial Transit", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
+      partial_delivered: { variant: "warning" as const, label: "Partial Delivered", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
       delivered: { variant: "success" as const, label: "Delivered", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-green-200" },
       cancelled: { variant: "destructive" as const, label: "Cancelled", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
     };
     return configs[status as keyof typeof configs] || configs.draft;
   };
 
+  const getAssignmentStatusConfig = (status: string) => {
+    const configs = {
+      pending_to_assign: { variant: "default" as const, label: "Pending", color: "text-gray-600", bgColor: "bg-gray-100" },
+      planning: { variant: "info" as const, label: "Planning", color: "text-blue-600", bgColor: "bg-blue-50" },
+      loading: { variant: "warning" as const, label: "Loading", color: "text-orange-600", bgColor: "bg-orange-50" },
+      on_route: { variant: "info" as const, label: "On Route", color: "text-purple-600", bgColor: "bg-purple-50" },
+      delivered: { variant: "success" as const, label: "Delivered", color: "text-green-600", bgColor: "bg-green-50" },
+      failed: { variant: "destructive" as const, label: "Failed", color: "text-red-600", bgColor: "bg-red-50" },
+      returned: { variant: "default" as const, label: "Returned", color: "text-gray-600", bgColor: "bg-gray-100" },
+    };
+    return configs[status as keyof typeof configs] || configs.pending_to_assign;
+  };
+
   const handleCreateOrder = () => {
+    setEditingOrder(undefined);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order);
     setIsCreateModalOpen(true);
   };
 
   const handleCloseCreateModal = () => {
     setIsCreateModalOpen(false);
+    setEditingOrder(undefined);
   };
 
   const handleCreateOrderSuccess = () => {
     refetchOrders();
-    toast.success("Order created successfully!");
+    if (editingOrder) {
+      toast.success("Order updated successfully!");
+    } else {
+      toast.success("Order created successfully!");
+    }
+    setEditingOrder(undefined);
   };
 
   const handleSubmitOrder = async (orderId: string) => {
@@ -106,11 +197,11 @@ export default function Orders() {
   // Filter orders based on status filter
   const filteredOrders = statusFilter
     ? orders.filter((o) => {
-        if (statusFilter === "approved") {
-          return o.status === "finance_approved" || o.status === "logistics_approved";
-        }
-        return o.status === statusFilter;
-      })
+      if (statusFilter === "approved") {
+        return o.status === "finance_approved" || o.status === "logistics_approved";
+      }
+      return o.status === statusFilter;
+    })
     : orders;
 
   return (
@@ -141,9 +232,8 @@ export default function Orders() {
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card
-            className={`bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === null ? 'ring-4 ring-blue-500' : ''
-            }`}
+            className={`bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === null ? 'ring-4 ring-blue-500' : ''
+              }`}
             onClick={() => setStatusFilter(null)}
           >
             <CardContent className="p-6">
@@ -158,9 +248,8 @@ export default function Orders() {
           </Card>
 
           <Card
-            className={`bg-gradient-to-br from-gray-50 to-slate-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === 'draft' ? 'ring-4 ring-gray-500' : ''
-            }`}
+            className={`bg-gradient-to-br from-gray-50 to-slate-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'draft' ? 'ring-4 ring-gray-500' : ''
+              }`}
             onClick={() => setStatusFilter(statusFilter === 'draft' ? null : 'draft')}
           >
             <CardContent className="p-6">
@@ -175,9 +264,8 @@ export default function Orders() {
           </Card>
 
           <Card
-            className={`bg-gradient-to-br from-yellow-50 to-orange-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === 'submitted' ? 'ring-4 ring-yellow-500' : ''
-            }`}
+            className={`bg-gradient-to-br from-yellow-50 to-orange-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'submitted' ? 'ring-4 ring-yellow-500' : ''
+              }`}
             onClick={() => setStatusFilter(statusFilter === 'submitted' ? null : 'submitted')}
           >
             <CardContent className="p-6">
@@ -192,9 +280,8 @@ export default function Orders() {
           </Card>
 
           <Card
-            className={`bg-gradient-to-br from-green-50 to-emerald-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-              statusFilter === 'approved' ? 'ring-4 ring-green-500' : ''
-            }`}
+            className={`bg-gradient-to-br from-green-50 to-emerald-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'approved' ? 'ring-4 ring-green-500' : ''
+              }`}
             onClick={() => setStatusFilter(statusFilter === 'approved' ? null : 'approved')}
           >
             <CardContent className="p-6">
@@ -230,33 +317,38 @@ export default function Orders() {
           {filteredOrders.length > 0 ? (
             filteredOrders.map((order) => {
               const statusConfig = getStatusConfig(order.status);
-              
+              const isExpanded = expandedOrders.has(order.id);
+              const itemsData = itemsWithAssignmentsMap[order.id];
+              const summary = itemsData?.summary;
+              const itemsWithAssignments = itemsData?.items || order.items;
+
               return (
-                <Card key={order.id} className="border-0 shadow-xl bg-white rounded-2xl overflow-hidden">
+                <Card key={order.id} className="border-0 shadow-xl bg-white rounded-2xl overflow-hidden relative">
                   <CardContent className="p-0">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
                       {/* Left Side - Customer Details */}
                       <div className="lg:col-span-4 bg-gray-50 p-6 border-r border-gray-200">
                         {/* Order Header */}
-                        <div className="mb-6">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xl font-bold text-gray-900">
-                              {order.order_number}
-                            </h3>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-gray-500 hover:text-gray-700"
-                            >
-                              <span className="text-lg">⋮</span>
-                            </Button>
-                          </div>
-                          <Badge 
+                        <div className="mb-6 pr-8">
+                          <h3 className="text-xl font-bold text-gray-900 mb-2">
+                            {order.order_number}
+                          </h3>
+                          <Badge
                             variant={statusConfig.variant}
                             className={`${statusConfig.bgColor} ${statusConfig.color} border ${statusConfig.borderColor} font-semibold px-3 py-1`}
                           >
                             {statusConfig.label}
                           </Badge>
+
+                          {/* Time in current status */}
+                          {(order.time_in_current_status_minutes !== undefined && order.time_in_current_status_minutes !== null) && (
+                            <div className="mt-2 flex items-center gap-1 text-xs text-gray-600">
+                              <Clock className="w-3 h-3" />
+                              <span>
+                                For <DurationDisplay minutes={order.time_in_current_status_minutes || 0} />
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Date and Time */}
@@ -314,13 +406,46 @@ export default function Orders() {
                             </div>
                           )}
 
-                          <div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
-                              <Package className="w-4 h-4" />
-                              <span>Total Units</span>
-                            </div>
-                            <p className="text-sm font-bold text-gray-900">{order.items_count || 0}</p>
-                          </div>
+                          {/* Assignment Summary */}
+                          {summary && (
+                            <>
+                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                                  <Package className="w-4 h-4" />
+                                  <span>Assignment Summary</span>
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-gray-600">Total:</span>
+                                    <span className="text-sm font-bold text-gray-900">{summary.total_original_quantity}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-gray-600">Assigned:</span>
+                                    <span className="text-sm font-bold text-green-700">{summary.total_assigned_quantity}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-gray-600">Remaining:</span>
+                                    <span className="text-sm font-bold text-orange-700">{summary.total_remaining_quantity}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* TMS Status Badge */}
+                              {itemsData?.tms_order_status && (
+                                <div className="mt-3">
+                                  <Badge
+                                    variant={itemsData.tms_order_status === 'available' ? 'success' : itemsData.tms_order_status === 'partial' ? 'warning' : 'default'}
+                                    className={`${itemsData.tms_order_status === 'available' ? 'bg-green-50 text-green-700 border-green-200' :
+                                        itemsData.tms_order_status === 'partial' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                          'bg-blue-50 text-blue-700 border-blue-200'
+                                      } text-xs font-semibold px-2 py-1`}
+                                  >
+                                    {itemsData.tms_order_status === 'available' ? 'Available' : itemsData.tms_order_status === 'partial' ? 'Partially Assigned' : 'Fully Assigned'}
+                                  </Badge>
+                                </div>
+                              )}
+                            </>
+                          )}
 
                           <div>
                             <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
@@ -329,7 +454,14 @@ export default function Orders() {
                             </div>
                             <p className="text-sm font-bold text-gray-900">
                               {order.items && order.items.length > 0
-                                ? order.items.reduce((sum, item) => sum + ((item.weight || 0) * item.quantity), 0).toFixed(2) + ' kg'
+                                ? order.items.reduce((sum, item) => {
+                                  // Use total_weight if available (already calculated based on original quantity)
+                                  // If total_weight is not available, calculate using original_quantity or quantity
+                                  const itemWeight = (item as any).total_weight !== undefined
+                                    ? (item as any).total_weight
+                                    : (item.weight || 0) * ((item as any).original_quantity || item.quantity);
+                                  return sum + itemWeight;
+                                }, 0).toFixed(2) + ' kg'
                                 : '0.00 kg'}
                             </p>
                           </div>
@@ -358,17 +490,30 @@ export default function Orders() {
                         )}
                       </div>
 
-                      {/* Right Side - Order Items */}
+                      {/* Right Side - Order Items with Assignments */}
                       <div className="lg:col-span-8 p-6">
                         <div className="mb-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-lg font-bold text-gray-900">
+                          <div
+                            className="flex items-center justify-between mb-4"
+                          // onClick={() => toggleOrderExpansion(order.id)}
+                          >
+                            <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                               Order Items ({order.items_count})
+                              {summary && (
+                                <span className="text-sm font-normal text-gray-500">
+                                  ({summary.total_assigned_quantity} assigned, {summary.total_remaining_quantity} remaining)
+                                </span>
+                              )}
                             </h4>
-                          </div>
+                            {/* {isExpanded ? (
+                              <ChevronDown className="w-5 h-5 text-gray-500" />
+                            ) : (
+                              <ChevronRight className="w-5 h-5 text-gray-500" />
+                            )} */}
+                          </div>  
 
-                          {/* Order Items Table */}
-                          {order.items && order.items.length > 0 && (
+                          {/* Order Items Table with Assignments */}
+                          {(itemsWithAssignments && itemsWithAssignments.length > 0) || (order.items && order.items.length > 0) ? (
                             <div className="overflow-x-auto">
                               <table className="w-full">
                                 <thead>
@@ -381,13 +526,46 @@ export default function Orders() {
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Wt</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Price/Unit</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Price</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">planning</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">loading</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">on_route</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">delivered</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {order.items.map((item, index) => {
-                                    const weightPerUnit = item.weight || 0;
-                                    const totalItemWeight = weightPerUnit * item.quantity;
+                                  {(itemsWithAssignments || order.items).map((item: any, index: number) => {
                                     const weightType = item.weight_type || 'fixed';
+                                    // Use total_weight if available (already calculated by API based on original quantity), otherwise calculate
+                                    const totalQty = item.original_quantity !== undefined ? item.original_quantity : item.quantity;
+                                    const totalItemWeight = (item as any).total_weight !== undefined
+                                      ? (item as any).total_weight
+                                      : (item.weight || 0) * totalQty;
+                                    const weightPerUnit = totalQty > 0 ? totalItemWeight / totalQty : 0;
+                                    // Use assignment data if available, otherwise fall back to basic item data
+                                    const assignedQty = item.assigned_quantity !== undefined ? item.assigned_quantity : 0;
+                                    const remainingQty = item.remaining_quantity !== undefined ? item.remaining_quantity : item.quantity;
+                                    const displayQty = totalQty; // Show total quantity (original quantity)
+
+                                    // Group assignments by status and sum quantities
+                                    const statusQuantities: Record<string, number> = {
+                                      planning: 0,
+                                      loading: 0,
+                                      on_route: 0,
+                                      delivered: 0,
+                                      pending_to_assign: 0,
+                                      failed: 0,
+                                      returned: 0,
+                                    };
+
+                                    if (item.assignments && item.assignments.length > 0) {
+                                      item.assignments.forEach((assignment: OrderItemAssignment) => {
+                                        const status = assignment.item_status;
+                                        if (status in statusQuantities) {
+                                          statusQuantities[status] += assignment.assigned_quantity;
+                                        }
+                                      });
+                                    }
+
                                     return (
                                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                                         <td className="py-4 px-2 text-sm text-gray-900">{index + 1}</td>
@@ -405,7 +583,9 @@ export default function Orders() {
                                             {weightType === 'variable' ? 'Var' : 'Fixed'}
                                           </Badge>
                                         </td>
-                                        <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">{item.quantity}</td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">
+                                          {displayQty}
+                                        </td>
                                         <td className="py-4 px-2 text-center text-sm text-gray-900">
                                           {weightPerUnit > 0 ? weightPerUnit.toFixed(2) : '0.00'}
                                         </td>
@@ -416,13 +596,29 @@ export default function Orders() {
                                           {item.unit_price ? <CurrencyDisplay amount={item.unit_price} /> : 'N/A'}
                                         </td>
                                         <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                          {item.total_price ? <CurrencyDisplay amount={item.total_price} /> : item.unit_price ? <CurrencyDisplay amount={item.unit_price * item.quantity} /> : 'N/A'}
+                                          {item.total_price ? <CurrencyDisplay amount={item.total_price} /> : item.unit_price ? <CurrencyDisplay amount={item.unit_price * totalQty} /> : 'N/A'}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">
+                                          {statusQuantities.planning || 0}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-blue-600">
+                                          {statusQuantities.loading || 0}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-purple-600">
+                                          {statusQuantities.on_route || 0}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-green-600">
+                                          {statusQuantities.delivered || 0}
                                         </td>
                                       </tr>
                                     );
                                   })}
                                 </tbody>
                               </table>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500">
+                              No items found
                             </div>
                           )}
 
@@ -433,6 +629,13 @@ export default function Orders() {
                               <p className="text-xl font-bold text-blue-700">{order.total_amount ? <CurrencyDisplay amount={order.total_amount} /> : 'N/A'}</p>
                             </div>
                           </div>
+
+                          {/* Delivery Documents Section */}
+                          {(order.status === 'delivered' || order.status === 'partial_delivered') && (
+                            <div className="mt-4">
+                              <OrderDocumentsViewer orderId={order.order_number} />
+                            </div>
+                          )}
                         </div>
 
                         {/* Notes Section */}
@@ -479,6 +682,29 @@ export default function Orders() {
                       </div>
                     </div>
                   </CardContent>
+                  {/* Edit Button for Draft Orders - Absolutely positioned in top-right */}
+                  {order.status === "draft" ? (
+                    <div className="absolute top-4 right-4 z-10">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditOrder(order)}
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-2 h-auto font-medium"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="absolute top-4 right-4 z-10">
+                      {/* <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-2 h-auto"
+                      >
+                        <span className="text-lg leading-none">⋮</span>
+                      </Button> */}
+                    </div>
+                  )}
                 </Card>
               );
             })
@@ -520,6 +746,7 @@ export default function Orders() {
         isOpen={isCreateModalOpen}
         onClose={handleCloseCreateModal}
         onSuccess={handleCreateOrderSuccess}
+        order={editingOrder}
       />
     </>
   );

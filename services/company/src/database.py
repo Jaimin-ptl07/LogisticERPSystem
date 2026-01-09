@@ -72,6 +72,7 @@ class VehicleType(str, enum.Enum):
 class VehicleStatus(str, enum.Enum):
     """Vehicle status enum"""
     AVAILABLE = "available"
+    ASSIGNED = "assigned"  # Assigned to a trip but not yet started
     ON_TRIP = "on_trip"
     MAINTENANCE = "maintenance"
     OUT_OF_SERVICE = "out_of_service"
@@ -159,6 +160,7 @@ class Customer(Base):
     name = Column(String(100), nullable=False)
     phone = Column(String(20))
     email = Column(String(100))
+    contact_person_name = Column(String(100))  # Contact person at the customer company
     address = Column(String(500))
     city = Column(String(100))
     state = Column(String(100))
@@ -178,12 +180,38 @@ class Customer(Base):
     pricing_tier = Column(String(20), default="standard")
     is_active = Column(Boolean, default=True)
     available_for_all_branches = Column(Boolean, default=True)
+    # Marketing person contact details
+    marketing_person_name = Column(String(100))
+    marketing_person_phone = Column(String(20))
+    marketing_person_email = Column(String(100))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
     business_type_relation = relationship("BusinessTypeModel", back_populates="customers")
+    business_types = relationship("CustomerBusinessType", back_populates="customer", cascade="all, delete-orphan")
     branches = relationship("CustomerBranch", back_populates="customer")
+
+    @property
+    def business_type_list(self):
+        """Flatten business_types relationship to return list of BusinessTypeModel objects"""
+        return [cbt.business_type for cbt in self.business_types if cbt.business_type]
+
+
+class CustomerBusinessType(Base):
+    """Junction table for customer-business type many-to-many relationship"""
+    __tablename__ = "customer_business_types"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    business_type_id = Column(UUID(as_uuid=True), ForeignKey("business_types.id", ondelete="CASCADE"), nullable=False)
+    tenant_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_by = Column(String)  # User ID who created the relationship
+
+    # Relationships
+    customer = relationship("Customer", back_populates="business_types")
+    business_type = relationship("BusinessTypeModel")
 
 
 class Vehicle(Base):
@@ -221,6 +249,10 @@ class Vehicle(Base):
     )
     last_maintenance = Column(DateTime(timezone=True))
     next_maintenance = Column(DateTime(timezone=True))
+    # Odometer and fuel economy tracking
+    current_odometer = Column(Float)  # Current odometer reading in km
+    current_fuel_economy = Column(Float)  # Current fuel economy in km/liter
+    last_odometer_update = Column(DateTime(timezone=True))  # Last time odometer was updated
     is_active = Column(Boolean, default=True)
     available_for_all_branches = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -310,6 +342,39 @@ class ProductBranch(Base):
     # Relationships
     product = relationship("Product", back_populates="branches")
     branch = relationship("Branch")
+
+
+class ProductUnitType(Base):
+    """Product Unit Type model - e.g., kg, liter, pieces, dozen"""
+    __tablename__ = "product_unit_types"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String, nullable=False)
+    code = Column(String(20), nullable=False)  # e.g., "KG", "LTR", "PCS"
+    name = Column(String(100), nullable=False)  # e.g., "Kilogram", "Liter", "Pieces"
+    abbreviation = Column(String(20))  # e.g., "kg", "ltr", "pcs"
+    description = Column(String(500))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class VehicleOdometerFuelLog(Base):
+    """Vehicle odometer and fuel log tracking"""
+    __tablename__ = "vehicle_odometer_fuel_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String, nullable=False)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    odometer_reading = Column(Float, nullable=False)  # Current odometer in km
+    fuel_economy = Column(Float)  # km/liter
+    fuel_consumed = Column(Float)  # Liters consumed
+    distance_traveled = Column(Float)  # km since last reading
+    log_date = Column(DateTime(timezone=True), nullable=False)
+    log_type = Column(String(20), nullable=False)  # 'manual', 'refueling', 'maintenance', 'trip_end'
+    notes = Column(String(1000))
+    recorded_by_user_id = Column(String)  # User who recorded the log
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class CustomerBranch(Base):
@@ -486,6 +551,7 @@ class DriverProfile(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     employee_profile_id = Column(String(36), ForeignKey("employee_profiles.id", ondelete="CASCADE"), nullable=False)
     tenant_id = Column(String(255), nullable=False)
+    driver_code = Column(String(50))  # Unique driver code for identification
     license_number = Column(String(50), unique=True, nullable=False)
     license_type = Column(String(50), nullable=False)  # e.g., Light Motor Vehicle (LMV), Heavy Motor Vehicle (HMV)
     license_expiry = Column(DateTime(timezone=True), nullable=False)
@@ -494,7 +560,7 @@ class DriverProfile(Base):
     badge_expiry = Column(DateTime(timezone=True))
     experience_years = Column(Integer, default=0)
     preferred_vehicle_types = Column(JSON)  # Array of preferred vehicle types
-    current_status = Column(String(20), default='available')  # available, on_trip, off_duty, on_leave, suspended
+    current_status = Column(String(20), default='available')  # available, assigned, on_trip, off_duty, on_leave, suspended
     last_trip_date = Column(DateTime(timezone=True))
     total_trips = Column(Integer, default=0)
     total_distance = Column(Float, default=0)  # Total kilometers driven

@@ -1,18 +1,22 @@
 """Driver API endpoints - providing driver-specific data to the Driver Service"""
 
+import logging
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.exceptions import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update, func
 from datetime import date, datetime
 
 from src.database import get_async_session, Trip, TripOrder, TMSAuditLog
+
+logger = logging.getLogger(__name__)
 from src.schemas import (
     TripResponse, TripWithOrders, TripOrderResponse,
     DeliveryUpdate, DriverTripListResponse, DriverTripDetailResponse,
     MessageResponse
 )
+from src.services.orders_service_client import orders_client, OrdersServiceUnavailable
 from src.security import (
     TokenData,
     require_permissions,
@@ -172,9 +176,10 @@ async def get_driver_trip_detail(
         require_any_permission(["driver:read", "trips:read", "trips:read_all"])
     ),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    request: Request = None
 ):
-    """Get detailed trip information for a driver"""
+    """Get detailed trip information for a driver with order items"""
     # Get trip and verify it belongs to the driver
     query = select(Trip).where(
         and_(
@@ -199,8 +204,52 @@ async def get_driver_trip_detail(
     orders_result = await db.execute(orders_query)
     orders = orders_result.scalars().all()
 
+    # Collect order numbers for bulk fetch
+    order_numbers = [order.order_id for order in orders]
+
+    # Fetch items from Orders Service
+    items_by_order = {}
+    items_unavailable = False
+    items_error_message = None
+
+    if order_numbers:
+        # Extract auth token
+        auth_token = None
+        if request:
+            auth_header = request.headers.get("authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                auth_token = auth_header[7:]
+
+        try:
+            # Use actual tenant_id (company_id takes precedence)
+            actual_tenant_id = trip.company_id or company_id or tenant_id
+
+            # Bulk fetch items filtered by this trip
+            items_by_order = await orders_client.get_bulk_order_items(
+                order_numbers=order_numbers,
+                trip_id=trip_id,
+                auth_token=auth_token,
+                tenant_id=actual_tenant_id
+            )
+            logger.info(f"Successfully fetched items for {len(items_by_order)} orders")
+
+        except OrdersServiceUnavailable as e:
+            logger.error(f"Orders service unavailable: {e}")
+            items_unavailable = True
+            items_error_message = "Unable to load order items at this time. Please try again later."
+            # Don't fail the entire request - continue with empty items
+
+        except Exception as e:
+            logger.error(f"Unexpected error fetching items: {e}")
+            items_unavailable = True
+            items_error_message = "Unable to load order items details."
+            # Don't fail the entire request
+
+    # Build order responses with items
     order_responses = []
     for order in orders:
+        order_items = items_by_order.get(order.order_id, [])
+
         order_responses.append({
             "id": order.id,
             "order_id": order.order_id,
@@ -213,11 +262,39 @@ async def get_driver_trip_detail(
             "total": order.total or 0,
             "weight": order.weight or 0,
             "volume": order.volume or 0,
-            "items": order.items or 0,
+            "items": order.items or 0,  # Count field for backward compatibility
             "priority": order.priority,
             "sequence_number": order.sequence_number,
-            "assigned_at": order.assigned_at
+            "assigned_at": order.assigned_at,
+            "order_items": order_items  # NEW: Detailed items array
         })
+
+    # Log the complete response being sent to frontend
+    logger.info(f"===== SENDING TRIP DETAIL TO FRONTEND FOR TRIP: {trip_id} =====")
+    logger.info(f"Trip ID: {trip.id}")
+    logger.info(f"Driver ID: {trip.driver_id}")
+    logger.info(f"Status: {trip.status}")
+    logger.info(f"Total Orders: {len(order_responses)}")
+    logger.info(f"Items Unavailable: {items_unavailable}")
+    if items_error_message:
+        logger.info(f"Items Error Message: {items_error_message}")
+
+    for order_resp in order_responses:
+        logger.info(f"\n--- Order: {order_resp['order_id']} ---")
+        logger.info(f"  Customer: {order_resp['customer']}")
+        logger.info(f"  Delivery Status: {order_resp['delivery_status']}")
+        logger.info(f"  Items Count: {order_resp['items']}")
+        logger.info(f"  Order Items (detailed): {len(order_resp.get('order_items', []))} items")
+        for item in order_resp.get('order_items', []):
+            logger.info(f"    - Item ID: {item.get('id')} (from order_items table)")
+            logger.info(f"      Product: {item.get('product_name')}")
+            logger.info(f"      Original Quantity: {item.get('quantity')}")
+            logger.info(f"      Assigned Quantity: {item.get('assigned_quantity')} (from trip_item_assignments)")
+            logger.info(f"      Status: {item.get('item_status')}")
+            logger.info(f"      Is Partially Assigned: {item.get('is_partially_assigned')}")
+            if item.get('other_trips'):
+                logger.info(f"      Other Trips: {item.get('other_trips')}")
+    logger.info(f"===== END TRIP DETAIL RESPONSE =====\n")
 
     return DriverTripDetailResponse(
         id=trip.id,
@@ -235,7 +312,13 @@ async def get_driver_trip_detail(
         post_trip_time=trip.post_trip_time,
         orders=order_responses,
         created_at=trip.created_at,
-        updated_at=trip.updated_at
+        updated_at=trip.updated_at,
+        maintenance_note=trip.maintenance_note,
+        paused_at=trip.paused_at,
+        paused_reason=trip.paused_reason,
+        resumed_at=trip.resumed_at,
+        items_unavailable=items_unavailable,
+        items_error_message=items_error_message
     )
 
 
@@ -301,7 +384,8 @@ async def update_order_delivery_status(
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
     token_data: TokenData = Depends(require_permissions(["driver:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    request: Request = None
 ):
     """Update delivery status of an order"""
     # Verify trip belongs to driver
@@ -390,6 +474,45 @@ async def update_order_delivery_status(
 
     await db.execute(update_query)
 
+    # If order is delivered, update order_items and trip_item_assignments tables in Orders service
+    if new_status == 'delivered':
+        # Update all items for this order to "delivered" status
+        try:
+            # Extract auth token
+            auth_token = None
+            if request:
+                auth_header = request.headers.get("authorization")
+                if auth_header and auth_header.startswith("Bearer "):
+                    auth_token = auth_header[7:]
+
+            # Use actual tenant_id (company_id takes precedence)
+            actual_tenant_id = trip.company_id or company_id or tenant_id
+
+            # Update both order_items and trip_item_assignments tables
+            items_update_result = await orders_client.update_order_items_status(
+                order_number=order_id,
+                trip_id=trip_id,
+                item_status="delivered",
+                auth_token=auth_token,
+                tenant_id=actual_tenant_id
+            )
+            logger.info(
+                f"Updated order_items and trip_item_assignments for order {order_id} "
+                f"in trip {trip_id} to 'delivered'. Result: {items_update_result}"
+            )
+        except OrdersServiceUnavailable as e:
+            # Log error but don't fail the delivery update
+            logger.error(
+                f"Failed to update order_items/trip_item_assignments for order {order_id}: {e}. "
+                f"Delivery status was still updated in TMS."
+            )
+        except Exception as e:
+            # Log error but don't fail the delivery update
+            logger.error(
+                f"Unexpected error updating order_items/trip_item_assignments for order {order_id}: {e}. "
+                f"Delivery status was still updated in TMS."
+            )
+
     # If order is delivered, update trip capacity
     if new_status == 'delivered':
         new_capacity_used = max(0, (trip.capacity_used or 0) - order.weight)
@@ -418,11 +541,63 @@ async def update_order_delivery_status(
         total_orders = all_orders_result.scalar()
         delivered_count = delivered_orders_result.scalar()
 
+        logger.info(f"Trip {trip_id}: total_orders={total_orders}, delivered_count={delivered_count}, trip.driver_id={trip.driver_id}, trip.truck_plate={trip.truck_plate}")
+
         if total_orders == delivered_count:
             # Mark trip as completed
             await db.execute(
                 update(Trip).where(Trip.id == trip_id).values(status='completed')
             )
+
+            # Update driver and truck status to available when trip is completed
+            try:
+                from src.services.company_client import company_client
+
+                # Extract auth token from request
+                auth_token = None
+                if request:
+                    auth_header = request.headers.get("authorization")
+                    if auth_header and auth_header.startswith("Bearer "):
+                        auth_token = auth_header[7:]  # Remove "Bearer " prefix
+                        logger.info(f"Using auth token for status update (length: {len(auth_token)})")
+
+                # Use the company_id from trip or query parameter for tenant
+                actual_tenant_id = trip.company_id or company_id or tenant_id
+
+                # Update driver status to available
+                driver_update_success = await company_client.update_driver_status(
+                    driver_id=trip.driver_id,
+                    status="available",
+                    tenant_id=actual_tenant_id,
+                    auth_token=auth_token
+                )
+
+                # Update truck/vehicle status to available
+                # First get the vehicle ID from the plate number
+                vehicle_id = await company_client.get_vehicle_id_by_plate(
+                    truck_plate=trip.truck_plate,
+                    tenant_id=actual_tenant_id,
+                    auth_token=auth_token
+                )
+
+                vehicle_update_success = False
+                if vehicle_id:
+                    vehicle_update_success = await company_client.update_vehicle_status(
+                        vehicle_id=vehicle_id,  # Use actual vehicle ID instead of plate
+                        status="available",
+                        tenant_id=actual_tenant_id,
+                        auth_token=auth_token
+                    )
+                else:
+                    logger.warning(f"Could not find vehicle ID for plate {trip.truck_plate}")
+
+                logger.info(
+                    f"Trip {trip_id} completed. Driver {trip.driver_id} status update: {driver_update_success}, "
+                    f"Vehicle {trip.truck_plate} (ID: {vehicle_id}) status update: {vehicle_update_success}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update driver/vehicle status after trip completion: {e}")
+                # Don't fail the request if status update fails
 
     # Log the action
     audit_log = TMSAuditLog(
@@ -452,7 +627,8 @@ async def mark_order_delivered(
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
     token_data: TokenData = Depends(require_permissions(["driver:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    request: Request = None
 ):
     """Quick endpoint to mark an order as delivered"""
     # Helper function to update delivery status
@@ -542,6 +718,45 @@ async def mark_order_delivered(
 
         await db.execute(update_query)
 
+        # If order is delivered, update order_items and trip_item_assignments tables in Orders service
+        if new_status == 'delivered':
+            # Update all items for this order to "delivered" status
+            try:
+                # Extract auth token
+                auth_token = None
+                if request:
+                    auth_header = request.headers.get("authorization")
+                    if auth_header and auth_header.startswith("Bearer "):
+                        auth_token = auth_header[7:]
+
+                # Use actual tenant_id (company_id takes precedence)
+                actual_tenant_id = trip.company_id or company_id or tenant_id
+
+                # Update both order_items and trip_item_assignments tables
+                items_update_result = await orders_client.update_order_items_status(
+                    order_number=order_id,
+                    trip_id=trip_id,
+                    item_status="delivered",
+                    auth_token=auth_token,
+                    tenant_id=actual_tenant_id
+                )
+                logger.info(
+                    f"Updated order_items and trip_item_assignments for order {order_id} "
+                    f"in trip {trip_id} to 'delivered'. Result: {items_update_result}"
+                )
+            except OrdersServiceUnavailable as e:
+                # Log error but don't fail the delivery update
+                logger.error(
+                    f"Failed to update order_items/trip_item_assignments for order {order_id}: {e}. "
+                    f"Delivery status was still updated in TMS."
+                )
+            except Exception as e:
+                # Log error but don't fail the delivery update
+                logger.error(
+                    f"Unexpected error updating order_items/trip_item_assignments for order {order_id}: {e}. "
+                    f"Delivery status was still updated in TMS."
+                )
+
         # If order is delivered, update trip capacity
         if new_status == 'delivered':
             new_capacity_used = max(0, (trip.capacity_used or 0) - order.weight)
@@ -570,11 +785,62 @@ async def mark_order_delivered(
             total_orders = all_orders_result.scalar()
             delivered_count = delivered_orders_result.scalar()
 
+            logger.info(f"Trip {trip_id}: total_orders={total_orders}, delivered_count={delivered_count}, trip.driver_id={trip.driver_id}, trip.truck_plate={trip.truck_plate}")
+
             if total_orders == delivered_count:
                 # Mark trip as completed
                 await db.execute(
                     update(Trip).where(Trip.id == trip_id).values(status='completed')
                 )
+
+                # Update driver and truck status to available when trip is completed
+                try:
+                    from src.services.company_client import company_client
+
+                    # Extract auth token from request
+                    auth_token = None
+                    if request:
+                        auth_header = request.headers.get("authorization")
+                        if auth_header and auth_header.startswith("Bearer "):
+                            auth_token = auth_header[7:]  # Remove "Bearer " prefix
+                            logger.info(f"Using auth token for status update (length: {len(auth_token)})")
+
+                    # Update driver status to available
+                    # Use the company_id from trip or query parameter for tenant
+                    actual_tenant_id = trip.company_id or company_id or tenant_id
+                    driver_update_success = await company_client.update_driver_status(
+                        driver_id=trip.driver_id,
+                        status="available",
+                        tenant_id=actual_tenant_id,
+                        auth_token=auth_token
+                    )
+
+                    # Update truck/vehicle status to available
+                    # First get the vehicle ID from the plate number
+                    vehicle_id = await company_client.get_vehicle_id_by_plate(
+                        truck_plate=trip.truck_plate,
+                        tenant_id=actual_tenant_id,
+                        auth_token=auth_token
+                    )
+
+                    vehicle_update_success = False
+                    if vehicle_id:
+                        vehicle_update_success = await company_client.update_vehicle_status(
+                            vehicle_id=vehicle_id,  # Use actual vehicle ID instead of plate
+                            status="available",
+                            tenant_id=actual_tenant_id,
+                            auth_token=auth_token
+                        )
+                    else:
+                        logger.warning(f"Could not find vehicle ID for plate {trip.truck_plate}")
+
+                    logger.info(
+                        f"Trip {trip_id} completed. Driver {trip.driver_id} status update: {driver_update_success}, "
+                        f"Vehicle {trip.truck_plate} (ID: {vehicle_id}) status update: {vehicle_update_success}"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update driver/vehicle status after trip completion: {e}")
+                    # Don't fail the request if status update fails
 
         # Log the action
         audit_log = TMSAuditLog(

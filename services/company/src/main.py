@@ -11,6 +11,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
 from starlette.responses import Response as StarletteResponse
+from sqlalchemy.exc import IntegrityError
 
 from src.api.endpoints import branches, customers, vehicles, products, product_categories, business_types, vehicle_types, users, roles, profiles, audit, tenant_cleanup
 from src.config_local import settings
@@ -311,6 +312,51 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         content={"detail": exc.detail},
         status_code=exc.status_code
+    )
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    """
+    Handle database integrity errors (duplicate entries, foreign key violations, etc.)
+    Convert them to user-friendly error messages
+    """
+    logger.warning(
+        f"Integrity error - path={request.url.path}, method={request.method}, "
+        f"error={str(exc)}"
+    )
+
+    # Parse the error message to extract useful information
+    error_message = str(exc).lower()
+
+    # Check for unique constraint violations
+    if "unique constraint" in error_message or "duplicate key" in error_message:
+        # Extract field name from error if possible
+        if "branch" in error_message and "code" in error_message:
+            detail = "Branch with this code already exists. Please use a different code."
+        elif "customer" in error_message and ("code" in error_message or "email" in error_message):
+            if "email" in error_message:
+                detail = "Customer with this email already exists."
+            else:
+                detail = "Customer with this code already exists. Please use a different code."
+        elif "vehicle" in error_message and ("plate" in error_message or "registration" in error_message):
+            detail = "Vehicle with this registration number already exists. Please use a different registration number."
+        elif "user" in error_message and "email" in error_message:
+            detail = "User with this email already exists."
+        else:
+            detail = "This record already exists. Please use a different value."
+    # Check for foreign key violations
+    elif "foreign key constraint" in error_message:
+        detail = "Cannot perform this operation because it references a record that does not exist."
+    # Check for not null violations
+    elif "not null" in error_message:
+        detail = "A required field is missing. Please fill in all required fields."
+    else:
+        detail = "Database constraint violation. Please check your data and try again."
+
+    return JSONResponse(
+        content={"detail": detail},
+        status_code=400
     )
 
 

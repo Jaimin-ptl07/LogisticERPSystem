@@ -4,16 +4,18 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { driverAPI } from "@/lib/api";
 import { CurrencyDisplay } from "@/components/CurrencyDisplay";
-import { Truck, AlertTriangle, RefreshCw } from "lucide-react";
+import { Truck, AlertTriangle, RefreshCw, Wrench, AlertCircle } from "lucide-react";
+import { DocumentUploadModal } from "@/components/driver";
 
 // Type definitions
 interface TripOrder {
   id: number;
   order_id: string;
+  order_number?: string;
   customer: string;
   customer_address?: string;
   delivery_status: string;
-  total: number;
+  // total: number;
   weight: number;
   items: number;
   priority: string;
@@ -34,6 +36,8 @@ interface Trip {
   trip_date: string;
   order_count: number;
   completed_orders: number;
+  paused_reason?: string;
+  maintenance_note?: string;
 }
 
 interface DriverTripDetail {
@@ -49,6 +53,21 @@ export default function DriverDashboard() {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Pause state
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [pauseReason, setPauseReason] = useState("");
+  const [pauseNote, setPauseNote] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Document upload state
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [selectedOrderForDocument, setSelectedOrderForDocument] = useState<{
+    tripId: string;
+    orderId: string;
+    orderNumber?: string;
+  } | null>(null);
 
   // Load data on component mount
   useEffect(() => {
@@ -105,21 +124,23 @@ export default function DriverDashboard() {
     }
   };
 
-  const markOrderDelivered = async (tripId: string, orderId: string) => {
-    try {
-      // Validate inputs before making API call
-      if (!tripId || tripId === "undefined" || tripId.trim() === "") {
-        console.error("Invalid trip ID:", tripId);
-        setError("Invalid trip ID");
-        return;
-      }
-      if (!orderId || orderId === "undefined" || orderId.trim() === "") {
-        console.error("Invalid order ID:", orderId);
-        setError("Invalid order ID");
-        return;
-      }
+  const markOrderDelivered = async (tripId: string, orderId: string, orderNumber?: string) => {
+    // Open document upload modal instead of directly marking as delivered
+    console.log("markOrderDelivered called with:", { tripId, orderId, orderNumber });
+    setSelectedOrderForDocument({
+      tripId,
+      orderId,
+      orderNumber
+    });
+    setShowDocumentModal(true);
+    console.log("showDocumentModal set to true");
+  };
 
-      console.log("Marking order as delivered:", { tripId, orderId });
+  const handleDocumentUploadComplete = async (documentData: any) => {
+    const { tripId, orderId } = selectedOrderForDocument!;
+    try {
+      // Now mark the order as delivered after document upload
+      console.log("Document uploaded, marking order as delivered:", { tripId, orderId });
       await driverAPI.markOrderDelivered(tripId, orderId);
 
       // Refresh trip details if exists
@@ -134,6 +155,26 @@ export default function DriverDashboard() {
       setError(
         err instanceof Error ? err.message : "Failed to mark order as delivered"
       );
+    }
+  };
+
+  const handlePauseTrip = async () => {
+    if (!selectedTrip || !pauseReason) return;
+
+    setIsProcessing(true);
+    try {
+      await driverAPI.pauseTrip(selectedTrip.id, pauseReason, pauseNote);
+      setShowPauseModal(false);
+      setPauseReason("");
+      setPauseNote("");
+      setSelectedTrip(null);
+      await fetchDriverData();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to pause trip"
+      );
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -169,6 +210,55 @@ export default function DriverDashboard() {
           </div>
         </div>
       )}
+
+      {/* Paused Trip Section */}
+      {(() => {
+        const pausedTrip = allTrips.find((trip) => trip.status === "paused");
+        if (!pausedTrip) return null;
+
+        const tripDetail = tripDetails.get(pausedTrip.id);
+        const tripOrders = tripDetail?.orders || [];
+
+        return (
+          <div className="bg-orange-100 border-2 border-orange-500 rounded-lg p-6 mb-8">
+            <div className="flex items-center gap-2 text-orange-800 mb-4">
+              <AlertCircle className="w-6 h-6" />
+              <h2 className="text-2xl font-bold">Trip Paused - Under Maintenance</h2>
+            </div>
+
+            <div className="mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-black">
+                <div>
+                  <span className="font-medium">Trip ID:</span> {pausedTrip.id}
+                </div>
+                <div>
+                  <span className="font-medium">Truck:</span> {pausedTrip.truck_plate}
+                </div>
+                <div>
+                  <span className="font-medium">Status:</span>{" "}
+                  <span className="ml-1 px-2 py-1 bg-orange-600 text-white rounded text-xs">
+                    PAUSED
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {pausedTrip.paused_reason && (
+              <div className="bg-orange-50 border border-orange-300 rounded p-3 mb-4">
+                <p className="text-sm font-medium text-orange-900">Reason:</p>
+                <p className="text-sm text-orange-800">{pausedTrip.paused_reason}</p>
+              </div>
+            )}
+
+            {pausedTrip.maintenance_note && (
+              <div className="bg-orange-50 border border-orange-300 rounded p-3 mb-4">
+                <p className="text-sm font-medium text-orange-900">Notes:</p>
+                <p className="text-sm text-orange-700 italic">{pausedTrip.maintenance_note}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Active Trip - Prominently Displayed */}
       {(() => {
@@ -221,6 +311,22 @@ export default function DriverDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Pause Button - Only show for on-route trips */}
+            {activeTrip.status === "on-route" && (
+              <div className="mb-4">
+                <button
+                  onClick={() => {
+                    setSelectedTrip(activeTrip);
+                    setShowPauseModal(true);
+                  }}
+                  className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 flex items-center gap-2"
+                >
+                  <Wrench className="w-4 h-4" />
+                  Under Maintenance
+                </button>
+              </div>
+            )}
 
             {/* Orders for Active Trip */}
             <div className="border-t border-blue-200 pt-4">
@@ -276,10 +382,10 @@ export default function DriverDashboard() {
                           <span className="font-medium">Weight:</span>{" "}
                           {order.weight || 0} kg
                         </p>
-                        <p>
+                        {/* <p>
                           <span className="font-medium">Total:</span>{" "}
                           <CurrencyDisplay amount={order.total || 0} />
-                        </p>
+                        </p> */}
                       </div>
                       {order.address && (
                         <p className="text-black mb-3">
@@ -305,7 +411,7 @@ export default function DriverDashboard() {
                               );
                               console.log("Trip details:", activeTrip);
                               console.log("All trip orders:", tripOrders);
-                              markOrderDelivered(activeTrip.id, order.order_id);
+                              markOrderDelivered(activeTrip.id, order.order_id, order.order_number);
                             }}
                             className="px-6 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700"
                           >
@@ -454,6 +560,88 @@ export default function DriverDashboard() {
           )}
         </div>
       </div>
+
+      {/* Pause Trip Modal */}
+      {showPauseModal && selectedTrip && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold text-black mb-2">Pause Trip - Under Maintenance</h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to pause this trip? This will indicate the truck is under maintenance.
+            </p>
+
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-1">Reason *</label>
+                <select
+                  value={pauseReason}
+                  onChange={(e) => setPauseReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select reason</option>
+                  <option value="breakdown">Vehicle Breakdown</option>
+                  <option value="accident">Accident</option>
+                  <option value="weather">Severe Weather</option>
+                  <option value="traffic">Major Traffic/Delay</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-black mb-1">Additional Notes</label>
+                <textarea
+                  value={pauseNote}
+                  onChange={(e) => setPauseNote(e.target.value)}
+                  placeholder="Describe the issue..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowPauseModal(false);
+                  setPauseReason("");
+                  setPauseNote("");
+                  setSelectedTrip(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+                disabled={isProcessing}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePauseTrip}
+                disabled={!pauseReason || isProcessing}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {isProcessing ? "Pausing..." : "Yes, Pause Trip"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Upload Modal */}
+      {selectedOrderForDocument && (
+        <>
+          {console.log("Rendering DocumentUploadModal with:", { showDocumentModal, selectedOrderForDocument })}
+          <DocumentUploadModal
+            isOpen={showDocumentModal}
+            onClose={() => {
+              console.log("Modal onClose called");
+              setShowDocumentModal(false);
+              setSelectedOrderForDocument(null);
+            }}
+            onUploadComplete={handleDocumentUploadComplete}
+            tripId={selectedOrderForDocument.tripId}
+            orderId={selectedOrderForDocument.orderId}
+            orderNumber={selectedOrderForDocument.orderNumber}
+          />
+        </>
+      )}
     </div>
   );
 }

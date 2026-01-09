@@ -743,6 +743,16 @@ VALUES
     'track',
     'Track trip status'
 ),
+(
+    'trips',
+    'pause',
+    'Pause a trip due to maintenance or issues'
+),
+(
+    'trips',
+    'resume',
+    'Resume a paused trip'
+),
 -- Order specific permissions for TMS
 (
     'orders',
@@ -785,6 +795,11 @@ VALUES
     'drivers',
     'read_all',
     'Read all driver information'
+),
+(
+    'tms',
+    'status_update',
+    'Allow TMS service to update driver/vehicle status when trip completes'
 ),
 -- Driver Service permissions
 (
@@ -1383,7 +1398,7 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource = 'trips'
-  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'assign', 'track')
+  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'assign', 'track', 'pause', 'resume')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Resource Management Permissions
@@ -2397,6 +2412,26 @@ VALUES
             SELECT id
             FROM permissions
             WHERE
+                resource = 'trips'
+                AND action = 'pause'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'resume'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
                 resource = 'orders'
                 AND action = 'split'
         )
@@ -2781,6 +2816,16 @@ VALUES
                 AND action = 'logistics_view'
         )
     ),
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'update'
+        )
+    ),
     -- Order documents
     (
         6,
@@ -2855,6 +2900,37 @@ VALUES
                 AND action = 'update'
         )
     ),
+    -- Trips update, pause and resume permissions
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'update'
+        )
+    ),
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'pause'
+        )
+    ),
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'resume'
+        )
+    ),
     -- Dashboard
     (
         6,
@@ -2863,6 +2939,28 @@ VALUES
             FROM permissions
             WHERE
                 resource = 'dashboard'
+                AND action = 'read'
+        )
+    ),
+    -- TMS status update permission (for trip completion)
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'tms'
+                AND action = 'status_update'
+        )
+    ),
+    -- Users read permission (for driver profile lookups during status updates)
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'users'
                 AND action = 'read'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;

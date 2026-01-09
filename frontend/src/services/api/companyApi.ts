@@ -225,19 +225,26 @@ export interface Customer {
   name: string
   phone?: string
   email?: string
+  contact_person_name?: string
   address?: string
   city?: string
   state?: string
   postal_code?: string
   business_type?: string  // Deprecated - old enum
-  business_type_id?: string  // New foreign key to business_types table
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
   credit_limit: number
   pricing_tier: string
   is_active: boolean
   created_at: string
   updated_at?: string
   home_branch?: Branch
-  business_type_relation?: BusinessTypeModel
+  business_type_relation?: BusinessTypeModel  // Deprecated - single business type
+  business_types?: BusinessTypeModel[]  // New - multiple business types
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface Vehicle {
@@ -255,6 +262,10 @@ export interface Vehicle {
   status: string
   last_maintenance?: string
   next_maintenance?: string
+  // Odometer and fuel economy tracking
+  current_odometer?: number
+  current_fuel_economy?: number
+  last_odometer_update?: string
   is_active: boolean
   created_at: string
   updated_at?: string
@@ -273,6 +284,18 @@ export interface ProductCategory {
   updated_at?: string
   parent?: ProductCategory
   children?: ProductCategory[]
+}
+
+export interface ProductUnitType {
+  id: string
+  tenant_id: string
+  code: string
+  name: string
+  abbreviation?: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
 }
 
 export interface BusinessTypeModel {
@@ -372,15 +395,23 @@ export interface CustomerCreate {
   name: string
   phone?: string
   email?: string
+  contact_person_name?: string
   address?: string
   city?: string
   state?: string
   postal_code?: string
   business_type?: string  // Deprecated - old enum
-  business_type_id?: string  // New foreign key to business_types table
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
+  branch_ids?: string[]
+  available_for_all_branches?: boolean
   credit_limit?: number
   pricing_tier?: string
   is_active?: boolean
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface VehicleCreate {
@@ -397,6 +428,9 @@ export interface VehicleCreate {
   status?: string
   last_maintenance?: string
   next_maintenance?: string
+  // Odometer and fuel economy tracking
+  current_odometer?: number
+  current_fuel_economy?: number
   is_active?: boolean
 }
 
@@ -428,6 +462,22 @@ export interface ProductCategoryCreate {
   name: string
   description?: string
   parent_id?: string
+  is_active?: boolean
+}
+
+export interface ProductUnitTypeCreate {
+  code: string
+  name: string
+  abbreviation?: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface ProductUnitTypeUpdate {
+  code?: string
+  name?: string
+  abbreviation?: string
+  description?: string
   is_active?: boolean
 }
 
@@ -564,7 +614,7 @@ export interface UserProfileUpdate {
 export const companyApi = createApi({
   reducerPath: 'companyApi',
   baseQuery: baseQuery,
-  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument', 'AuditLog'],
+  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'ProductUnitType', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument', 'AuditLog'],
   endpoints: (builder) => ({
     // Branch endpoints
     getBranches: builder.query<{ items: Branch[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
@@ -763,6 +813,54 @@ export const companyApi = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: ['ProductCategory'],
+    }),
+
+    // Product Unit Type endpoints
+    getProductUnitTypes: builder.query<{ items: ProductUnitType[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, is_active }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (search) params.append('search', search)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/products/unit-types?${params}`
+      },
+      providesTags: ['ProductUnitType'],
+    }),
+    getAllProductUnitTypes: builder.query<ProductUnitType[], { is_active?: boolean }>({
+      query: ({ is_active = true }) => {
+        const params = new URLSearchParams()
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/products/unit-types/all?${params}`
+      },
+      providesTags: ['ProductUnitType'],
+    }),
+    getProductUnitType: builder.query<ProductUnitType, string>({
+      query: (id) => `company/products/unit-types/${id}`,
+      providesTags: ['ProductUnitType'],
+    }),
+    createProductUnitType: builder.mutation<ProductUnitType, ProductUnitTypeCreate>({
+      query: (unitType) => ({
+        url: 'company/products/unit-types/',
+        method: 'POST',
+        body: unitType,
+      }),
+      invalidatesTags: ['ProductUnitType'],
+    }),
+    updateProductUnitType: builder.mutation<ProductUnitType, { id: string; unitType: Partial<ProductUnitTypeUpdate> }>({
+      query: ({ id, unitType }) => ({
+        url: `company/products/unit-types/${id}`,
+        method: 'PUT',
+        body: unitType,
+      }),
+      invalidatesTags: ['ProductUnitType'],
+    }),
+    deleteProductUnitType: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/products/unit-types/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['ProductUnitType'],
     }),
 
     // BusinessType endpoints

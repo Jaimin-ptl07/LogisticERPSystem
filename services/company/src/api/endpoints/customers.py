@@ -9,7 +9,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Customer, Branch, BusinessType, BusinessTypeModel, CustomerBranch
+from src.database import get_db, Customer, Branch, BusinessType, BusinessTypeModel, CustomerBranch, CustomerBusinessType
 from src.helpers import validate_branch_exists
 from src.schemas import (
     Customer as CustomerSchema,
@@ -84,9 +84,10 @@ async def list_customers(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Customer.name)
 
-    # Include business type and branches relationships
+    # Include business types and branches relationships
     query = query.options(
         selectinload(Customer.business_type_relation),
+        selectinload(Customer.business_types).selectinload(CustomerBusinessType.business_type),
         selectinload(Customer.branches).selectinload(CustomerBranch.branch)
     )
 
@@ -127,6 +128,7 @@ async def get_customer(
         Customer.tenant_id == tenant_id
     ).options(
         selectinload(Customer.business_type_relation),
+        selectinload(Customer.business_types).selectinload(CustomerBusinessType.business_type),
         selectinload(Customer.branches).selectinload(CustomerBranch.branch)
     )
 
@@ -166,11 +168,16 @@ async def create_customer(
             detail="Customer with this code already exists"
         )
 
-    # Extract branch_ids from request data
+    # Extract branch_ids and business_type_ids from request data
     branch_ids = customer_data.branch_ids if hasattr(customer_data, 'branch_ids') else None
+    business_type_ids = customer_data.business_type_ids if hasattr(customer_data, 'business_type_ids') else None
 
-    # Create new customer (excluding branch_ids as it's not a model field)
-    customer_data_dict = customer_data.model_dump(exclude={'branch_ids'})
+    # For backward compatibility, if business_type_id is provided and business_type_ids is not, convert it
+    if hasattr(customer_data, 'business_type_id') and customer_data.business_type_id and not business_type_ids:
+        business_type_ids = [customer_data.business_type_id]
+
+    # Create new customer (excluding branch_ids and business_type_ids as they're not model fields)
+    customer_data_dict = customer_data.model_dump(exclude={'branch_ids', 'business_type_ids'})
     customer = Customer(
         tenant_id=tenant_id,
         **customer_data_dict
@@ -179,6 +186,31 @@ async def create_customer(
     db.add(customer)
     await db.commit()
     await db.refresh(customer)
+
+    # Handle business type assignments
+    if business_type_ids:
+        # Validate all business type IDs exist and belong to tenant
+        for bt_id in business_type_ids:
+            bt_query = select(BusinessTypeModel).where(
+                BusinessTypeModel.id == bt_id,
+                BusinessTypeModel.tenant_id == tenant_id
+            )
+            bt_result = await db.execute(bt_query)
+            if not bt_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Business type with id {bt_id} not found"
+                )
+
+        # Create customer-business type relationships
+        for bt_id in business_type_ids:
+            customer_bt = CustomerBusinessType(
+                customer_id=customer.id,
+                business_type_id=bt_id,
+                tenant_id=tenant_id
+            )
+            db.add(customer_bt)
+        await db.commit()
 
     # Handle branch assignments if not available for all branches
     if not customer.available_for_all_branches and branch_ids:
@@ -199,12 +231,13 @@ async def create_customer(
             db.add(customer_branch)
         await db.commit()
 
-    # Load the business_type and branches relationships for response
+    # Load the business types and branches relationships for response
     customer_with_relationships = await db.execute(
         select(Customer)
         .where(Customer.id == customer.id)
         .options(
             selectinload(Customer.business_type_relation),
+            selectinload(Customer.business_types).selectinload(CustomerBusinessType.business_type),
             selectinload(Customer.branches).selectinload(CustomerBranch.branch)
         )
     )
@@ -242,9 +275,10 @@ async def update_customer(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    # Extract branch_ids from request data if present
-    update_data = customer_data.model_dump(exclude_unset=True, exclude={'branch_ids'})
+    # Extract branch_ids and business_type_ids from request data if present
+    update_data = customer_data.model_dump(exclude_unset=True, exclude={'branch_ids', 'business_type_ids'})
     branch_ids = customer_data.branch_ids if hasattr(customer_data, 'branch_ids') else None
+    business_type_ids = customer_data.business_type_ids if hasattr(customer_data, 'business_type_ids') else None
     available_for_all_branches = update_data.get('available_for_all_branches')
 
     # Update customer fields
@@ -253,6 +287,38 @@ async def update_customer(
 
     await db.commit()
     await db.refresh(customer)
+
+    # Handle business type assignments if business_type_ids is provided
+    if business_type_ids is not None:
+        # Delete existing business type relationships
+        await db.execute(
+            delete(CustomerBusinessType).where(CustomerBusinessType.customer_id == customer_id)
+        )
+        await db.commit()
+
+        if business_type_ids:
+            # Validate all business type IDs exist and belong to tenant
+            for bt_id in business_type_ids:
+                bt_query = select(BusinessTypeModel).where(
+                    BusinessTypeModel.id == bt_id,
+                    BusinessTypeModel.tenant_id == tenant_id
+                )
+                bt_result = await db.execute(bt_query)
+                if not bt_result.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Business type with id {bt_id} not found"
+                    )
+
+            # Create customer-business type relationships
+            for bt_id in business_type_ids:
+                customer_bt = CustomerBusinessType(
+                    customer_id=customer.id,
+                    business_type_id=bt_id,
+                    tenant_id=tenant_id
+                )
+                db.add(customer_bt)
+            await db.commit()
 
     # Handle branch assignments if available_for_all_branches is explicitly set or branch_ids is provided
     if available_for_all_branches is not None or branch_ids is not None:
@@ -281,12 +347,13 @@ async def update_customer(
                 db.add(customer_branch)
             await db.commit()
 
-    # Load the business_type and branches relationships for response
+    # Load the business types and branches relationships for response
     customer_with_relationships = await db.execute(
         select(Customer)
         .where(Customer.id == customer.id)
         .options(
             selectinload(Customer.business_type_relation),
+            selectinload(Customer.business_types).selectinload(CustomerBusinessType.business_type),
             selectinload(Customer.branches).selectinload(CustomerBranch.branch)
         )
     )

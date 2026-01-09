@@ -27,10 +27,10 @@ export default function ProtectedLayout({
   const lastCheckedPathRef = useRef<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Get initial tenant settings from sessionStorage (set during login)
+  // Get initial tenant settings from localStorage (set during login, persists across sessions)
   const getInitialSettings = (): TenantSettings | undefined => {
     if (typeof window !== 'undefined') {
-      const stored = sessionStorage.getItem('tenantSettings');
+      const stored = localStorage.getItem('tenantSettings');
       if (stored) {
         try {
           return JSON.parse(stored) as TenantSettings;
