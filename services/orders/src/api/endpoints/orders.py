@@ -1330,27 +1330,23 @@ async def bulk_create_trip_item_assignments(
         db.add(new_assignment)
         created_count += 1
 
-        # Also update the order_item status
-        order_item_id = item.get("order_item_id")
-        item_status = item.get("item_status", "pending_to_assign")
-        if order_item_id:
-            try:
-                order_item_query = select(OrderItem).where(
-                    and_(
-                        OrderItem.id == order_item_id,
-                        OrderItem.order_id == item.get("order_id")
-                    )
-                )
-                order_item_result = await db.execute(order_item_query)
-                order_item = order_item_result.scalar_one_or_none()
-
-                if order_item:
-                    logger.info(f"Updating order_item {order_item_id} status to {item_status}")
-                    order_item.item_status = item_status
-                    # Also update trip_id in order_items
-                    order_item.trip_id = trip_id
-            except Exception as e:
-                logger.error(f"Failed to update order_item {order_item_id} status: {str(e)}")
+        # OPTIONAL CLEANUP: Removed OrderItem.item_status update
+        # The trip_item_assignments table is the source of truth for tracking split/partial assignments
+        # OrderItem.item_status affects all items in the row (not just the assigned portion)
+        # Status display uses trip_item_assignments aggregation, so this update is not needed
+        #
+        # The original code below was removed as it incorrectly updated all items:
+        # order_item_id = item.get("order_item_id")
+        # item_status = item.get("item_status", "pending_to_assign")
+        # if order_item_id:
+        #     try:
+        #         order_item_query = select(OrderItem).where(...)
+        #         order_item = ...
+        #         if order_item:
+        #             order_item.item_status = item_status  # This affects ALL items in the row
+        #             order_item.trip_id = trip_id
+        #     except Exception as e:
+        #         logger.error(f"Failed to update order_item {order_item_id} status: {str(e)}")
 
     await db.commit()
 
@@ -1383,6 +1379,175 @@ async def update_trip_item_assignments_status(
     await db.commit()
 
     return {"message": f"Updated {len(assignments)} assignments", "updated_count": len(assignments)}
+
+
+@router.put("/trip-item-assignments/update-quantity")
+async def update_trip_item_assignment_quantity(
+    update_data: dict,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Update assigned_quantity and item_status for a trip_item_assignment.
+    Called during LOADING stage when user confirms quantities.
+
+    This endpoint handles:
+    - Updating quantity when user decides partial assignment
+    - Updating item_status from 'planning' to 'loading'
+    - Validation that assigned_quantity <= original_quantity
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+    from src.models.order_item import OrderItem
+    from src.models.order import Order
+
+    trip_id = update_data.get("trip_id")
+    order_item_id = update_data.get("order_item_id")
+    assigned_quantity = update_data.get("assigned_quantity")
+    item_status = update_data.get("item_status")
+
+    if not all([trip_id, order_item_id, assigned_quantity is not None, item_status]):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required fields: trip_id, order_item_id, assigned_quantity, item_status"
+        )
+
+    # Find the assignment
+    query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.trip_id == trip_id,
+            TripItemAssignment.order_item_id == order_item_id,
+            TripItemAssignment.tenant_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    assignment = result.scalar_one_or_none()
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    # Validate assigned_quantity <= original_quantity
+    # Note: OrderItem doesn't have tenant_id, so we join with Order for tenant validation
+    item_query = select(OrderItem).join(Order).where(
+        and_(
+            OrderItem.id == order_item_id,
+            Order.tenant_id == tenant_id
+        )
+    )
+    item_result = await db.execute(item_query)
+    order_item = item_result.scalar_one_or_none()
+
+    if not order_item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+
+    if assigned_quantity > order_item.quantity:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Assigned quantity ({assigned_quantity}) cannot exceed original quantity ({order_item.quantity})"
+        )
+
+    # Update quantity and status
+    assignment.assigned_quantity = assigned_quantity
+    assignment.item_status = item_status
+    await db.commit()
+
+    logger.info(
+        f"Updated trip_item_assignment: trip={trip_id}, item={order_item_id}, "
+        f"qty={assigned_quantity}, status={item_status}"
+    )
+
+    return {
+        "message": "Assignment updated successfully",
+        "assigned_quantity": assigned_quantity,
+        "item_status": item_status
+    }
+
+
+@router.delete("/trip-item-assignments/delete")
+async def delete_trip_item_assignment(
+    delete_data: dict,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Delete a trip_item_assignment (user skipped item during loading).
+
+    Called when user sets assigned_quantity = 0 during loading confirmation.
+    This removes the assignment record entirely, making the quantity available again.
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+
+    trip_id = delete_data.get("trip_id")
+    order_item_id = delete_data.get("order_item_id")
+
+    if not all([trip_id, order_item_id]):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required fields: trip_id, order_item_id"
+        )
+
+    # Find the assignment
+    query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.trip_id == trip_id,
+            TripItemAssignment.order_item_id == order_item_id,
+            TripItemAssignment.tenant_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    assignment = result.scalar_one_or_none()
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    # Delete the assignment
+    await db.delete(assignment)
+    await db.commit()
+
+    logger.info(f"Deleted trip_item_assignment: trip={trip_id}, item={order_item_id}")
+
+    return {"message": "Assignment deleted successfully"}
+
+
+@router.put("/trip-item-assignments/reset-to-planning")
+async def reset_assignments_to_planning(
+    trip_id: str,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Reset all trip_item_assignments for a trip from 'loading' back to 'planning'.
+
+    Allows user to resplit items after returning trip from loading to planning stage.
+    This enables re-decision of item quantities.
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+
+    query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.trip_id == trip_id,
+            TripItemAssignment.tenant_id == tenant_id,
+            TripItemAssignment.item_status == "loading"
+        )
+    )
+    result = await db.execute(query)
+    assignments = result.scalars().all()
+
+    for assignment in assignments:
+        assignment.item_status = "planning"
+
+    await db.commit()
+
+    logger.info(
+        f"Reset {len(assignments)} trip_item_assignments from loading to planning for trip {trip_id}"
+    )
+
+    return {
+        "message": f"Reset {len(assignments)} items to planning status",
+        "count": len(assignments)
+    }
 
 
 @router.get("/trip-item-assignments/order/{order_number}")
@@ -1484,6 +1649,7 @@ async def get_order_item_assignments(
             "product_id": item.product_id,
             "product_name": item.product_name,
             "product_code": item.product_code,
+            "weight": item.weight,  # Weight per unit
             "original_quantity": original_qty,  # Original quantity from order_items
             "assigned_quantity": assigned_qty,  # Active assignments (planning/loading/on_route)
             "delivered_quantity": delivered_qty,  # Completed deliveries
@@ -1635,6 +1801,7 @@ async def bulk_get_order_item_assignments(
                 "product_id": item.product_id,
                 "product_name": item.product_name,
                 "product_code": item.product_code,
+                "weight": item.weight,  # Weight per unit
                 "original_quantity": original_qty,  # Original quantity from order_items
                 "assigned_quantity": assigned_qty,  # Active assignments (planning/loading/on_route)
                 "delivered_quantity": delivered_qty,  # Completed deliveries
