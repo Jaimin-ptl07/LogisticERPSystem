@@ -305,6 +305,22 @@ async def _check_trip_completion_and_update_status(
                     auth_headers,
                     tenant_id
                 )
+
+                # Publish Kafka event for trip completion
+                try:
+                    from src.services.kafka_producer import trip_event_producer
+                    trip_event_producer.publish_trip_completed(
+                        trip_id=str(trip.id),
+                        tenant_id=tenant_id,
+                        driver_id=trip.driver_id,
+                        driver_name=trip.driver_name,
+                        branch_id=trip.branch,
+                        completed_by="system",
+                        completed_by_role=None  # System action
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to publish trip.completed event: {e}")
+
                 logger.info(f"Trip {trip_id} automatically completed (all orders delivered) - status changed from {old_status} to completed, driver and truck set to available")
 
 
@@ -1139,6 +1155,22 @@ async def update_trip(
             tenant_id
         )
 
+        # Publish Kafka events for specific status changes
+        if trip.status == "on-route" and old_status != "on-route":
+            try:
+                from src.services.kafka_producer import trip_event_producer
+                trip_event_producer.publish_trip_on_route(
+                    trip_id=str(trip.id),
+                    tenant_id=tenant_id,
+                    driver_id=trip.driver_id,
+                    driver_name=trip.driver_name,
+                    branch_id=trip.branch,
+                    started_by=user_id,
+                    started_by_role=token_data.role
+                )
+            except Exception as e:
+                logger.error(f"Failed to publish trip.on_route event: {e}")
+
     # Fetch orders for this trip to avoid lazy loading issues
     orders_query = select(TripOrder).where(
         TripOrder.trip_id == trip_id).order_by(TripOrder.sequence_number)
@@ -1311,6 +1343,23 @@ async def pause_trip(
         tenant_id
     )
 
+    # Publish Kafka event for trip pause
+    try:
+        from src.services.kafka_producer import trip_event_producer
+        trip_event_producer.publish_trip_paused(
+            trip_id=str(trip.id),
+            tenant_id=tenant_id,
+            driver_id=trip.driver_id,
+            driver_name=trip.driver_name,
+            branch_id=trip.branch,
+            paused_by=user_id,
+            paused_by_role=token_data.role,
+            reason=pause_data.reason,
+            note=pause_data.note
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish trip.paused event: {e}")
+
     # Send audit log
     audit_client = AuditClient(auth_headers)
     await audit_client.log_event(
@@ -1418,6 +1467,22 @@ async def resume_trip(
         auth_headers,
         tenant_id
     )
+
+    # Publish Kafka event for trip resume
+    try:
+        from src.services.kafka_producer import trip_event_producer
+        trip_event_producer.publish_trip_resumed(
+            trip_id=str(trip.id),
+            tenant_id=tenant_id,
+            driver_id=trip.driver_id,
+            driver_name=trip.driver_name,
+            branch_id=trip.branch,
+            resumed_by=user_id,
+            resumed_by_role=token_data.role,
+            note=resume_data.note
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish trip.resumed event: {e}")
 
     # Send audit log
     audit_client = AuditClient(auth_headers)
@@ -1540,6 +1605,24 @@ async def reassign_trip_resources(
         await db.refresh(trip)
 
         logger.info(f"Trip {trip_id} resources reassigned successfully")
+
+        # Publish Kafka event for resource reassignment
+        try:
+            from src.services.kafka_producer import trip_event_producer
+            trip_event_producer.publish_trip_resources_reassigned(
+                trip_id=str(trip.id),
+                tenant_id=tenant_id,
+                branch_id=trip.branch,
+                reassigned_by=user_id,
+                old_truck_plate=old_truck_plate,
+                new_truck_plate=trip.truck_plate,
+                old_driver_id=old_driver_id,
+                new_driver_id=trip.driver_id,
+                new_driver_name=trip.driver_name,
+                reassigned_by_role=token_data.role
+            )
+        except Exception as e:
+            logger.error(f"Failed to publish trip.resources_reassigned event: {e}")
 
         # Audit log
         audit_client = AuditClient(auth_headers)
@@ -2836,6 +2919,21 @@ async def confirm_loading_assignment(
             auth_headers,
             tenant_id
         )
+
+        # Publish Kafka event for loading started
+        try:
+            from src.services.kafka_producer import trip_event_producer
+            trip_event_producer.publish_trip_loading_started(
+                trip_id=trip_id,
+                tenant_id=tenant_id,
+                driver_id=trip.driver_id,
+                driver_name=trip.driver_name,
+                branch_id=trip.branch,
+                started_by=user_id,
+                started_by_role=token_data.role
+            )
+        except Exception as e:
+            logger.error(f"Failed to publish trip.loading_started event: {e}")
 
         # Step 4: Audit log
         audit_client = AuditClient(auth_headers)

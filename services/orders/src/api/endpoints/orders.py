@@ -901,7 +901,8 @@ async def finance_approval(
         tenant_id,
         approval_data.reason,
         approval_data.notes,
-        approval_data.payment_type
+        approval_data.payment_type,
+        user_role=token_data.role
     )
     return order
 
@@ -933,7 +934,8 @@ async def logistics_approval(
         approval_data.reason,
         approval_data.notes,
         approval_data.driver_id,
-        approval_data.trip_id
+        approval_data.trip_id,
+        user_role=token_data.role
     )
     return order
 
@@ -956,7 +958,8 @@ async def update_order_status(
         user_id,
         tenant_id,
         status_data.reason,
-        status_data.notes
+        status_data.notes,
+        user_role=token_data.role
     )
     return order
 
@@ -1289,7 +1292,8 @@ async def cancel_order(
         str(order_id),
         user_id,
         tenant_id,
-        reason
+        reason,
+        user_role=token_data.role
     )
     return order
 

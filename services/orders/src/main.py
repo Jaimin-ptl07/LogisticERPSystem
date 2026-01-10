@@ -72,9 +72,24 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Initialize Kafka producer for order events
+    try:
+        from src.services.kafka_producer import order_event_producer
+        order_event_producer.initialize()
+        logger.info("Kafka producer initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Kafka producer: {e}. Order events will not be published.")
+
     yield
 
     logger.info("Shutting down orders service")
+
+    # Close Kafka producer
+    try:
+        from src.services.kafka_producer import order_event_producer
+        order_event_producer.close()
+    except Exception as e:
+        logger.error(f"Error closing Kafka producer: {e}")
 
 
 # Create FastAPI application

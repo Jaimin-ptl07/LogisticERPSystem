@@ -512,7 +512,8 @@ class OrderService:
             order,
             OrderStatus.SUBMITTED,
             user_id,
-            "Order submitted for finance approval"
+            "Order submitted for finance approval",
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
@@ -533,7 +534,24 @@ class OrderService:
         )
         await audit_client.close()
 
-        # TODO: Send notification to finance manager
+        # Publish Kafka event for notification service
+        try:
+            from src.services.kafka_producer import order_event_producer
+            order_event_producer.publish_order_submitted(
+                order_id=str(order.id),
+                order_number=order.order_number,
+                tenant_id=tenant_id,
+                branch_id=str(order.branch_id),
+                customer_id=str(order.customer_id),
+                total_amount=float(order.total_amount),
+                created_by=user_id,
+                created_by_role=None  # Role not available in submit_order
+            )
+        except Exception as e:
+            # Log but don't fail the order submission
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order.submitted event: {e}")
 
         return order
 
@@ -545,7 +563,8 @@ class OrderService:
         tenant_id: str,
         reason: Optional[str] = None,
         notes: Optional[str] = None,
-        payment_type: Optional[PaymentType] = None
+        payment_type: Optional[PaymentType] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Approve or reject order in finance"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -572,7 +591,8 @@ class OrderService:
             new_status,
             user_id,
             message,
-            reason
+            reason,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
@@ -595,7 +615,52 @@ class OrderService:
         )
         await audit_client.close()
 
-        # TODO: Send notification to relevant parties
+        # Publish Kafka event for notification service
+        try:
+            from src.services.kafka_producer import order_event_producer
+            if approved:
+                order_event_producer.publish_order_approved(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    approved_by=user_id,
+                    approved_by_role=user_role,
+                    total_amount=float(order.total_amount),
+                    payment_type=order.payment_type if order.payment_type else None
+                )
+            else:
+                order_event_producer.publish_order_rejected(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    rejected_by=user_id,
+                    rejected_by_role=user_role,
+                    reason=reason
+                )
+        except Exception as e:
+            # Log but don't fail the order approval
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order approval event: {e}")
+
+        # If admin performed finance approval, notify managers
+        if user_role == "Admin":
+            try:
+                from src.services.kafka_producer import order_event_producer
+                order_event_producer.publish_admin_action(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    performed_by=user_id,
+                    performed_by_role=user_role,
+                    action="finance_approve" if approved else "finance_reject",
+                    created_by=order.created_by,
+                    notify_roles=["finance_manager", "logistics_manager", "branch_manager"]
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to publish admin action notification: {e}")
 
         return order
 
@@ -608,7 +673,8 @@ class OrderService:
         reason: Optional[str] = None,
         notes: Optional[str] = None,
         driver_id: Optional[str] = None,
-        trip_id: Optional[str] = None
+        trip_id: Optional[str] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Approve or reject order in logistics"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -637,7 +703,8 @@ class OrderService:
             new_status,
             user_id,
             message,
-            reason
+            reason,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
@@ -665,7 +732,54 @@ class OrderService:
         )
         await audit_client.close()
 
-        # TODO: Send notification to driver and branch manager
+        # Publish Kafka event for notification service
+        try:
+            from src.services.kafka_producer import order_event_producer
+            if approved:
+                order_event_producer.publish_order_logistics_approved(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    approved_by=user_id,
+                    approved_by_role=user_role,
+                    driver_id=driver_id,
+                    trip_id=trip_id
+                )
+
+                # Publish order.assigned event if driver/trip assigned
+                if driver_id and trip_id:
+                    order_event_producer.publish_order_assigned(
+                        order_id=str(order.id),
+                        order_number=order.order_number,
+                        tenant_id=tenant_id,
+                        driver_id=driver_id,
+                        trip_id=trip_id,
+                        trip_number=f"TRIP-{trip_id[:8]}"
+                    )
+        except Exception as e:
+            # Log but don't fail the order approval
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order logistics approval event: {e}")
+
+        # If admin performed logistics approval, notify managers
+        if user_role == "Admin":
+            try:
+                from src.services.kafka_producer import order_event_producer
+                order_event_producer.publish_admin_action(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    performed_by=user_id,
+                    performed_by_role=user_role,
+                    action="logistics_approve" if approved else "logistics_reject",
+                    created_by=order.created_by,
+                    notify_roles=["logistics_manager", "branch_manager"]
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to publish admin action notification: {e}")
 
         return order
 
@@ -676,7 +790,8 @@ class OrderService:
         user_id: str,
         tenant_id: str,
         reason: Optional[str] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Update order status"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -694,7 +809,8 @@ class OrderService:
             user_id,
             f"Status updated to {new_status}",
             reason,
-            notes
+            notes,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
@@ -719,7 +835,8 @@ class OrderService:
         order_id: str,
         user_id: str,
         tenant_id: str,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Cancel an order"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -736,7 +853,8 @@ class OrderService:
             OrderStatus.CANCELLED,
             user_id,
             "Order cancelled",
-            reason
+            reason,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
@@ -758,6 +876,22 @@ class OrderService:
         )
         await audit_client.close()
 
+        # Publish Kafka event for cancellation
+        try:
+            from src.services.kafka_producer import order_event_producer
+            order_event_producer.publish_order_cancelled(
+                order_id=str(order.id),
+                order_number=order.order_number,
+                tenant_id=tenant_id,
+                cancelled_by=user_id,
+                cancelled_by_role=user_role,
+                reason=reason
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order.cancelled event: {e}")
+
         return order
 
     async def _update_order_status(
@@ -767,7 +901,8 @@ class OrderService:
         user_id: str,
         notes: str,
         reason: Optional[str] = None,
-        extra_notes: Optional[str] = None
+        extra_notes: Optional[str] = None,
+        tenant_id: Optional[str] = None
     ) -> None:
         """Update order status and create history entry"""
         old_status = order.status
@@ -791,6 +926,49 @@ class OrderService:
             notes=extra_notes or notes
         )
         self.db.add(history)
+
+        # Publish Kafka events for status changes
+        status_to_event_type = {
+            OrderStatus.PICKED_UP: "picked_up",
+            OrderStatus.IN_TRANSIT: "in_transit",
+            OrderStatus.DELIVERED: "delivered",
+            OrderStatus.PARTIAL_IN_TRANSIT: "partial_in_transit",
+            OrderStatus.PARTIAL_DELIVERED: "partial_delivered",
+        }
+
+        if new_status in status_to_event_type and tenant_id:
+            try:
+                from src.services.kafka_producer import order_event_producer
+
+                additional_data = {}
+                if new_status == OrderStatus.PICKED_UP:
+                    additional_data = {
+                        "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,
+                        "driver_id": str(order.driver_id) if order.driver_id else None
+                    }
+                elif new_status in [OrderStatus.IN_TRANSIT, OrderStatus.PARTIAL_IN_TRANSIT]:
+                    additional_data = {
+                        "driver_id": str(order.driver_id) if order.driver_id else None,
+                        "trip_id": str(order.trip_id) if order.trip_id else None
+                    }
+                elif new_status in [OrderStatus.DELIVERED, OrderStatus.PARTIAL_DELIVERED]:
+                    additional_data = {
+                        "delivered_at": order.delivered_at.isoformat() if order.delivered_at else None,
+                        "driver_id": str(order.driver_id) if order.driver_id else None,
+                        "trip_id": str(order.trip_id) if order.trip_id else None
+                    }
+
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    status=status_to_event_type[new_status],
+                    additional_data=additional_data
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to publish order.{status_to_event_type[new_status]} event: {e}")
 
     def _is_valid_status_transition(
         self,
