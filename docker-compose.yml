@@ -58,10 +58,11 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
@@ -92,8 +93,9 @@ services:
           "localhost:9092",
         ]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 12
+      start_period: 60s
 
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.1
@@ -118,6 +120,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "xpack.security.enrollment.enabled=false"
     ports:
       - "9200:9200"
     volumes:
@@ -128,8 +131,9 @@ services:
       test:
         ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 15
+      start_period: 90s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.12.0
