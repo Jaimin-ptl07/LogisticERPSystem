@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # Orders Service URL
     ORDERS_SERVICE_URL: str = "http://orders-service:8003"
 
+    # Kafka Settings
+    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
+
     class Config:
         env_file = ".env"
         case_sensitive = False

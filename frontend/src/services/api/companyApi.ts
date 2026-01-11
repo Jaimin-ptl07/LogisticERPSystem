@@ -329,10 +329,23 @@ export interface VehicleTypeModel {
   updated_at?: string
 }
 
+export interface ProductUnitType {
+  id: string
+  tenant_id: string
+  code: string
+  name: string
+  abbreviation?: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
 export interface Product {
   id: string
   tenant_id: string
   category_id?: string
+  unit_type_id?: string
   code: string
   name: string
   description?: string
@@ -355,6 +368,7 @@ export interface Product {
   created_at: string
   updated_at?: string
   category?: ProductCategory
+  unit_type?: ProductUnitType
   available_for_all_branches?:boolean
   branches?:object[]
 }
@@ -375,7 +389,6 @@ export interface PricingRule {
   updated_at?: string
 }
 
-// Form Types
 export interface BranchCreate {
   code: string
   name: string
@@ -436,6 +449,7 @@ export interface VehicleCreate {
 
 export interface ProductCreate {
   category_id?: string
+  unit_type_id?: string
   code: string
   name: string
   description?: string
@@ -507,7 +521,6 @@ export interface PricingRuleCreate {
   is_active?: boolean
 }
 
-// User Management Form Types
 export interface UserCreate {
   user_id: string  // Auth user ID
   email?: string
@@ -823,7 +836,7 @@ export const companyApi = createApi({
         params.append('per_page', per_page.toString())
         if (search) params.append('search', search)
         if (is_active !== undefined) params.append('is_active', is_active.toString())
-        return `company/products/unit-types?${params}`
+        return `company/product-unit-types?${params}`
       },
       providesTags: ['ProductUnitType'],
     }),
@@ -831,17 +844,17 @@ export const companyApi = createApi({
       query: ({ is_active = true }) => {
         const params = new URLSearchParams()
         if (is_active !== undefined) params.append('is_active', is_active.toString())
-        return `company/products/unit-types/all?${params}`
+        return `company/product-unit-types/all?${params}`
       },
       providesTags: ['ProductUnitType'],
     }),
     getProductUnitType: builder.query<ProductUnitType, string>({
-      query: (id) => `company/products/unit-types/${id}`,
+      query: (id) => `company/product-unit-types/${id}`,
       providesTags: ['ProductUnitType'],
     }),
     createProductUnitType: builder.mutation<ProductUnitType, ProductUnitTypeCreate>({
       query: (unitType) => ({
-        url: 'company/products/unit-types/',
+        url: 'company/product-unit-types/',
         method: 'POST',
         body: unitType,
       }),
@@ -849,7 +862,7 @@ export const companyApi = createApi({
     }),
     updateProductUnitType: builder.mutation<ProductUnitType, { id: string; unitType: Partial<ProductUnitTypeUpdate> }>({
       query: ({ id, unitType }) => ({
-        url: `company/products/unit-types/${id}`,
+        url: `company/product-unit-types/${id}`,
         method: 'PUT',
         body: unitType,
       }),
@@ -857,7 +870,7 @@ export const companyApi = createApi({
     }),
     deleteProductUnitType: builder.mutation<void, string>({
       query: (id) => ({
-        url: `company/products/unit-types/${id}`,
+        url: `company/product-unit-types/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['ProductUnitType'],
@@ -1456,6 +1469,12 @@ export const {
   useCreateProductCategoryMutation,
   useUpdateProductCategoryMutation,
   useDeleteProductCategoryMutation,
+  useGetProductUnitTypesQuery,
+  useGetAllProductUnitTypesQuery,
+  useGetProductUnitTypeQuery,
+  useCreateProductUnitTypeMutation,
+  useUpdateProductUnitTypeMutation,
+  useDeleteProductUnitTypeMutation,
   useGetBusinessTypesQuery,
   useGetAllBusinessTypesQuery,
   useGetBusinessTypeQuery,

@@ -272,7 +272,7 @@ export default function ProductUnitTypesPage() {
                           {unitType.code}
                         </Badge>
                         {unitType.abbreviation && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="secondary" className="text-xs">
                             {unitType.abbreviation}
                           </Badge>
                         )}

@@ -24,7 +24,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/products/unit-types", tags=["product_unit_types"])
+router = APIRouter(tags=["product_unit_types"])
 
 
 @router.get("/")
@@ -263,7 +263,7 @@ async def delete_unit_type(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete a product unit type (soft delete by setting is_active to False)
+    Delete a product unit type (hard delete - removes from database)
     """
     from uuid import UUID
     try:
@@ -285,11 +285,11 @@ async def delete_unit_type(
         raise HTTPException(status_code=404, detail="Unit type not found")
 
     try:
-        # Soft delete
-        unit_type.is_active = False
+        # Hard delete - remove from database
+        await db.delete(unit_type)
         await db.commit()
 
-        logger.info(f"Deleted product unit type {unit_type_id} (soft delete)")
+        logger.info(f"Deleted product unit type {unit_type_id} (hard delete)")
         return {"message": "Unit type deleted successfully"}
 
     except Exception as e:
