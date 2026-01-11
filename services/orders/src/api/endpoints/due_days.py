@@ -1,6 +1,7 @@
 """
 Due Days endpoints for branch manager dashboard
 """
+import logging
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, func
@@ -13,6 +14,7 @@ from src.models.order import Order, OrderStatus
 from src.security import get_current_token_data, TokenData
 from sqlalchemy.sql.expression import literal_column
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -104,6 +106,7 @@ async def get_due_days_orders(
 
         orders_with_status.append({
             "id": str(order.id),
+            "tenant_id": str(order.tenant_id),
             "order_number": order.order_number,
             "customer_id": order.customer_id,
             "branch_id": order.branch_id,
@@ -223,4 +226,99 @@ async def get_due_days_statistics(
         "overdue_count": overdue_count,
         "due_soon_count": due_soon_count,
         "total_due_count": overdue_count + due_soon_count
+    }
+
+
+# Internal endpoint for notification service (no auth required)
+@router.get("/orders-due-reminder")
+async def get_orders_for_reminder_notification(
+    days_threshold: int = Query(4, ge=1, le=30, description="Days threshold for reminder notifications"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Internal endpoint for notification service to fetch orders for due day reminders.
+    Does NOT require authentication - only accessible via internal network.
+    Returns orders that are exactly `days_threshold` days away from their due date.
+    """
+    # Use UTC for timezone-aware calculations
+    now = datetime.now(timezone.utc)
+    reference_date = now
+    threshold_date = now + timedelta(days=days_threshold)
+
+    logger.info(f"=== Internal Due Days Reminder Query ===")
+    logger.info(f"Current UTC time: {now.isoformat()}")
+    logger.info(f"Looking for orders with days_remaining = {days_threshold}")
+    logger.info(f"Threshold date: {threshold_date.isoformat()}")
+
+    # Build base query - get ALL orders (no tenant filter for internal notifications)
+    query = select(Order).where(
+        and_(
+            Order.due_days.isnot(None),
+            Order.due_days_marked_created == False,
+            Order.is_active == True
+        )
+    )
+
+    # Fetch all orders and filter in Python
+    result = await db.execute(query)
+    all_orders = result.scalars().all()
+
+    logger.info(f"Internal due-days query: Found {len(all_orders)} orders with due_days set")
+
+    # Filter orders based on due date calculation
+    orders_with_status = []
+    for order in all_orders:
+        # Ensure created_at is timezone-aware
+        created_at = order.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        due_date = created_at + timedelta(days=order.due_days or 0)
+
+        # Calculate days remaining more precisely
+        # We want to trigger the reminder when there are between (days_threshold) and (days_threshold+1) days remaining
+        # This handles orders created earlier in the day
+        time_delta = due_date - reference_date
+        days_remaining = time_delta.days
+        total_seconds = time_delta.total_seconds()
+
+        # Check if we're within the reminder window
+        # For days_threshold=4, we want to trigger when days_remaining is 4.x (still has 4 full days ahead)
+        # But we also want to handle the edge case where it was just created today
+        # So we check: days_remaining >= days_threshold, or (days_remaining == days_threshold-1 and hours > 20)
+        should_remind = (
+            days_remaining >= days_threshold or  # Still has full days_threshold days
+            (days_remaining == days_threshold - 1 and total_seconds > (days_threshold - 1) * 86400)  # Has more than 20 hours left of the (days_threshold-1) day
+        )
+
+        logger.info(f"Order {order.order_number}: created_at={created_at.isoformat()}, due_days={order.due_days}, due_date={due_date.isoformat()}, days_remaining={days_remaining}, total_seconds={total_seconds}, should_remind={should_remind}")
+
+        if should_remind:
+            due_status = "overdue" if days_remaining < 0 else "due_soon"
+
+            orders_with_status.append({
+                "id": str(order.id),
+                "tenant_id": str(order.tenant_id),
+                "order_number": order.order_number,
+                "customer_id": order.customer_id,
+                "branch_id": order.branch_id,
+                "due_days": order.due_days,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "delivery_date": due_date.isoformat(),
+                "days_remaining": days_remaining,
+                "due_status": due_status,
+                "status": order.status,
+                "total_amount": float(order.total_amount) if order.total_amount else 0,
+                "order_type": order.order_type,
+                "priority": order.priority
+            })
+
+    # Sort by days_remaining
+    orders_with_status.sort(key=lambda x: x["days_remaining"])
+
+    return {
+        "days_threshold": days_threshold,
+        "reference_date": reference_date.isoformat(),
+        "orders_count": len(orders_with_status),
+        "orders": orders_with_status
     }

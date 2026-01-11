@@ -1,10 +1,10 @@
 # Scheduler Service - Handles scheduled notifications
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List
 import asyncio
 
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import ScheduledNotification
@@ -77,62 +77,115 @@ class NotificationScheduler:
 
     async def check_delivery_reminders(self):
         """
-        Check for orders due in 3 days and create reminder notifications.
+        Check for orders due in 4 days and create reminder notifications.
 
         This should be called every hour by the scheduler.
+        Uses the due_days API endpoint to find orders approaching their due date.
         """
         try:
-            # Query orders service for orders due in 3 days
             from src.services.notification_service import NotificationService
+            from src.services.recipient_resolver import RecipientResolver
+            from src.database import Notification
             import httpx
+            from datetime import timedelta
 
             notification_service = NotificationService(self.db)
+            recipient_resolver = RecipientResolver()
 
-            # Calculate the date range (3 days from now)
-            three_days_from_now = datetime.utcnow() + timedelta(days=3)
-            tomorrow = datetime.utcnow() + timedelta(days=1)
+            # Query the orders service internal endpoint for orders due in 4 days
+            # Use the internal endpoint that doesn't require authentication
+            orders_url = f"{settings.ORDERS_SERVICE_URL}/api/v1/internal/due-days/orders-due-reminder"
+            params = {
+                "days_threshold": 4
+            }
 
-            # Query orders service for orders due in 3 days
-            # This would typically call the orders service API
-            # For now, we'll simulate the logic
+            logger.info(f"Fetching orders due in 4 days from {orders_url}")
 
-            # TODO: Implement actual API call to orders service
-            # async with httpx.AsyncClient() as client:
-            #     response = await client.get(
-            #         f"{settings.ORDERS_SERVICE_URL}/api/v1/orders/due-soon",
-            #         params={
-            #             "start_date": tomorrow.isoformat(),
-            #             "end_date": three_days_from_now.isoformat()
-            #         }
-            #     )
-            #     orders = response.json().get("orders", [])
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    orders_url,
+                    params=params
+                )
 
-            # For each order, create a reminder notification for the branch manager
-            # for order in orders:
-            #     # Resolve branch manager
-            #     from src.services.recipient_resolver import RecipientResolver
-            #     resolver = RecipientResolver()
-            #     recipients = await resolver.resolve_branch_managers(order["tenant_id"])
-            #
-            #     for user_id in recipients:
-            #         await notification_service.create_notification(
-            #             user_id=user_id,
-            #             tenant_id=order["tenant_id"],
-            #             type="order_event",
-            #             category="delivery_reminder",
-            #             title=f"Delivery due in 3 days: Order #{order['order_number']}",
-            #             message=f"Order #{order['order_number']} is scheduled for delivery "
-            #                    f"on {order['delivery_date'].strftime('%Y-%m-%d')}",
-            #             priority="normal",
-            #             entity_type="order",
-            #             entity_id=order["id"],
-            #             action_url=f"/orders/{order['id']}"
-            #         )
+                if response.status_code == 200:
+                    data = response.json()
+                    orders = data.get("orders", [])
+                    logger.info(f"Found {len(orders)} orders due in 4 days")
+                else:
+                    logger.error(f"Failed to fetch due days orders: {response.status_code}")
+                    orders = []
 
-            logger.info("Checked delivery reminders")
+            # Get today's date range for deduplication (UTC)
+            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            tomorrow = today + timedelta(days=1)
+
+            # For each order, create a reminder notification
+            for order in orders:
+                try:
+                    # The endpoint already filters orders correctly using should_remind logic
+                    # which includes: days_remaining >= 4 OR (days_remaining == 3 with > 3 days worth of seconds)
+                    # So we accept all orders returned by the endpoint
+                    tenant_id = order.get("tenant_id", "default-tenant")
+                    order_id = order.get("id")
+                    order_number = order.get("order_number")
+
+                    # Check if we already sent a reminder for this order today (deduplication)
+                    existing_notification = await self.db.execute(
+                        select(Notification).where(
+                            and_(
+                                Notification.entity_id == order_id,
+                                Notification.entity_type == "order",
+                                Notification.category == "due_day_reminder",
+                                Notification.created_at >= today,
+                                Notification.created_at < tomorrow
+                            )
+                        ).limit(1)
+                    )
+                    existing = existing_notification.scalar_one_or_none()
+
+                    if existing:
+                        logger.info(f"Skipping order {order_number} - already notified today at {existing.created_at}")
+                        continue
+
+                    # Resolve branch managers for this tenant
+                    recipients = await recipient_resolver.resolve_recipients(
+                        tenant_id=tenant_id,
+                        event_type="order.due_day_reminder",
+                        entity_type="order",
+                        entity_id=order_id,
+                        role_list=["admin", "branch_manager"],
+                        data=order
+                    )
+
+                    if not recipients:
+                        logger.info(f"No recipients found for order {order_number}")
+                        continue
+
+                    # Create notification for each recipient
+                    days_remaining = order.get("days_remaining", 4)
+                    for user_id in recipients:
+                        await notification_service.create_notification(
+                            user_id=user_id,
+                            tenant_id=tenant_id,
+                            type="order_event",
+                            category="due_day_reminder",
+                            title=f"Order #{order_number} Due Soon - {days_remaining} Days Left",
+                            message=f"Order #{order_number} is due on {order.get('delivery_date', 'N/A')}. Please ensure timely processing.",
+                            priority="high",
+                            entity_type="order",
+                            entity_id=order_id,
+                            action_url=f"/orders/{order_id}"
+                        )
+
+                    logger.info(f"Created due day reminder notifications for order {order_number} to {len(recipients)} recipients")
+
+                except Exception as e:
+                    logger.error(f"Error processing due day reminder for order {order.get('order_number')}: {e}")
+
+            logger.info(f"Completed due day reminder check. Processed {len(orders)} orders.")
 
         except Exception as e:
-            logger.error(f"Error in check_delivery_reminders: {e}")
+            logger.error(f"Error in check_delivery_reminders: {e}", exc_info=True)
 
     async def check_overdue_orders(self):
         """
@@ -280,7 +333,8 @@ async def run_scheduler_tasks(db_factory):
         scheduler = NotificationScheduler(db)
         # Run all scheduled tasks
         await scheduler.check_scheduled_notifications()
+        # Enable due day reminders (runs every hour via APScheduler)
+        await scheduler.check_delivery_reminders()
         # Only run these tasks on specific intervals (managed by APScheduler config)
-        # await scheduler.check_delivery_reminders()
         # await scheduler.check_overdue_orders()
         # await scheduler.send_daily_summaries()

@@ -1256,6 +1256,70 @@ async def update_item_status(
 
     await db.commit()
 
+    # Publish Kafka events for delivery status changes
+    # Map item status to order status events
+    item_status_to_event = {
+        "picked_up": "picked_up",
+        "on_route": "in_transit",
+        "delivered": "delivered",
+        "failed": "failed",
+        "returned": "returned"
+    }
+
+    if status_data.item_status in item_status_to_event:
+        try:
+            from src.services.kafka_producer import order_event_producer
+
+            event_type = item_status_to_event[status_data.item_status]
+
+            # Publish different events based on status
+            if event_type == "picked_up":
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id,
+                    status="picked_up",
+                    additional_data={
+                        "trip_id": status_data.trip_id
+                    }
+                )
+            elif event_type == "in_transit":
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id,
+                    status="in_transit",
+                    additional_data={
+                        "trip_id": status_data.trip_id
+                    }
+                )
+            elif event_type == "delivered":
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id,
+                    status="delivered",
+                    additional_data={
+                        "trip_id": status_data.trip_id
+                    }
+                )
+            elif event_type == "failed":
+                order_event_producer.publish_order_failed_delivery(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id
+                )
+            elif event_type == "returned":
+                order_event_producer.publish_order_returned(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id
+                )
+
+            logger.info(f"Published order.{event_type} event for order {order.order_number}")
+        except Exception as e:
+            logger.error(f"Failed to publish Kafka event for item status {status_data.item_status}: {e}")
+
     logger.info(f"Updated {updated_count} order_items, {trip_assignments_updated} trip_item_assignments updated, {trip_assignments_deleted} deleted for order {status_data.order_id} to status {status_data.item_status}")
 
     return {
