@@ -389,7 +389,6 @@ export interface PricingRule {
   updated_at?: string
 }
 
-// Form Types
 export interface BranchCreate {
   code: string
   name: string
@@ -522,7 +521,6 @@ export interface PricingRuleCreate {
   is_active?: boolean
 }
 
-// User Management Form Types
 export interface UserCreate {
   user_id: string  // Auth user ID
   email?: string
