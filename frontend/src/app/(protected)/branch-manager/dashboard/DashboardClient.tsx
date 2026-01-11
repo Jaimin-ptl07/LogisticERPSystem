@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateOrderModal } from "@/components/Modal";
 import { OrderDocumentsViewer } from "@/components/branch";
+import { DueDaysTab } from "@/components/orders/DueDaysTab";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import {
   useGetOrdersQuery,
   useGetOrderItemsWithAssignmentsQuery,
   useSubmitOrderMutation,
+  useGetDueDaysStatisticsQuery,
   Order,
   OrderItemAssignment,
 } from "@/services/api/ordersApi";
@@ -44,6 +47,7 @@ import { DateDisplay } from "@/components/DateDisplay";
 import { DurationDisplay } from "@/components/DurationDisplay";
 
 export default function Orders() {
+  const [activeTab, setActiveTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -72,6 +76,9 @@ export default function Orders() {
   }, [refetchOrders]);
 
   const orders = ordersData?.items || [];
+
+  // Fetch due days statistics for tab badge
+  const { data: dueDaysStats } = useGetDueDaysStatisticsQuery();
 
   // Debug: Log first order to check time_in_status fields
   if (orders.length > 0 && orders[0]) {
@@ -228,6 +235,20 @@ export default function Orders() {
             </Button>
           </div>
         </div>
+
+        {/* Tabs */}
+        <Tabs defaultValue="orders" className="w-full">
+          <TabsList className="mb-6">
+            <TabsTrigger value="orders" className="text-black">
+              Orders ({orders.length})
+            </TabsTrigger>
+            <TabsTrigger value="due-days" className="text-black">
+              Due Days ({dueDaysStats?.total_due_count || 0})
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Orders Tab */}
+          <TabsContent value="orders">
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -739,6 +760,13 @@ export default function Orders() {
             </Card>
           )}
         </div>
+        </TabsContent>
+
+          {/* Due Days Tab */}
+          <TabsContent value="due-days">
+            <DueDaysTab />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Create Order Modal */}

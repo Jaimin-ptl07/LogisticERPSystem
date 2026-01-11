@@ -316,6 +316,7 @@ class OrderService:
                 delivery_instructions=order_data.delivery_instructions,
                 pickup_date=order_data.pickup_date,
                 delivery_date=order_data.delivery_date,
+                due_days=order_data.due_days if hasattr(order_data, 'due_days') else 7,
                 created_by=user_id,
                 updated_by=user_id
             )

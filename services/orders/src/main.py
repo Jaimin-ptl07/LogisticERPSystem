@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from jose import JWTError
 
-from src.api.endpoints import orders, order_documents, resources, tenant_cleanup
+from src.api.endpoints import orders, order_documents, resources, tenant_cleanup, due_days
 from src.config_local import OrdersSettings
 from src.database import engine, Base
 from src.middleware import (
@@ -246,6 +246,13 @@ app.include_router(
     resources.router,
     prefix="/api/v1/resources",
     tags=["Resources"]
+)
+
+# Due Days endpoints for branch manager dashboard
+app.include_router(
+    due_days.router,
+    prefix="/api/v1/due-days",
+    tags=["Due Days"]
 )
 
 # Internal endpoints for inter-service communication

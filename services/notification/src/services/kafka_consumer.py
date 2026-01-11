@@ -197,15 +197,22 @@ class NotificationKafkaConsumer:
             )
             logger.info(f"Kafka consumer initialized for topic: {settings.KAFKA_NOTIFICATIONS_TOPIC}")
         except Exception as e:
-            logger.error(f"Failed to initialize Kafka consumer: {e}")
-            raise
+            logger.warning(f"Failed to initialize Kafka consumer: {e}")
+            logger.warning("Kafka consumer will be disabled. Notification service will continue without Kafka integration.")
+            self._consumer = None  # Set to None so we can check if it's available
+            # Don't raise - allow service to start without Kafka
 
     async def start(self):
         """Start consuming messages from Kafka"""
         try:
             if not self._consumer:
-                logger.info("Initializing Kafka consumer...")
+                logger.info("Kafka consumer not initialized, attempting initialization...")
                 self.initialize()
+
+            # If still no consumer after initialization attempt, skip starting it
+            if not self._consumer:
+                logger.info("Kafka consumer not available. Notification service will run without Kafka integration.")
+                return
 
             self._running = True
             logger.info("Kafka consumer started, creating event loop and thread...")
@@ -222,7 +229,8 @@ class NotificationKafkaConsumer:
             logger.info(f"Kafka consumer thread started, listening on topic: {settings.KAFKA_NOTIFICATIONS_TOPIC}")
         except Exception as e:
             logger.error(f"Failed to start Kafka consumer: {e}", exc_info=True)
-            raise
+            logger.warning("Notification service will continue without Kafka integration.")
+            # Don't raise - allow service to start
 
     def _consume_messages(self, loop: asyncio.AbstractEventLoop):
         """
@@ -237,6 +245,13 @@ class NotificationKafkaConsumer:
 
         while self._running:
             try:
+                # Check if consumer is still available
+                if not self._consumer:
+                    logger.warning("Kafka consumer not available, waiting before retry...")
+                    import time
+                    time.sleep(10)  # Wait longer before retrying
+                    continue
+
                 # Poll for messages (timeout 1 second)
                 messages = self._consumer.poll(timeout_ms=1000)
 
