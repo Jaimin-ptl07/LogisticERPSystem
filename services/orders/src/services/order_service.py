@@ -18,6 +18,7 @@ from src.schemas import (
     OrderQueryParams,
 )
 from src.config_local import OrdersSettings
+from src.services.audit_client import AuditClient
 
 settings = OrdersSettings()
 
@@ -75,6 +76,27 @@ class OrderService:
             and_(
                 # Convert to string to match VARCHAR column
                 Order.id == str(order_id),
+                Order.tenant_id == tenant_id,
+                Order.is_active == True
+            )
+        ).options(
+            selectinload(Order.items),
+            selectinload(Order.documents),
+            selectinload(Order.status_history)
+        )
+
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_order_by_order_number(
+        self,
+        order_number: str,
+        tenant_id: str
+    ) -> Optional[Order]:
+        """Get order by order_number and tenant"""
+        query = select(Order).where(
+            and_(
+                Order.order_number == order_number,
                 Order.tenant_id == tenant_id,
                 Order.is_active == True
             )
@@ -147,11 +169,14 @@ class OrderService:
                         return {
                             "id": str(product["id"]),
                             "name": product["name"],
-                            "code": product["code"],
+                            "code": product.get("code", ""),
                             "description": product.get("description", ""),
-                            "unit_price": float(product["unit_price"]),
-                            "weight": float(product.get("weight", 0)),
-                            "volume": float(product.get("volume", 0)),
+                            "unit_price": float(product.get("unit_price") or 0),
+                            "weight": float(product.get("weight") or 0),
+                            "volume": float(product.get("volume") or 0),
+                            "weight_type": product.get("weight_type", "fixed"),
+                            "fixed_weight": float(product.get("fixed_weight") or 0),
+                            "weight_unit": product.get("weight_unit", "kg"),
                             "unit": "pcs"  # Default unit, can be customized later
                         }
                     else:
@@ -225,20 +250,19 @@ class OrderService:
             # Process items and calculate totals
             order_items = []
             if order_data.items:
-                print(
-                    f"DEBUG: Processing {len(order_data.items)} items for order creation")
                 for i, item_data in enumerate(order_data.items):
-                    print(
-                        f"DEBUG: Processing item {i+1} - product_id: {item_data.product_id}")
                     # Fetch product details from product service
                     product = await self._fetch_product_details(item_data.product_id)
-                    print(f"DEBUG: Got product: {product['name']}")
+
+                    # Use user-entered weight if provided (for variable weight products),
+                    # otherwise use product weight (for fixed weight products)
+                    item_weight = item_data.weight if hasattr(item_data, 'weight') and item_data.weight and item_data.weight > 0 else product.get("weight", 0)
 
                     # Calculate item totals
                     item_total_price = product["unit_price"] * \
                         item_data.quantity
-                    item_total_weight = product["weight"] * item_data.quantity
-                    item_total_volume = product["volume"] * item_data.quantity
+                    item_total_weight = item_weight * item_data.quantity
+                    item_total_volume = product.get("volume", 0) * item_data.quantity
 
                     # Update order totals
                     total_weight += item_total_weight
@@ -256,7 +280,7 @@ class OrderService:
                         unit="pcs",  # Default unit since it's not in product schema
                         unit_price=product["unit_price"],
                         total_price=item_total_price,
-                        weight=product.get("weight", 0),
+                        weight=item_weight,  # Use the calculated item weight
                         volume=product.get("volume", 0),
                     )
                     order_items.append(order_item)
@@ -321,6 +345,26 @@ class OrderService:
             # Commit transaction
             await self.db.commit()
 
+            # Send audit log
+            audit_client = AuditClient(self.auth_headers)
+            await audit_client.log_event(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="create",
+                module="orders",
+                entity_type="order",
+                entity_id=str(order.id),
+                description=f"Order {order.order_number} created",
+                new_values={
+                    "order_number": order.order_number,
+                    "status": order.status,
+                    "total_amount": str(total_amount),
+                    "customer_id": order.customer_id,
+                    "branch_id": order.branch_id
+                }
+            )
+            await audit_client.close()
+
             # Query the order back with all relationships loaded
             result = await self.db.execute(
                 select(Order)
@@ -346,7 +390,7 @@ class OrderService:
         order_data: OrderUpdate,
         user_id: str
     ) -> Order:
-        """Update an existing order"""
+        """Update an existing order (including items for draft orders)"""
         query = select(Order).where(
             Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
@@ -355,8 +399,74 @@ class OrderService:
         if not order:
             raise ValueError("Order not found")
 
-        # Update order fields
-        update_data = order_data.model_dump(exclude_unset=True)
+        # Extract items from update data before processing other fields
+        items_data = order_data.items if hasattr(order_data, 'items') else None
+
+        # Update order fields (excluding items which are handled separately)
+        update_data = order_data.model_dump(exclude_unset=True, exclude={'items'})
+
+        # Recalculate totals if items are being updated
+        if items_data is not None:
+            total_weight = 0.0
+            total_volume = 0.0
+            package_count = 0
+            total_amount = 0.0
+
+            # Process new items
+            order_items = []
+            for i, item_data in enumerate(items_data):
+                # Fetch product details
+                product = await self._fetch_product_details(item_data.product_id)
+
+                # Use user-entered weight if provided, otherwise use product weight
+                item_weight = item_data.weight if hasattr(item_data, 'weight') and item_data.weight and item_data.weight > 0 else product.get("weight", 0)
+
+                # Calculate item totals
+                item_total_price = product["unit_price"] * item_data.quantity
+                item_total_weight = item_weight * item_data.quantity
+                item_total_volume = product.get("volume", 0) * item_data.quantity
+
+                # Update order totals
+                total_weight += item_total_weight
+                total_volume += item_total_volume
+                package_count += item_data.quantity
+                total_amount += item_total_price
+
+                # Create OrderItem object (only use fields that exist in OrderItem model)
+                order_item = OrderItem(
+                    id=str(uuid4()),
+                    order_id=str(order.id),
+                    product_id=item_data.product_id,
+                    product_name=product.get("name", ""),
+                    product_code=product.get("code", ""),
+                    description=product.get("description", ""),
+                    quantity=item_data.quantity,
+                    unit=product.get("unit", "pcs"),
+                    unit_price=product.get("unit_price", 0),
+                    total_price=item_total_price,
+                    weight=item_weight,
+                    volume=item_total_volume,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                order_items.append(order_item)
+
+            # Delete existing items and add new ones
+            from sqlalchemy import delete
+            delete_query = delete(OrderItem).where(OrderItem.order_id == str(order.id))
+            await self.db.execute(delete_query)
+
+            # Add new items
+            for order_item in order_items:
+                self.db.add(order_item)
+
+            # Update calculated totals in the order data
+            update_data['total_weight'] = total_weight
+            update_data['total_volume'] = total_volume
+            update_data['package_count'] = package_count
+            update_data['total_amount'] = total_amount
+
+        # Apply other field updates
         for field, value in update_data.items():
             setattr(order, field, value)
 
@@ -402,13 +512,46 @@ class OrderService:
             order,
             OrderStatus.SUBMITTED,
             user_id,
-            "Order submitted for finance approval"
+            "Order submitted for finance approval",
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
         await self.db.refresh(order)
 
-        # TODO: Send notification to finance manager
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="submit",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} submitted for finance approval",
+            from_status="draft",
+            to_status="submitted"
+        )
+        await audit_client.close()
+
+        # Publish Kafka event for notification service
+        try:
+            from src.services.kafka_producer import order_event_producer
+            order_event_producer.publish_order_submitted(
+                order_id=str(order.id),
+                order_number=order.order_number,
+                tenant_id=tenant_id,
+                branch_id=str(order.branch_id),
+                customer_id=str(order.customer_id),
+                total_amount=float(order.total_amount),
+                created_by=user_id,
+                created_by_role=None  # Role not available in submit_order
+            )
+        except Exception as e:
+            # Log but don't fail the order submission
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order.submitted event: {e}")
 
         return order
 
@@ -420,7 +563,8 @@ class OrderService:
         tenant_id: str,
         reason: Optional[str] = None,
         notes: Optional[str] = None,
-        payment_type: Optional[PaymentType] = None
+        payment_type: Optional[PaymentType] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Approve or reject order in finance"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -447,13 +591,76 @@ class OrderService:
             new_status,
             user_id,
             message,
-            reason
+            reason,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
         await self.db.refresh(order)
 
-        # TODO: Send notification to relevant parties
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="approve" if approved else "reject",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} {'approved' if approved else 'rejected'} by finance",
+            from_status="submitted",
+            to_status=new_status,
+            approval_status="approved" if approved else "rejected",
+            reason=reason
+        )
+        await audit_client.close()
+
+        # Publish Kafka event for notification service
+        try:
+            from src.services.kafka_producer import order_event_producer
+            if approved:
+                order_event_producer.publish_order_approved(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    approved_by=user_id,
+                    approved_by_role=user_role,
+                    total_amount=float(order.total_amount),
+                    payment_type=order.payment_type if order.payment_type else None
+                )
+            else:
+                order_event_producer.publish_order_rejected(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    rejected_by=user_id,
+                    rejected_by_role=user_role,
+                    reason=reason
+                )
+        except Exception as e:
+            # Log but don't fail the order approval
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order approval event: {e}")
+
+        # If admin performed finance approval, notify managers
+        if user_role == "Admin":
+            try:
+                from src.services.kafka_producer import order_event_producer
+                order_event_producer.publish_admin_action(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    performed_by=user_id,
+                    performed_by_role=user_role,
+                    action="finance_approve" if approved else "finance_reject",
+                    created_by=order.created_by,
+                    notify_roles=["finance_manager", "logistics_manager", "branch_manager"]
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to publish admin action notification: {e}")
 
         return order
 
@@ -466,7 +673,8 @@ class OrderService:
         reason: Optional[str] = None,
         notes: Optional[str] = None,
         driver_id: Optional[str] = None,
-        trip_id: Optional[str] = None
+        trip_id: Optional[str] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Approve or reject order in logistics"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -495,13 +703,83 @@ class OrderService:
             new_status,
             user_id,
             message,
-            reason
+            reason,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
         await self.db.refresh(order)
 
-        # TODO: Send notification to driver and branch manager
+        # Send audit log
+        new_values = {}
+        if driver_id or trip_id:
+            new_values = {"driver_id": driver_id, "trip_id": trip_id}
+
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="approve" if approved else "reject",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} {'approved' if approved else 'rejected'} by logistics",
+            from_status="finance_approved",
+            to_status=new_status,
+            approval_status="approved" if approved else "rejected",
+            reason=reason,
+            new_values=new_values if new_values else None
+        )
+        await audit_client.close()
+
+        # Publish Kafka event for notification service
+        try:
+            from src.services.kafka_producer import order_event_producer
+            if approved:
+                order_event_producer.publish_order_logistics_approved(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    approved_by=user_id,
+                    approved_by_role=user_role,
+                    driver_id=driver_id,
+                    trip_id=trip_id
+                )
+
+                # Publish order.assigned event if driver/trip assigned
+                if driver_id and trip_id:
+                    order_event_producer.publish_order_assigned(
+                        order_id=str(order.id),
+                        order_number=order.order_number,
+                        tenant_id=tenant_id,
+                        driver_id=driver_id,
+                        trip_id=trip_id,
+                        trip_number=f"TRIP-{trip_id[:8]}"
+                    )
+        except Exception as e:
+            # Log but don't fail the order approval
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order logistics approval event: {e}")
+
+        # If admin performed logistics approval, notify managers
+        if user_role == "Admin":
+            try:
+                from src.services.kafka_producer import order_event_producer
+                order_event_producer.publish_admin_action(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    performed_by=user_id,
+                    performed_by_role=user_role,
+                    action="logistics_approve" if approved else "logistics_reject",
+                    created_by=order.created_by,
+                    notify_roles=["logistics_manager", "branch_manager"]
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to publish admin action notification: {e}")
 
         return order
 
@@ -512,7 +790,8 @@ class OrderService:
         user_id: str,
         tenant_id: str,
         reason: Optional[str] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Update order status"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -530,7 +809,8 @@ class OrderService:
             user_id,
             f"Status updated to {new_status}",
             reason,
-            notes
+            notes,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
@@ -555,7 +835,8 @@ class OrderService:
         order_id: str,
         user_id: str,
         tenant_id: str,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
+        user_role: Optional[str] = None
     ) -> Order:
         """Cancel an order"""
         order = await self.get_order_by_id(order_id, tenant_id)
@@ -566,16 +847,50 @@ class OrderService:
         if order.status in [OrderStatus.PICKED_UP, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED]:
             raise ValueError("Order cannot be cancelled in current status")
 
+        old_status = order.status
         await self._update_order_status(
             order,
             OrderStatus.CANCELLED,
             user_id,
             "Order cancelled",
-            reason
+            reason,
+            tenant_id=tenant_id
         )
 
         await self.db.commit()
         await self.db.refresh(order)
+
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="cancel",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} cancelled",
+            from_status=old_status,
+            to_status="cancelled",
+            reason=reason
+        )
+        await audit_client.close()
+
+        # Publish Kafka event for cancellation
+        try:
+            from src.services.kafka_producer import order_event_producer
+            order_event_producer.publish_order_cancelled(
+                order_id=str(order.id),
+                order_number=order.order_number,
+                tenant_id=tenant_id,
+                cancelled_by=user_id,
+                cancelled_by_role=user_role,
+                reason=reason
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish order.cancelled event: {e}")
 
         return order
 
@@ -586,7 +901,8 @@ class OrderService:
         user_id: str,
         notes: str,
         reason: Optional[str] = None,
-        extra_notes: Optional[str] = None
+        extra_notes: Optional[str] = None,
+        tenant_id: Optional[str] = None
     ) -> None:
         """Update order status and create history entry"""
         old_status = order.status
@@ -611,6 +927,49 @@ class OrderService:
         )
         self.db.add(history)
 
+        # Publish Kafka events for status changes
+        status_to_event_type = {
+            OrderStatus.PICKED_UP: "picked_up",
+            OrderStatus.IN_TRANSIT: "in_transit",
+            OrderStatus.DELIVERED: "delivered",
+            OrderStatus.PARTIAL_IN_TRANSIT: "partial_in_transit",
+            OrderStatus.PARTIAL_DELIVERED: "partial_delivered",
+        }
+
+        if new_status in status_to_event_type and tenant_id:
+            try:
+                from src.services.kafka_producer import order_event_producer
+
+                additional_data = {}
+                if new_status == OrderStatus.PICKED_UP:
+                    additional_data = {
+                        "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,
+                        "driver_id": str(order.driver_id) if order.driver_id else None
+                    }
+                elif new_status in [OrderStatus.IN_TRANSIT, OrderStatus.PARTIAL_IN_TRANSIT]:
+                    additional_data = {
+                        "driver_id": str(order.driver_id) if order.driver_id else None,
+                        "trip_id": str(order.trip_id) if order.trip_id else None
+                    }
+                elif new_status in [OrderStatus.DELIVERED, OrderStatus.PARTIAL_DELIVERED]:
+                    additional_data = {
+                        "delivered_at": order.delivered_at.isoformat() if order.delivered_at else None,
+                        "driver_id": str(order.driver_id) if order.driver_id else None,
+                        "trip_id": str(order.trip_id) if order.trip_id else None
+                    }
+
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=tenant_id,
+                    status=status_to_event_type[new_status],
+                    additional_data=additional_data
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to publish order.{status_to_event_type[new_status]} event: {e}")
+
     def _is_valid_status_transition(
         self,
         from_status: OrderStatus,
@@ -622,9 +981,13 @@ class OrderService:
             OrderStatus.SUBMITTED: [OrderStatus.FINANCE_APPROVED, OrderStatus.FINANCE_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_APPROVED: [OrderStatus.LOGISTICS_APPROVED, OrderStatus.LOGISTICS_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
-            OrderStatus.ASSIGNED: [OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
-            OrderStatus.PICKED_UP: [OrderStatus.IN_TRANSIT],
-            OrderStatus.IN_TRANSIT: [OrderStatus.DELIVERED],
+            OrderStatus.LOGISTICS_APPROVED: [OrderStatus.ASSIGNED, OrderStatus.CANCELLED],
+            OrderStatus.LOGISTICS_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
+            OrderStatus.ASSIGNED: [OrderStatus.PARTIAL_IN_TRANSIT, OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED],
+            OrderStatus.PICKED_UP: [OrderStatus.PARTIAL_IN_TRANSIT, OrderStatus.IN_TRANSIT],
+            OrderStatus.PARTIAL_IN_TRANSIT: [OrderStatus.PARTIAL_DELIVERED, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED],
+            OrderStatus.IN_TRANSIT: [OrderStatus.PARTIAL_DELIVERED, OrderStatus.DELIVERED],
+            OrderStatus.PARTIAL_DELIVERED: [OrderStatus.DELIVERED],
             OrderStatus.DELIVERED: [],  # Terminal state
             OrderStatus.CANCELLED: [],  # Terminal state
         }

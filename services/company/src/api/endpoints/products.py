@@ -9,7 +9,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Product, ProductCategory, Branch, ProductBranch
+from src.database import get_db, Product, ProductCategory, Branch, ProductBranch, ProductUnitType
 from src.helpers import validate_category_exists, validate_branch_exists
 from src.schemas import (
     Product as ProductSchema,
@@ -109,7 +109,8 @@ async def list_products(
     # Include category relationship with children
     query = query.options(
         selectinload(Product.branches).selectinload(ProductBranch.branch),
-        selectinload(Product.category).selectinload(ProductCategory.children)
+        selectinload(Product.category).selectinload(ProductCategory.children),
+        selectinload(Product.unit_type)
     )
 
     # Execute query
@@ -148,7 +149,9 @@ async def get_product(
         Product.id == product_id,
         Product.tenant_id == tenant_id
     ).options(
-        selectinload(Product.branches).selectinload(ProductBranch.branch), selectinload(Product.category).selectinload(ProductCategory.children)
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children),
+        selectinload(Product.unit_type)
     )
 
     result = await db.execute(query)
@@ -258,7 +261,8 @@ async def create_product(
         select(Product)
         .options(
         selectinload(Product.branches).selectinload(ProductBranch.branch),
-        selectinload(Product.category).selectinload(ProductCategory.children)
+        selectinload(Product.category).selectinload(ProductCategory.children),
+        selectinload(Product.unit_type)
     )
         .where(Product.id == product.id)
     )
@@ -340,7 +344,8 @@ async def update_product(
         select(Product)
         .options(
         selectinload(Product.branches).selectinload(ProductBranch.branch),
-        selectinload(Product.category).selectinload(ProductCategory.children)
+        selectinload(Product.category).selectinload(ProductCategory.children),
+        selectinload(Product.unit_type)
     )
         .where(Product.id == product.id)
     )
@@ -357,7 +362,7 @@ async def delete_product(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete (deactivate) a product
+    Delete (hard delete) a product
 
     Requires:
     - products:delete
@@ -374,9 +379,11 @@ async def delete_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Soft delete - deactivate product
-    product.is_active = False
+    # Hard delete - remove product from database
+    await db.delete(product)
     await db.commit()
+
+    return None
 
 
 @router.get("/low-stock", response_model=PaginatedResponse)
@@ -414,7 +421,8 @@ async def get_low_stock_products(
     # Include category relationship with children
     query = query.options(
         selectinload(Product.branches).selectinload(ProductBranch.branch),
-        selectinload(Product.category).selectinload(ProductCategory.children)
+        selectinload(Product.category).selectinload(ProductCategory.children),
+        selectinload(Product.unit_type)
     )
 
     # Execute query
@@ -486,7 +494,8 @@ async def bulk_update_products(
         select(Product)
         .options(
         selectinload(Product.branches).selectinload(ProductBranch.branch),
-        selectinload(Product.category).selectinload(ProductCategory.children)
+        selectinload(Product.category).selectinload(ProductCategory.children),
+        selectinload(Product.unit_type)
     )
         .where(Product.id.in_(product_ids))
     )

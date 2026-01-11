@@ -117,6 +117,9 @@ class AuthSettings(Settings, LoggingMixin):
 
     # JWT - Inherits from parent Settings which uses global configuration
 
+    # Company service URL for inter-service communication
+    COMPANY_SERVICE_URL: str = os.getenv("COMPANY_SERVICE_URL", "http://localhost:8002")
+
     # Auth specific settings
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_REQUIRE_UPPERCASE: bool = True
@@ -134,6 +137,11 @@ class AuthSettings(Settings, LoggingMixin):
     OIDC_TOKEN_ENDPOINT: Optional[str] = os.getenv("OIDC_TOKEN_ENDPOINT")
     OIDC_USERINFO_ENDPOINT: Optional[str] = os.getenv("OIDC_USERINFO_ENDPOINT")
     OIDC_JWKS_URI: Optional[str] = os.getenv("OIDC_JWKS_URI")
+
+    # Feature flags for currency and timezone
+    TIMEZONE_FEATURE_ENABLED: bool = os.getenv("TIMEZONE_FEATURE_ENABLED", "true").lower() == "true"
+    DEFAULT_TIMEZONE: str = os.getenv("DEFAULT_TIMEZONE", "Africa/Dar_es_Salaam")  # East Africa Time
+    DEFAULT_CURRENCY: str = os.getenv("DEFAULT_CURRENCY", "TZS")  # Tanzanian Shilling
 
     @property
     def auth_database_url(self) -> str:

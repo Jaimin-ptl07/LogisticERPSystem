@@ -10,13 +10,13 @@ export interface KPICard {
   title: string;
   value: string | number;
   subtitle?: string;
-  color?: 'green' | 'blue' | 'yellow' | 'red' | 'purple';
+  color?: "green" | "blue" | "yellow" | "red" | "purple";
 }
 
 export interface Order {
   id: string;
   customer: string;
-  status: 'pending' | 'loading' | 'on-route' | 'completed';
+  status: "pending" | "loading" | "on-route" | "completed";
   total: number;
   date: string;
   items: number;
@@ -24,7 +24,13 @@ export interface Order {
 
 export interface Trip {
   id: string;
-  status: 'planning' | 'loading' | 'on-route' | 'completed' | 'cancelled' | 'truck-malfunction';
+  status:
+    | "planning"
+    | "loading"
+    | "on-route"
+    | "completed"
+    | "cancelled"
+    | "truck-malfunction";
   branch: string;
   origin?: string;
   destination?: string;
@@ -46,6 +52,9 @@ export interface Trip {
   createdAt?: string;
   capacityUsed?: number;
   capacityTotal?: number;
+  // Time in current status
+  current_status_since?: string;
+  time_in_current_status_minutes?: number;
 }
 
 export interface OrderItem {
@@ -53,7 +62,13 @@ export interface OrderItem {
   order_id?: string;
   customer: string;
   customerAddress?: string;
-  status: 'approved' | 'pending' | 'assigned' | 'loading' | 'on-route' | 'completed';
+  status:
+    | "approved"
+    | "pending"
+    | "assigned"
+    | "loading"
+    | "on-route"
+    | "completed";
   total: number;
   weight: number;
   volume: number;
@@ -89,14 +104,14 @@ export interface Delivery {
   id: string;
   customer: string;
   orderIds: string[];
-  status: 'completed' | 'on-route';
+  status: "completed" | "on-route";
   date: string;
   address: string;
 }
 
 export interface Activity {
   id: string;
-  type: 'order' | 'trip' | 'delivery';
+  type: "order" | "trip" | "delivery";
   action: string;
   description: string;
   timestamp: string;
@@ -111,7 +126,7 @@ export interface Customer {
   location: string;
   homeBranch: string;
   businessType: string;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
   createdAt: string;
 }
 
@@ -132,7 +147,7 @@ export interface Branch {
   location: string;
   manager: string;
   phone: string;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
 }
 
 export interface Product {
@@ -142,7 +157,7 @@ export interface Product {
   category: string;
   unit: string;
   price: number;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
 }
 
 export interface Truck {
@@ -151,7 +166,7 @@ export interface Truck {
   model: string;
   capacity: number;
   driver?: string;
-  status: 'available' | 'on-duty' | 'maintenance';
+  status: "available" | "on-duty" | "maintenance";
 }
 
 export interface Driver {
@@ -160,6 +175,34 @@ export interface Driver {
   phone: string;
   license: string;
   experience: string;
-  status: 'active' | 'inactive';
-  currentTruck?: string;
+  status: "available" | "on_trip" | "off_duty" | "on_leave" | "suspended";
+  currentTruck?: string | null;
+  branch_id?: string | null;
+  user_id?: string | null;
+}
+
+// Loading Stage Types
+export interface PendingItem {
+  order_id: string;
+  customer: string;
+  order_item_id: string;
+  product_name: string;
+  product_code?: string;
+  original_quantity: number;  // From order_items (never modified)
+  assigned_quantity: number;  // Currently assigned (planning stage)
+  remaining_quantity: number;  // Derived: original - assigned across all trips
+  weight_per_unit: number;
+  total_weight: number;
+  item_status: string;
+  max_assignable: number;  // Maximum user can assign (cannot exceed original)
+}
+
+export interface LoadingModalData {
+  tripId: string;
+  pendingItems: PendingItem[];
+  totalWeight: number;
+  capacityTotal: number;
+  capacityUsed?: number;  // Optional, for future use
+  isOverCapacity: boolean;
+  capacityShortage: number;
 }

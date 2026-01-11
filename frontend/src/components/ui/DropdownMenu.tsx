@@ -1,26 +1,42 @@
-import React, { useState, useRef, useEffect } from 'react';
+"use client";
+
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface DropdownMenuProps {
   children: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function DropdownMenu({ children }: DropdownMenuProps) {
+export function DropdownMenu({
+  children,
+  open: controlledOpen,
+  onOpenChange,
+}: DropdownMenuProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setIsOpen = onOpenChange || setInternalOpen;
+
   return (
-    <DropdownMenuProvider>
-      <div className="relative inline-block text-left">
-        {children}
-      </div>
+    <DropdownMenuProvider isOpen={isOpen} setIsOpen={setIsOpen}>
+      <div className="relative inline-block text-left">{children}</div>
     </DropdownMenuProvider>
   );
 }
 
 interface DropdownMenuProviderProps {
   children: React.ReactNode;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
 }
 
-function DropdownMenuProvider({ children }: DropdownMenuProviderProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
+function DropdownMenuProvider({
+  children,
+  isOpen,
+  setIsOpen,
+}: DropdownMenuProviderProps) {
   return (
     <DropdownMenuContext.Provider value={{ isOpen, setIsOpen }}>
       {children}
@@ -33,7 +49,10 @@ interface DropdownMenuTriggerProps {
   asChild?: boolean;
 }
 
-export function DropdownMenuTrigger({ children, asChild = false }: DropdownMenuTriggerProps) {
+export function DropdownMenuTrigger({
+  children,
+  asChild = false,
+}: DropdownMenuTriggerProps) {
   const { isOpen, setIsOpen } = React.useContext(DropdownMenuContext);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -45,67 +64,122 @@ export function DropdownMenuTrigger({ children, asChild = false }: DropdownMenuT
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isOpen, setIsOpen]);
 
-  const trigger = React.cloneElement(
-    children as React.ReactElement,
-    {
-      onClick: () => setIsOpen(!isOpen),
-      'aria-expanded': isOpen,
-      'aria-haspopup': true,
-    }
-  );
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
+  };
+
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children, {
+      onClick: handleClick,
+      "aria-expanded": isOpen,
+      "aria-haspopup": true,
+    } as any);
+  }
 
   return (
-    <div ref={menuRef}>
-      {trigger}
+    <div ref={menuRef} onClick={handleClick}>
+      {children}
     </div>
   );
 }
 
 interface DropdownMenuContentProps {
   children: React.ReactNode;
-  align?: 'start' | 'center' | 'end';
+  align?: "start" | "center" | "end";
   className?: string;
 }
 
 export function DropdownMenuContent({
   children,
-  align = 'end',
-  className = ''
+  align = "end",
+  className = "",
 }: DropdownMenuContentProps) {
-  const { isOpen } = React.useContext(DropdownMenuContext);
+  const { isOpen, setIsOpen } = React.useContext(DropdownMenuContext);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = React.useState<{ top: number; left: number }>(
+    { top: 0, left: 0 }
+  );
+
+  const updatePosition = React.useCallback(() => {
+    const trigger = document.querySelector('[aria-expanded="true"]');
+    if (trigger) {
+      const rect = trigger.getBoundingClientRect();
+      let left = rect.left;
+
+      if (align === "end") {
+        left = rect.right - 192; // 192 = w-48 (12rem)
+      } else if (align === "center") {
+        left = rect.left + rect.width / 2 - 96; // 96 = half of w-48
+      }
+
+      setPosition({
+        top: rect.bottom + window.scrollY + 4, // 4 = mt-2
+        left: Math.max(8, Math.min(left, window.innerWidth - 200)), // Keep within viewport
+      });
+    }
+  }, [align]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleScroll = () => {
+      if (isOpen) {
+        updatePosition();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("scroll", handleScroll, true);
+      window.addEventListener("resize", updatePosition);
+
+      // Calculate initial position
+      updatePosition();
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [isOpen, setIsOpen, updatePosition]);
 
   if (!isOpen) return null;
 
-  const alignmentClasses = {
-    start: 'left-0',
-    center: 'left-1/2 transform -translate-x-1/2',
-    end: 'right-0'
-  };
-
-  return (
+  const content = (
     <div
-      className={`absolute z-[9999] mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none ${alignmentClasses[align]} ${className}`}
+      ref={menuRef}
+      className={`z-50 mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-opacity-5 focus:outline-none ${className}`}
       role="menu"
       aria-orientation="vertical"
       aria-labelledby="menu-button"
       style={{
-        zIndex: 99999,
-        pointerEvents: 'auto'
+        position: "absolute",
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        pointerEvents: "auto",
       }}
     >
-      <div className="py-1" role="none" style={{ pointerEvents: 'auto' }}>
+      <div className="py-1" role="none" style={{ pointerEvents: "auto" }}>
         {children}
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }
 
 interface DropdownMenuItemProps {
@@ -119,63 +193,36 @@ export function DropdownMenuItem({
   children,
   onClick,
   disabled = false,
-  className = ''
+  className = "",
 }: DropdownMenuItemProps) {
   const { setIsOpen } = React.useContext(DropdownMenuContext);
 
-  const handleClick = (e: React.MouseEvent) => {
-    console.log('DropdownMenuItem clicked - event triggered'); // Debug log
-    e.preventDefault();
-    e.stopPropagation();
+  const handleClick = () => {
+    if (disabled) return;
 
-    if (disabled) {
-      console.log('Item is disabled, ignoring click');
-      return;
-    }
-
-    if (onClick) {
-      console.log('Calling onClick handler'); // Debug log
-      try {
-        onClick();
-        console.log('onClick handler executed successfully');
-      } catch (error) {
-        console.error('Error in onClick handler:', error);
-      }
-    } else {
-      console.log('No onClick handler provided');
-    }
-
+    // Close the menu first
     setIsOpen(false);
-  };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    console.log('Mouse down on menu item'); // Debug log
-    // Don't prevent default - let the click event fire naturally
+    // Execute the onClick handler after a small delay to allow menu to close
+    if (onClick) {
+      setTimeout(() => {
+        onClick();
+      }, 0);
+    }
   };
 
   return (
     <button
       type="button"
       className={`block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:bg-gray-100 focus:text-gray-900 ${
-        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:bg-gray-200'
+        disabled
+          ? "opacity-50 cursor-not-allowed"
+          : "cursor-pointer active:bg-gray-200"
       } ${className}`}
       role="menuitem"
       onClick={handleClick}
-      onDoubleClick={(e) => {
-        console.log('Double click on menu item');
-        if (!disabled && onClick) {
-          console.log('Calling onClick from doubleClick');
-          try {
-            onClick();
-            setIsOpen(false);
-          } catch (error) {
-            console.error('Error in onClick handler (from doubleClick):', error);
-          }
-        }
-      }}
       disabled={disabled}
-      onMouseDown={handleMouseDown}
-      style={{ pointerEvents: 'auto' }}
+      style={{ pointerEvents: "auto" }}
     >
       {children}
     </button>

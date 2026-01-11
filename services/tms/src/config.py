@@ -56,11 +56,18 @@ class Settings(BaseSettings):
     request_timeout: int = 30
     database_connect_timeout: int = 10
 
+    # Orders Service Settings
+    ORDERS_SERVICE_TIMEOUT: int = 10  # Connection timeout
+    ORDERS_SERVICE_BULK_TIMEOUT: int = 15  # Bulk request timeout
+
     # Auth Service URL
     AUTH_SERVICE_URL: str = "http://auth-service:8001"
 
     # Orders Service URL
     ORDERS_SERVICE_URL: str = "http://orders-service:8003"
+
+    # Kafka Settings
+    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
 
     class Config:
         env_file = ".env"

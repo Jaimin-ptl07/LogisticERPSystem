@@ -1,5 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQuery } from './baseApi'
+import { getProductCategoryResponse, getRoleAPIResponse } from '@/types/common'
 
 // Types
 export interface Branch {
@@ -26,13 +27,16 @@ export interface Branch {
 export interface User {
   id: string
   tenant_id: string
+  user_id?: string
   email: string
   first_name: string
   last_name: string
   phone_number?: string
+  phone?: string
   profile_type: 'staff' | 'driver' | 'admin'
-  role_id: number
-  branch_id?: string
+  role_id: number | string
+  branch_id?: string // Deprecated: Use branch_ids for multiple branches
+  branch_ids?: string[] // New: Multiple branch assignments
   is_active: boolean
   is_superuser: boolean
   last_login?: string
@@ -40,13 +44,52 @@ export interface User {
   updated_at?: string
   role?: Role
   branch?: Branch
+  branches?: Branch[] // New: All assigned branches
   profile?: UserProfile
   documents?: UserDocument[]
+
+  // Employee profile fields (from backend EmployeeProfile)
+  employee_code?: string
+  employee_id?: string
+  date_of_birth?: string
+  gender?: 'male' | 'female' | 'other'
+  blood_group?: string
+  emergency_contact_name?: string
+  emergency_contact_phone?: string
+  emergency_contact_number?: string
+  address?: string
+  city?: string
+  state?: string
+  postal_code?: string
+  country?: string
+  hire_date?: string
+  date_of_joining?: string
+  employment_type?: string
+  department?: string
+  designation?: string
+  reports_to?: string
+  salary?: number
+  bank_account_number?: string
+  bank_name?: string
+  bank_ifsc?: string
+  pan_number?: string
+  aadhaar_number?: string
+  aadhar_number?: string
+  passport_number?: string
+  marital_status?: 'single' | 'married' | 'divorced' | 'widowed'
+  nationality?: string
+  reporting_manager_id?: string
+  // Nested address objects
+  current_address?: Address
+  permanent_address?: Address
+  // Nested bank details
+  bank_details?: BankDetails
 }
 
 export interface Role {
   id: number
   name: string
+  role_name?: string  // Alternative field name from auth service
   description?: string
   tenant_id: string
   permissions: Permission[]
@@ -150,6 +193,30 @@ export interface UserDocument {
   verified_by?: string
 }
 
+export interface AuditLog {
+  id: string
+  tenant_id: string
+  user_id: string
+  user_name: string | null
+  user_email: string | null
+  user_role: string | null
+  action: string
+  module: string
+  entity_type: string
+  entity_id: string
+  description: string
+  old_values: Record<string, any> | null
+  new_values: Record<string, any> | null
+  from_status: string | null
+  to_status: string | null
+  approval_status: string | null
+  reason: string | null
+  ip_address: string | null
+  user_agent: string | null
+  service_name: string | null
+  created_at: string
+}
+
 export interface Customer {
   id: string
   tenant_id: string
@@ -158,17 +225,26 @@ export interface Customer {
   name: string
   phone?: string
   email?: string
+  contact_person_name?: string
   address?: string
   city?: string
   state?: string
   postal_code?: string
-  business_type?: string
+  business_type?: string  // Deprecated - old enum
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
   credit_limit: number
   pricing_tier: string
   is_active: boolean
   created_at: string
   updated_at?: string
   home_branch?: Branch
+  business_type_relation?: BusinessTypeModel  // Deprecated - single business type
+  business_types?: BusinessTypeModel[]  // New - multiple business types
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface Vehicle {
@@ -180,15 +256,21 @@ export interface Vehicle {
   model?: string
   year?: number
   vehicle_type?: string
+  vehicle_type_id?: string
   capacity_weight?: number
   capacity_volume?: number
   status: string
   last_maintenance?: string
   next_maintenance?: string
+  // Odometer and fuel economy tracking
+  current_odometer?: number
+  current_fuel_economy?: number
+  last_odometer_update?: string
   is_active: boolean
   created_at: string
   updated_at?: string
   branch?: Branch
+  vehicle_type_relation?: VehicleTypeModel
 }
 
 export interface ProductCategory {
@@ -204,16 +286,76 @@ export interface ProductCategory {
   children?: ProductCategory[]
 }
 
+export interface ProductUnitType {
+  id: string
+  tenant_id: string
+  code: string
+  name: string
+  abbreviation?: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
+export interface BusinessTypeModel {
+  id: string
+  tenant_id: string
+  name: string
+  code: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
+// Union type for business types API response (handles both array and paginated formats)
+export type BusinessTypesListResponse = BusinessTypeModel[] | {
+  items: BusinessTypeModel[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+};
+
+export interface VehicleTypeModel {
+  id: string
+  tenant_id: string
+  name: string
+  code: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
+export interface ProductUnitType {
+  id: string
+  tenant_id: string
+  code: string
+  name: string
+  abbreviation?: string
+  description?: string
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
 export interface Product {
   id: string
   tenant_id: string
   category_id?: string
+  unit_type_id?: string
   code: string
   name: string
   description?: string
   unit_price: number
   special_price?: number
-  weight?: number
+  // Weight configuration - supports fixed and variable weight types
+  weight_type?: 'fixed' | 'variable'
+  weight?: number  // Deprecated - use fixed_weight
+  fixed_weight?: number  // For FIXED weight type
+  weight_unit?: string  // Weight unit (kg, lb, g, etc.)
   length?: number
   width?: number
   height?: number
@@ -226,6 +368,9 @@ export interface Product {
   created_at: string
   updated_at?: string
   category?: ProductCategory
+  unit_type?: ProductUnitType
+  available_for_all_branches?:boolean
+  branches?:object[]
 }
 
 export interface PricingRule {
@@ -263,39 +408,58 @@ export interface CustomerCreate {
   name: string
   phone?: string
   email?: string
+  contact_person_name?: string
   address?: string
   city?: string
   state?: string
   postal_code?: string
-  business_type?: string
+  business_type?: string  // Deprecated - old enum
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
+  branch_ids?: string[]
+  available_for_all_branches?: boolean
   credit_limit?: number
   pricing_tier?: string
   is_active?: boolean
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface VehicleCreate {
-  branch_id?: string
+  branch_ids?: string[]
   plate_number: string
   make?: string
   model?: string
   year?: number
   vehicle_type?: string
+  vehicle_type_id?:string
   capacity_weight?: number
   capacity_volume?: number
+  available_for_all_branches?:boolean
   status?: string
   last_maintenance?: string
   next_maintenance?: string
+  // Odometer and fuel economy tracking
+  current_odometer?: number
+  current_fuel_economy?: number
   is_active?: boolean
 }
 
 export interface ProductCreate {
   category_id?: string
+  unit_type_id?: string
   code: string
   name: string
   description?: string
   unit_price: number
   special_price?: number
-  weight?: number
+  // Weight configuration - supports fixed and variable weight types
+  weight_type?: 'fixed' | 'variable'
+  weight?: number  // Deprecated - use fixed_weight
+  fixed_weight?: number  // For FIXED weight type
+  weight_unit?: string  // Weight unit (kg, lb, g, etc.)
   length?: number
   width?: number
   height?: number
@@ -305,12 +469,43 @@ export interface ProductCreate {
   max_stock_level?: number
   current_stock?: number
   is_active?: boolean
+  available_for_all_branches?:boolean
 }
 
 export interface ProductCategoryCreate {
   name: string
   description?: string
   parent_id?: string
+  is_active?: boolean
+}
+
+export interface ProductUnitTypeCreate {
+  code: string
+  name: string
+  abbreviation?: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface ProductUnitTypeUpdate {
+  code?: string
+  name?: string
+  abbreviation?: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface BusinessTypeModelCreate {
+  name: string
+  code: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface VehicleTypeModelCreate {
+  name: string
+  code: string
+  description?: string
   is_active?: boolean
 }
 
@@ -334,7 +529,8 @@ export interface UserCreate {
   phone?: string
   profile_type?: 'staff' | 'driver' | 'admin'
   role_id?: string
-  branch_id?: string
+  branch_id?: string // Deprecated: Use branch_ids for multiple branches
+  branch_ids?: string[] // New: Multiple branch assignments
   is_active?: boolean
   send_invitation?: boolean
 }
@@ -368,6 +564,17 @@ export interface RoleUpdate {
   name?: string
   description?: string
   permission_ids?: number[]
+}
+
+// Auth service Role type (from roles table in auth database)
+export interface AuthRole {
+  id: number
+  name: string
+  description?: string
+  is_system: boolean
+  tenant_id: string
+  created_at: string
+  updated_at?: string
 }
 
 export interface UserProfileCreate {
@@ -420,7 +627,7 @@ export interface UserProfileUpdate {
 export const companyApi = createApi({
   reducerPath: 'companyApi',
   baseQuery: baseQuery,
-  tagTypes: ['Branch', 'Customer', 'Vehicle', 'Product', 'ProductCategory', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument'],
+  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'ProductUnitType', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument', 'AuditLog'],
   endpoints: (builder) => ({
     // Branch endpoints
     getBranches: builder.query<{ items: Branch[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
@@ -507,19 +714,16 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['Customer'],
     }),
-    getBusinessTypes: builder.query<string[], void>({
-      query: () => 'company/customers/business-types/',
-      providesTags: ['Customer'],
-    }),
 
     // Vehicle endpoints
-    getVehicles: builder.query<{ items: Vehicle[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; vehicle_type?: string; status?: string; branch_id?: string; is_active?: boolean }>({
-      query: ({ page = 1, per_page = 20, search, vehicle_type, status, branch_id, is_active }) => {
+    getVehicles: builder.query<{ items: Vehicle[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; vehicle_type?: string; vehicle_type_id?: string; status?: string; branch_id?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, vehicle_type, vehicle_type_id, status, branch_id, is_active }) => {
         const params = new URLSearchParams()
         params.append('page', page.toString())
         params.append('per_page', per_page.toString())
         if (search) params.append('search', search)
         if (vehicle_type) params.append('vehicle_type', vehicle_type)
+        if (vehicle_type_id) params.append('vehicle_type_id', vehicle_type_id)
         if (status) params.append('status', status)
         if (branch_id) params.append('branch_id', branch_id)
         if (is_active !== undefined) params.append('is_active', is_active.toString())
@@ -573,17 +777,13 @@ export const companyApi = createApi({
       },
       providesTags: ['Vehicle'],
     }),
-    getVehicleTypes: builder.query<string[], void>({
-      query: () => 'company/vehicles/vehicle-types',
-      providesTags: ['Vehicle'],
-    }),
     getVehicleStatusOptions: builder.query<string[], void>({
       query: () => 'company/vehicles/status-options',
       providesTags: ['Vehicle'],
     }),
 
     // Product Category endpoints
-    getProductCategories: builder.query<ProductCategory[], { page?: number; per_page?: number; search?: string; parent_id?: string; is_active?: boolean; include_children?: boolean }>({
+    getProductCategories: builder.query<getProductCategoryResponse, { page?: number; per_page?: number; search?: string; parent_id?: string; is_active?: boolean; include_children?: boolean }>({
       query: ({ page = 1, per_page = 20, search, parent_id, is_active, include_children = true }) => {
         const params = new URLSearchParams()
         params.append('page', page.toString())
@@ -628,8 +828,152 @@ export const companyApi = createApi({
       invalidatesTags: ['ProductCategory'],
     }),
 
+    // Product Unit Type endpoints
+    getProductUnitTypes: builder.query<{ items: ProductUnitType[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, is_active }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (search) params.append('search', search)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/product-unit-types?${params}`
+      },
+      providesTags: ['ProductUnitType'],
+    }),
+    getAllProductUnitTypes: builder.query<ProductUnitType[], { is_active?: boolean }>({
+      query: ({ is_active = true }) => {
+        const params = new URLSearchParams()
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/product-unit-types/all?${params}`
+      },
+      providesTags: ['ProductUnitType'],
+    }),
+    getProductUnitType: builder.query<ProductUnitType, string>({
+      query: (id) => `company/product-unit-types/${id}`,
+      providesTags: ['ProductUnitType'],
+    }),
+    createProductUnitType: builder.mutation<ProductUnitType, ProductUnitTypeCreate>({
+      query: (unitType) => ({
+        url: 'company/product-unit-types/',
+        method: 'POST',
+        body: unitType,
+      }),
+      invalidatesTags: ['ProductUnitType'],
+    }),
+    updateProductUnitType: builder.mutation<ProductUnitType, { id: string; unitType: Partial<ProductUnitTypeUpdate> }>({
+      query: ({ id, unitType }) => ({
+        url: `company/product-unit-types/${id}`,
+        method: 'PUT',
+        body: unitType,
+      }),
+      invalidatesTags: ['ProductUnitType'],
+    }),
+    deleteProductUnitType: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/product-unit-types/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['ProductUnitType'],
+    }),
+
+    // BusinessType endpoints
+    getBusinessTypes: builder.query<{ items: BusinessTypeModel[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, is_active }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (search) params.append('search', search)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/business-types?${params}`
+      },
+      providesTags: ['BusinessTypeModel'],
+    }),
+    getAllBusinessTypes: builder.query<BusinessTypesListResponse, { is_active?: boolean }>({
+      query: ({ is_active = true }) => {
+        const params = new URLSearchParams()
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/business-types/all?${params}`
+      },
+      providesTags: ['BusinessTypeModel'],
+    }),
+    getBusinessType: builder.query<BusinessTypeModel, string>({
+      query: (id) => `company/business-types/${id}`,
+      providesTags: ['BusinessTypeModel'],
+    }),
+    createBusinessType: builder.mutation<BusinessTypeModel, BusinessTypeModelCreate>({
+      query: (businessType) => ({
+        url: 'company/business-types/',
+        method: 'POST',
+        body: businessType,
+      }),
+      invalidatesTags: ['BusinessTypeModel', 'Customer'],
+    }),
+    updateBusinessType: builder.mutation<BusinessTypeModel, { id: string; businessType: Partial<BusinessTypeModelCreate> }>({
+      query: ({ id, businessType }) => ({
+        url: `company/business-types/${id}`,
+        method: 'PUT',
+        body: businessType,
+      }),
+      invalidatesTags: ['BusinessTypeModel', 'Customer'],
+    }),
+    deleteBusinessType: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/business-types/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['BusinessTypeModel', 'Customer'],
+    }),
+
+    // VehicleType endpoints
+    getVehicleTypes: builder.query<{ items: VehicleTypeModel[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
+      query: ({ page = 1, per_page = 20, search, is_active }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (search) params.append('search', search)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/vehicle-types?${params}`
+      },
+      providesTags: ['VehicleTypeModel'],
+    }),
+    getAllVehicleTypes: builder.query<VehicleTypeModel[], { is_active?: boolean }>({
+      query: ({ is_active = true }) => {
+        const params = new URLSearchParams()
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/vehicle-types/all?${params}`
+      },
+      providesTags: ['VehicleTypeModel'],
+    }),
+    getVehicleType: builder.query<VehicleTypeModel, string>({
+      query: (id) => `company/vehicle-types/${id}`,
+      providesTags: ['VehicleTypeModel'],
+    }),
+    createVehicleType: builder.mutation<VehicleTypeModel, VehicleTypeModelCreate>({
+      query: (vehicleType) => ({
+        url: 'company/vehicle-types/',
+        method: 'POST',
+        body: vehicleType,
+      }),
+      invalidatesTags: ['VehicleTypeModel', 'Vehicle'],
+    }),
+    updateVehicleType: builder.mutation<VehicleTypeModel, { id: string; vehicleType: Partial<VehicleTypeModelCreate> }>({
+      query: ({ id, vehicleType }) => ({
+        url: `company/vehicle-types/${id}`,
+        method: 'PUT',
+        body: vehicleType,
+      }),
+      invalidatesTags: ['VehicleTypeModel', 'Vehicle'],
+    }),
+    deleteVehicleType: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/vehicle-types/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['VehicleTypeModel', 'Vehicle'],
+    }),
+
     // Product endpoints
-    getProducts: builder.query<{ items: Product[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; category_id?: string; min_price?: number; max_price?: number; is_active?: boolean; low_stock?: boolean }>({
+    getProducts: builder.query<{ items: Product[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number;branch_id?: string; search?: string; category_id?: string; min_price?: number; max_price?: number; is_active?: boolean; low_stock?: boolean }>({
       query: ({ page = 1, per_page = 20, search, category_id, min_price, max_price, is_active, low_stock }) => {
         const params = new URLSearchParams()
         params.append('page', page.toString())
@@ -777,10 +1121,36 @@ export const companyApi = createApi({
       invalidatesTags: ['User', 'UserProfile'],
     }),
     deleteUser: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `company/users/${id}`,
-        method: 'DELETE',
-      }),
+      queryFn: async (id, _queryApi, _extraOptions, baseQuery) => {
+        // First, get the user from company service to find the auth user_id
+        const userResponse = await baseQuery({
+          url: `company/users/${id}`,
+          method: 'GET',
+        })
+
+        if (userResponse.error) {
+          return { error: userResponse.error }
+        }
+
+        const user = userResponse.data as User
+        const authUserId = user.user_id
+
+        if (!authUserId) {
+          return { error: { status: 400, data: { message: 'User does not have an associated auth account' } } }
+        }
+
+        // Delete from auth service (this will cascade to company service)
+        const deleteResponse = await baseQuery({
+          url: `auth/users/${authUserId}`,
+          method: 'DELETE',
+        })
+
+        if (deleteResponse.error) {
+          return { error: deleteResponse.error }
+        }
+
+        return { data: undefined }
+      },
       invalidatesTags: ['User'],
     }),
     inviteUser: builder.mutation<void, UserInvitation>({
@@ -813,7 +1183,7 @@ export const companyApi = createApi({
       }),
     }),
     bulkUpdateUsers: builder.mutation<User[], { updates: Array<{ id: string; [key: string]: any }> }>({
-      query: (updates) => ({
+      query: ({ updates }) => ({
         url: 'company/users/bulk-update',
         method: 'POST',
         body: updates,
@@ -843,11 +1213,10 @@ export const companyApi = createApi({
     }),
 
     // Role Management endpoints
-    getRoles: builder.query<Role[], { include_permissions?: boolean }>({
+    getRoles: builder.query<getRoleAPIResponse, { include_permissions?: boolean }>({
       query: ({ include_permissions = true }) => {
-        const params = new URLSearchParams()
-        params.append('include_permissions', include_permissions.toString())
-        return `company/roles?${params}`
+        // Now uses auth service roles via company service proxy
+        return 'company/roles/auth-roles'
       },
       providesTags: ['Role'],
     }),
@@ -880,6 +1249,12 @@ export const companyApi = createApi({
     }),
     getPermissions: builder.query<Permission[], void>({
       query: () => 'company/roles/permissions',
+      providesTags: ['Role'],
+    }),
+
+    // Get roles from auth service (via company service proxy)
+    getAuthRoles: builder.query<AuthRole[], void>({
+      query: () => 'company/roles/auth-roles',
       providesTags: ['Role'],
     }),
 
@@ -974,6 +1349,93 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['UserDocument'],
     }),
+
+    // Audit Logs endpoints
+    getAuditLogs: builder.query<{
+      items: AuditLog[];
+      total: number;
+      page: number;
+      per_page: number;
+      pages: number;
+    }, {
+      page?: number;
+      per_page?: number;
+      date_from?: string;
+      date_to?: string;
+      user_id?: string;
+      module?: string;
+      action?: string;
+      entity_type?: string;
+      entity_id?: string;
+    }>({
+      query: ({
+        page = 1,
+        per_page = 50,
+        date_from,
+        date_to,
+        user_id,
+        module,
+        action,
+        entity_type,
+        entity_id,
+      }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (date_from) params.append('date_from', date_from)
+        if (date_to) params.append('date_to', date_to)
+        if (user_id) params.append('user_id', user_id)
+        if (module) params.append('module', module)
+        if (action) params.append('action', action)
+        if (entity_type) params.append('entity_type', entity_type)
+        if (entity_id) params.append('entity_id', entity_id)
+        return `audit/logs?${params}`
+      },
+      providesTags: ['AuditLog'],
+    }),
+    getAuditSummary: builder.query<{
+      total: number;
+      by_module: Array<{ module: string; count: number }>;
+      by_action: Array<{ action: string; count: number }>;
+      top_users: Array<{ user_id: string; user_name: string | null; count: number }>;
+    }, {
+      date_from?: string;
+      date_to?: string;
+    }>({
+      query: ({ date_from, date_to }) => {
+        const params = new URLSearchParams()
+        if (date_from) params.append('date_from', date_from)
+        if (date_to) params.append('date_to', date_to)
+        return `audit/logs/summary?${params}`
+      },
+      providesTags: ['AuditLog'],
+    }),
+    exportAuditLogs: builder.query<Blob, {
+      date_from?: string;
+      date_to?: string;
+      user_id?: string;
+      module?: string;
+      action?: string;
+      entity_type?: string;
+      entity_id?: string;
+    }>({
+      query: ({ date_from, date_to, user_id, module, action, entity_type, entity_id }) => {
+        const params = new URLSearchParams()
+        if (date_from) params.append('date_from', date_from)
+        if (date_to) params.append('date_to', date_to)
+        if (user_id) params.append('user_id', user_id)
+        if (module) params.append('module', module)
+        if (action) params.append('action', action)
+        if (entity_type) params.append('entity_type', entity_type)
+        if (entity_id) params.append('entity_id', entity_id)
+        return {
+          url: `audit/logs/export?${params}`,
+          method: 'GET',
+          responseHandler: (response) => response.blob(),
+        }
+      },
+      providesTags: ['AuditLog'],
+    }),
   }),
 })
 
@@ -992,7 +1454,6 @@ export const {
   useCreateCustomerMutation,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
-  useGetBusinessTypesQuery,
   useGetVehiclesQuery,
   useLazyGetVehiclesQuery,
   useGetVehicleQuery,
@@ -1001,7 +1462,6 @@ export const {
   useDeleteVehicleMutation,
   useUpdateVehicleStatusMutation,
   useGetAvailableVehiclesQuery,
-  useGetVehicleTypesQuery,
   useGetVehicleStatusOptionsQuery,
   useGetProductCategoriesQuery,
   useGetProductCategoryTreeQuery,
@@ -1009,6 +1469,24 @@ export const {
   useCreateProductCategoryMutation,
   useUpdateProductCategoryMutation,
   useDeleteProductCategoryMutation,
+  useGetProductUnitTypesQuery,
+  useGetAllProductUnitTypesQuery,
+  useGetProductUnitTypeQuery,
+  useCreateProductUnitTypeMutation,
+  useUpdateProductUnitTypeMutation,
+  useDeleteProductUnitTypeMutation,
+  useGetBusinessTypesQuery,
+  useGetAllBusinessTypesQuery,
+  useGetBusinessTypeQuery,
+  useCreateBusinessTypeMutation,
+  useUpdateBusinessTypeMutation,
+  useDeleteBusinessTypeMutation,
+  useGetVehicleTypesQuery,
+  useGetAllVehicleTypesQuery,
+  useGetVehicleTypeQuery,
+  useCreateVehicleTypeMutation,
+  useUpdateVehicleTypeMutation,
+  useDeleteVehicleTypeMutation,
   useGetProductsQuery,
   useLazyGetProductsQuery,
   useGetProductQuery,
@@ -1041,6 +1519,7 @@ export const {
   useCreateRoleMutation,
   useUpdateRoleMutation,
   useDeleteRoleMutation,
+  useGetAuthRolesQuery,  // Get roles from auth service via company service
   useGetPermissionsQuery,
   // User Profile hooks
   useGetUserProfileQuery,
@@ -1056,4 +1535,11 @@ export const {
   useUploadUserDocumentMutation,
   useVerifyUserDocumentMutation,
   useDeleteUserDocumentMutation,
+  // Audit Logs hooks
+  useGetAuditLogsQuery,
+  useLazyGetAuditLogsQuery,
+  useGetAuditSummaryQuery,
+  useLazyGetAuditSummaryQuery,
+  useExportAuditLogsQuery,
+  useLazyExportAuditLogsQuery,
 } = companyApi

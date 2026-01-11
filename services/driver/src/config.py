@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     TMS_API_URL: str = os.getenv("TMS_API_URL", "http://tms-service:8004")
     TMS_API_TIMEOUT: int = int(os.getenv("TMS_API_TIMEOUT", "30"))
 
+    # Orders Service Configuration
+    ORDERS_API_URL: str = os.getenv("ORDERS_API_URL", "http://orders-service:8003")
+    ORDERS_API_TIMEOUT: int = int(os.getenv("ORDERS_API_TIMEOUT", "30"))
+
+    # Company Service Configuration
+    COMPANY_API_URL: str = os.getenv("COMPANY_API_URL", "http://company-service:8002")
+    COMPANY_API_TIMEOUT: int = int(os.getenv("COMPANY_API_TIMEOUT", "30"))
+
     # Redis Configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379")
 
@@ -52,7 +60,7 @@ class Settings(BaseSettings):
 
     # Global JWT Configuration (shared across services)
     GLOBAL_JWT_SECRET: str = os.getenv(
-        "JWT_SECRET",
+        "GLOBAL_JWT_SECRET",
         "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
     )
     GLOBAL_JWT_ALGORITHM: str = os.getenv("GLOBAL_JWT_ALGORITHM", "HS256")

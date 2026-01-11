@@ -17,7 +17,9 @@ export interface User {
   id: string;
   email: string;
   role_id: number;
-  tenant_id?: string | null;  // Nullable for super admins
+  role_name?: string; // Consistent across tenants
+  is_system_role?: boolean; // Whether this is a system role
+  tenant_id?: string | null; // Nullable for super admins
   first_name: string;
   last_name: string;
   is_active: boolean;
@@ -28,14 +30,18 @@ export interface User {
   login_attempts?: number;
   locked_until?: string;
   role?: {
-    id: number;
+    id: string; // Changed to string to match auth service UUID
     name: string;
     description?: string;
+    is_system?: boolean;
   };
   tenant?: {
     id: string;
     name: string;
     domain?: string;
+    settings?: string; // JSON string of tenant settings (currency, timezone)
+    is_active?: boolean;
+    created_at?: string;
   };
 }
 
@@ -47,14 +53,14 @@ class ApiHelper {
 
   // Get the stored token from localStorage and verify with cookies
   getToken(): string | null {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       // First check if we have a recently refreshed token
       if (this.latestAccessToken) {
         return this.latestAccessToken;
       }
 
       // Get token from localStorage
-      const token = localStorage.getItem('access_token');
+      const token = localStorage.getItem("access_token");
 
       if (!token) {
         return null;
@@ -66,11 +72,11 @@ class ApiHelper {
 
       if (!isRecentRefresh) {
         // Verify token exists in cookie (server-side validation)
-        const cookies = document.cookie.split(';');
+        const cookies = document.cookie.split(";");
         let cookieToken = null;
         for (const cookie of cookies) {
-          const [name, value] = cookie.trim().split('=');
-          if (name === 'access_token') {
+          const [name, value] = cookie.trim().split("=");
+          if (name === "access_token") {
             cookieToken = value;
             break;
           }
@@ -78,6 +84,7 @@ class ApiHelper {
 
         // If token doesn't exist in cookie or doesn't match, logout
         if (!cookieToken || cookieToken !== token) {
+          console.warn("Token validation failed: mismatch or missing cookie");
           this.logout();
           return null;
         }
@@ -90,13 +97,13 @@ class ApiHelper {
 
   // Get refresh token from localStorage
   getRefreshToken(): string | null {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       // First check if we have a recently refreshed token
       if (this.latestRefreshToken) {
         return this.latestRefreshToken;
       }
 
-      return localStorage.getItem('refresh_token');
+      return localStorage.getItem("refresh_token");
     }
     return null;
   }
@@ -108,7 +115,7 @@ class ApiHelper {
 
   // Notify all subscribers that refresh is complete
   private notifyRefreshSubscribers(token: string | null): void {
-    this.refreshSubscribers.forEach(callback => callback(token));
+    this.refreshSubscribers.forEach((callback) => callback(token));
     this.refreshSubscribers = [];
   }
 
@@ -116,12 +123,12 @@ class ApiHelper {
   public async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
     const token = this.getToken();
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string> || {}),
+      "Content-Type": "application/json",
+      ...((options.headers as Record<string, string>) || {}),
     };
 
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
     // Make the initial request
@@ -150,7 +157,7 @@ class ApiHelper {
           } else {
             // Refresh failed, logout user
             this.logout();
-            window.location.href = '/login';
+            window.location.href = "/login";
             return response;
           }
         } else {
@@ -181,7 +188,7 @@ class ApiHelper {
           } else {
             // Refresh failed, logout user
             this.logout();
-            window.location.href = '/login';
+            window.location.href = "/login";
             return response;
           }
         }
@@ -191,7 +198,7 @@ class ApiHelper {
         this.latestAccessToken = null;
         this.latestRefreshToken = null;
         this.logout();
-        window.location.href = '/login';
+        window.location.href = "/login";
         return response;
       }
     }
@@ -208,10 +215,10 @@ class ApiHelper {
     }
 
     try {
-      const response = await fetch('/api/auth/refresh', {
-        method: 'POST',
+      const response = await fetch("/api/auth/refresh", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
@@ -238,17 +245,17 @@ class ApiHelper {
 
   // Login
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(credentials),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Login failed');
+      throw new Error(error.detail || "Login failed");
     }
 
     return response.json();
@@ -256,7 +263,7 @@ class ApiHelper {
 
   // Get current user
   async getCurrentUser(): Promise<User> {
-    const response = await this.authenticatedFetch('/api/auth/me');
+    const response = await this.authenticatedFetch("/api/auth/me");
 
     if (!response.ok) {
       const error = await response.json();
@@ -273,11 +280,13 @@ class ApiHelper {
 
   // Super Admin: Get all tenants/companies
   async getAllTenants(): Promise<any[]> {
-    const response = await this.authenticatedFetch('/api/super-admin/companies');
+    const response = await this.authenticatedFetch(
+      "/api/super-admin/companies"
+    );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to fetch companies');
+      throw new Error(error.detail || "Failed to fetch companies");
     }
 
     return response.json();
@@ -285,14 +294,17 @@ class ApiHelper {
 
   // Super Admin: Create new company with admin
   async createCompanyWithAdmin(companyData: any): Promise<any> {
-    const response = await this.authenticatedFetch('/api/super-admin/companies', {
-      method: 'POST',
-      body: JSON.stringify(companyData),
-    });
+    const response = await this.authenticatedFetch(
+      "/api/super-admin/companies",
+      {
+        method: "POST",
+        body: JSON.stringify(companyData),
+      }
+    );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to create company');
+      throw new Error(error.detail || "Failed to create company");
     }
 
     return response.json();
@@ -300,14 +312,14 @@ class ApiHelper {
 
   // Super Admin: Create admin user for tenant
   async createAdminUser(userData: any): Promise<any> {
-    const response = await this.authenticatedFetch('/api/super-admin/users', {
-      method: 'POST',
+    const response = await this.authenticatedFetch("/api/super-admin/users", {
+      method: "POST",
       body: JSON.stringify(userData),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to create admin user');
+      throw new Error(error.detail || "Failed to create admin user");
     }
 
     return response.json();
@@ -315,11 +327,11 @@ class ApiHelper {
 
   // Super Admin: Get companies statistics
   async getCompaniesStats(): Promise<any> {
-    const response = await this.authenticatedFetch('/api/super-admin/stats');
+    const response = await this.authenticatedFetch("/api/super-admin/stats");
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to fetch statistics');
+      throw new Error(error.detail || "Failed to fetch statistics");
     }
 
     return response.json();
@@ -327,14 +339,17 @@ class ApiHelper {
 
   // Super Admin: Update tenant status
   async updateTenantStatus(tenantId: string, isActive: boolean): Promise<any> {
-    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ is_active: isActive }),
-    });
+    const response = await this.authenticatedFetch(
+      `/api/super-admin/companies/${tenantId}/status`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ is_active: isActive }),
+      }
+    );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to update company status');
+      throw new Error(error.detail || "Failed to update company status");
     }
 
     return response.json();
@@ -342,14 +357,17 @@ class ApiHelper {
 
   // Super Admin: Update tenant details (name, domain, settings)
   async updateTenant(tenantId: string, updateData: any): Promise<any> {
-    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updateData),
-    });
+    const response = await this.authenticatedFetch(
+      `/api/super-admin/companies/${tenantId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(updateData),
+      }
+    );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to update company');
+      throw new Error(error.detail || "Failed to update company");
     }
 
     return response.json();
@@ -357,11 +375,13 @@ class ApiHelper {
 
   // Super Admin: Get tenant by ID
   async getTenantById(tenantId: string): Promise<any> {
-    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}`);
+    const response = await this.authenticatedFetch(
+      `/api/super-admin/companies/${tenantId}`
+    );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to fetch company details');
+      throw new Error(error.detail || "Failed to fetch company details");
     }
 
     return response.json();
@@ -369,13 +389,16 @@ class ApiHelper {
 
   // Super Admin: Delete/Deactivate tenant
   async deleteTenant(tenantId: string): Promise<any> {
-    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}`, {
-      method: 'DELETE',
-    });
+    const response = await this.authenticatedFetch(
+      `/api/super-admin/companies/${tenantId}`,
+      {
+        method: "DELETE",
+      }
+    );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete company');
+      throw new Error(error.detail || "Failed to delete company");
     }
 
     return response.json();
@@ -383,51 +406,60 @@ class ApiHelper {
 
   // Super Admin: Get users for a tenant
   async getTenantUsers(tenantId: string): Promise<any[]> {
-    const response = await this.authenticatedFetch(`/api/super-admin/companies/${tenantId}/users`);
+    const response = await this.authenticatedFetch(
+      `/api/super-admin/companies/${tenantId}/users`
+    );
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to fetch company users');
+      throw new Error(error.detail || "Failed to fetch company users");
     }
 
     return response.json();
   }
 
-
   // Logout
   logout(): void {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       // Clear temporary token storage
       this.latestAccessToken = null;
       this.latestRefreshToken = null;
 
       // Remove from localStorage
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
 
       // Remove from cookies
-      document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      document.cookie = 'refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie =
+        "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie =
+        "refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     }
   }
 
   // Set both access and refresh tokens in localStorage and cookies
   setTokens(accessToken: string, refreshToken: string): void {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       // Store in localStorage for client-side access
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem("access_token", accessToken);
+      localStorage.setItem("refresh_token", refreshToken);
 
       // Store access token in cookie for server-side middleware access
       // Set cookie to expire in 24 hours (same as JWT token)
       const expires = new Date();
       expires.setTime(expires.getTime() + 24 * 60 * 60 * 1000);
-      document.cookie = `access_token=${accessToken}; expires=${expires.toUTCString()}; path=/; SameSite=Strict; ${window.location.protocol === 'https:' ? 'Secure;' : ''}`;
+      document.cookie = `access_token=${accessToken}; expires=${expires.toUTCString()}; path=/; SameSite=Strict; ${
+        window.location.protocol === "https:" ? "Secure;" : ""
+      }`;
 
       // Store refresh token in cookie (httpOnly for security)
       const refreshExpires = new Date();
-      refreshExpires.setTime(refreshExpires.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
-      document.cookie = `refresh_token=${refreshToken}; expires=${refreshExpires.toUTCString()}; path=/; SameSite=Strict; ${window.location.protocol === 'https:' ? 'Secure;' : ''}`;
+      refreshExpires.setTime(
+        refreshExpires.getTime() + 7 * 24 * 60 * 60 * 1000
+      ); // 7 days
+      document.cookie = `refresh_token=${refreshToken}; expires=${refreshExpires.toUTCString()}; path=/; SameSite=Strict; ${
+        window.location.protocol === "https:" ? "Secure;" : ""
+      }`;
     }
   }
 
@@ -439,10 +471,12 @@ class ApiHelper {
         this.setTokens(token, refreshToken);
       } else {
         // Fallback to old behavior
-        localStorage.setItem('access_token', token);
+        localStorage.setItem("access_token", token);
         const expires = new Date();
         expires.setTime(expires.getTime() + 24 * 60 * 60 * 1000);
-        document.cookie = `access_token=${token}; expires=${expires.toUTCString()}; path=/; SameSite=Strict; ${window.location.protocol === 'https:' ? 'Secure;' : ''}`;
+        document.cookie = `access_token=${token}; expires=${expires.toUTCString()}; path=/; SameSite=Strict; ${
+          window.location.protocol === "https:" ? "Secure;" : ""
+        }`;
       }
     }
   }
@@ -456,7 +490,7 @@ class ApiHelper {
 export const api = new ApiHelper();
 
 // TMS (Transport Management System) API functions
-const TMS_BASE = '/api/tms';
+const TMS_BASE = "/api/tms";
 
 // Helper function to fetch with error handling
 async function fetchWithError(url: string, options?: RequestInit) {
@@ -464,7 +498,9 @@ async function fetchWithError(url: string, options?: RequestInit) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || error.detail || `HTTP error! status: ${response.status}`);
+    throw new Error(
+      error.error || error.detail || `HTTP error! status: ${response.status}`
+    );
   }
 
   return response.json();
@@ -474,7 +510,7 @@ async function fetchWithError(url: string, options?: RequestInit) {
 export interface TripCreateData {
   user_id?: string;  // Optional since backend will extract from JWT
   company_id?: string;  // Optional since backend will extract from JWT
-  branch: string;
+  branch: string;  // Contains branch UUID
   truck_plate: string;
   truck_model: string;
   truck_capacity: number;
@@ -502,14 +538,16 @@ export interface OrderAssignData {
   customer: string;
   customerAddress?: string;
   total: number;
-  weight: number;
-  volume: number;
+  weight: number;  // Now supports decimal values
+  volume: number;  // Now supports decimal values
   items: number;
   priority: string;
   address?: string;
   original_order_id?: string;
   original_items?: number;
-  original_weight?: number;
+  original_weight?: number;  // Now supports decimal values
+  items_json?: any[];  // For split/partial order assignments
+  remaining_items_json?: any[];  // For split/partial order assignments
 }
 
 // Trip API functions
@@ -526,7 +564,9 @@ export const tmsAPI = {
     if (filters?.date) params.append('trip_date', filters.date);
     // Note: user_id and company_id will be extracted from JWT token by the backend
 
-    const url = `${TMS_BASE}/trips${params.toString() ? `?${params.toString()}` : ''}`;
+    const url = `${TMS_BASE}/trips${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
     const data = await fetchWithError(url);
 
     // Transform API response to match frontend Trip type
@@ -543,17 +583,21 @@ export const tmsAPI = {
       truck: {
         plate: trip.truck_plate,
         model: trip.truck_model,
-        capacity: trip.truck_capacity
+        capacity: trip.truck_capacity,
       },
       driver: {
         name: trip.driver_name,
-        phone: trip.driver_phone
+        phone: trip.driver_phone,
       },
       orders: trip.orders || [],
       date: trip.trip_date,
       createdAt: trip.created_at,
       capacityUsed: trip.capacity_used,
-      capacityTotal: trip.capacity_total
+      capacityTotal: trip.capacity_total,
+      maintenanceNote: trip.maintenance_note,
+      // Time in current status
+      current_status_since: trip.current_status_since,
+      time_in_current_status_minutes: trip.time_in_current_status_minutes,
     }));
   },
 
@@ -580,6 +624,22 @@ export const tmsAPI = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tripData),
+    });
+  },
+
+  // Reassign trip resources (truck and driver)
+  async reassignTripResources(tripId: string, resourceData: {
+    truck_plate: string;
+    truck_model: string;
+    truck_capacity: number;
+    driver_id: string;
+    driver_name: string;
+    driver_phone: string;
+  }) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/reassign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(resourceData),
     });
   },
 
@@ -621,6 +681,33 @@ export const tmsAPI = {
     // Use Next.js API route instead of direct TMS service
     return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders/remove?order_id=${orderId}`, {
       method: 'DELETE',
+    });
+  },
+
+  // Prepare trip for loading - get pending items
+  async prepareTripForLoading(tripId: string) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/prepare-loading`, {
+      method: 'POST',
+    });
+  },
+
+  // Confirm loading assignment and change status
+  async confirmLoadingAssignment(
+    tripId: string,
+    confirmation: {
+      item_assignments: Array<{
+        order_id: string;
+        order_item_id: string;
+        assigned_quantity: number;
+        total_weight: number;
+      }>;
+      split_items?: Array<any>;
+    }
+  ) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/confirm-loading`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(confirmation),
     });
   },
 };
@@ -720,4 +807,107 @@ export const driverAPI = {
       }),
     });
   },
+
+  // Pause trip (Under Maintenance)
+  async pauseTrip(
+    tripId: string,
+    reason: string,
+    note?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/pause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: reason,
+        note: note
+      }),
+    });
+  },
+
+  // Resume trip
+  async resumeTrip(
+    tripId: string,
+    note?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        note: note
+      }),
+    });
+  },
 };
+
+// ============================================================================
+// Currency and Timezone API functions
+// ============================================================================
+
+export interface Currency {
+  code: string;
+  symbol: string;
+  name: string;
+  numeric_code?: string;
+  decimal_places: number;
+}
+
+export interface Timezone {
+  iana: string;
+  offset: string;
+  label: string;
+}
+
+export interface TimezoneGroup {
+  region: string;
+  timezones: Timezone[];
+}
+
+/**
+ * Fetch all supported currencies from the auth service
+ * Uses pycountry library backend to get 170+ ISO 4217 currencies
+ */
+export async function fetchCurrencies(): Promise<Currency[]> {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_AUTH_API_URL}/api/v1/currencies`);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch currencies");
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch all supported timezones from the auth service
+ * Uses pytz library backend to get 450+ IANA timezones
+ *
+ * @param grouped - If true, returns timezones grouped by region
+ */
+export async function fetchTimezones(grouped: boolean = false): Promise<Timezone[] | TimezoneGroup[]> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_AUTH_API_URL}/api/v1/timezones?grouped=${grouped}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch timezones");
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch details for a specific timezone
+ */
+export async function fetchTimezone(timezoneIana: string): Promise<Timezone> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_AUTH_API_URL}/api/v1/timezones/${timezoneIana}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch timezone");
+  }
+
+  return response.json();
+}

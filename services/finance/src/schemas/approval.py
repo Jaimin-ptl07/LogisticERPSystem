@@ -60,6 +60,22 @@ class ApprovalActionResponse(BaseModel):
     approved_at: Optional[datetime] = Field(None, description="Approval timestamp")
 
 
+class OrderItemResponse(BaseModel):
+    """Order item response schema"""
+    id: str = Field(..., description="Item ID")
+    product_id: str = Field(..., description="Product ID")
+    product_name: str = Field(..., description="Product name")
+    product_code: Optional[str] = Field(None, description="Product code")
+    description: Optional[str] = Field(None, description="Product description")
+    quantity: int = Field(..., description="Item quantity")
+    unit: str = Field(..., description="Unit of measure")
+    unit_price: Optional[float] = Field(None, description="Unit price")
+    total_price: Optional[float] = Field(None, description="Total price")
+    weight: Optional[float] = Field(None, description="Weight per unit")
+    total_weight: Optional[float] = Field(None, description="Total weight")
+    volume: Optional[float] = Field(None, description="Volume per unit")
+
+
 class OrderApprovalResponse(BaseModel):
     """Order with approval status response schema"""
     id: str = Field(..., description="Order ID")
@@ -73,12 +89,18 @@ class OrderApprovalResponse(BaseModel):
     priority: Optional[str] = Field(None, description="Order priority")
     created_at: datetime = Field(..., description="Order creation timestamp")
     submitted_at: Optional[datetime] = Field(None, description="Order submission timestamp")
+    # Order items
+    items: List[OrderItemResponse] = Field(default_factory=list, description="Order items")
+    items_count: int = Field(0, description="Number of items")
     # Approval status
     approval_status: Optional[ApprovalStatus] = Field(None, description="Finance approval status")
     finance_approved_at: Optional[datetime] = Field(None, description="Finance approval timestamp")
     finance_approved_by: Optional[str] = Field(None, description="Finance approver ID")
     approval_action_id: Optional[str] = Field(None, description="Approval action ID")
     approval_reason: Optional[str] = Field(None, description="Approval reason")
+    # Time in current status
+    current_status_since: Optional[str] = Field(None, description="Timestamp when current status was set")
+    time_in_current_status_minutes: Optional[int] = Field(None, description="Time in current status in minutes")
 
 
 class ApprovalListResponse(BaseModel):

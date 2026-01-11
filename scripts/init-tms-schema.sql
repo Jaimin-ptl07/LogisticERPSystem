@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS trips (
     driver_name VARCHAR(100) NOT NULL,
     driver_phone VARCHAR(20) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'planning' CHECK (
-        status IN ('planning', 'loading', 'on-route', 'completed', 'cancelled', 'truck-malfunction')
+        status IN ('planning', 'loading', 'on-route', 'paused', 'completed', 'cancelled', 'truck-malfunction')
     ),
     origin VARCHAR(100),
     destination VARCHAR(100),
@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS trips (
     capacity_used INTEGER DEFAULT 0,
     capacity_total INTEGER NOT NULL,
     trip_date DATE NOT NULL,
+    maintenance_note TEXT,
+    paused_at TIMESTAMP WITH TIME ZONE,
+    paused_reason VARCHAR(500),
+    resumed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -48,6 +52,12 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     delivery_status VARCHAR(50) DEFAULT 'pending' CHECK (
         delivery_status IN ('pending', 'out-for-delivery', 'delivered', 'failed', 'returned')
     ),
+    tms_order_status VARCHAR(50) DEFAULT 'available' CHECK (
+        tms_order_status IN ('available', 'partial', 'fully_assigned')
+    ),
+    item_status VARCHAR(50) DEFAULT 'pending_to_assign' CHECK (
+        item_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned')
+    ),
     total DECIMAL(12,2) NOT NULL,
     weight INTEGER NOT NULL,
     volume INTEGER NOT NULL,
@@ -63,7 +73,9 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     assigned_at TIMESTAMP DEFAULT NOW(),
     original_order_id VARCHAR(50), -- For split orders
     original_items INTEGER,        -- For split orders
-    original_weight INTEGER       -- For split orders
+    original_weight INTEGER,       -- For split orders
+    items_json JSONB,              -- Store assigned items with quantities and statuses
+    remaining_items_json JSONB     -- Store remaining items for partial assignments
 );
 
 -- Trip Routes Table (for delivery sequence)
@@ -104,6 +116,8 @@ CREATE INDEX IF NOT EXISTS idx_trips_company_id ON trips(company_id);
 CREATE INDEX IF NOT EXISTS idx_trips_user_company ON trips(user_id, company_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_trip_id ON trip_orders(trip_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_order_id ON trip_orders(order_id);
+CREATE INDEX IF NOT EXISTS idx_trip_orders_tms_status ON trip_orders(tms_order_status);
+CREATE INDEX IF NOT EXISTS idx_trip_orders_original_order_id ON trip_orders(original_order_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_priority ON trip_orders(priority);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_sequence ON trip_orders(trip_id, sequence_number);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_user_id ON trip_orders(user_id);
@@ -233,6 +247,10 @@ GROUP BY t.id, t.branch, t.truck_plate, t.driver_name, t.status,
 -- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO your_db_user;
 
 COMMENT ON TABLE trips IS 'Core table storing trip planning information';
+COMMENT ON COLUMN trips.maintenance_note IS 'Additional notes about maintenance/issues';
+COMMENT ON COLUMN trips.paused_at IS 'Timestamp when trip was paused';
+COMMENT ON COLUMN trips.paused_reason IS 'Reason for pausing the trip (breakdown, accident, weather, etc.)';
+COMMENT ON COLUMN trips.resumed_at IS 'Timestamp when trip was resumed';
 COMMENT ON TABLE trip_orders IS 'Stores order allocations to trips';
 COMMENT ON COLUMN trip_orders.sequence_number IS 'Delivery sequence order for drag and drop functionality (0 = first delivery, 1 = second, etc.)';
 COMMENT ON TABLE trip_routes IS 'Stores delivery route sequence for trips';

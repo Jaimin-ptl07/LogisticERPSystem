@@ -1,5 +1,5 @@
+import { RootState } from '@/store';
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { RootState } from '@/store/index';
 
 // Types for API
 export interface Order {
@@ -37,6 +37,9 @@ export interface Order {
   items: OrderItem[];
   items_count: number;  // Number of items (backward compatibility)
   documents?: OrderDocument[];
+  // Time in current status fields
+  current_status_since?: string;  // ISO timestamp of when current status was set
+  time_in_current_status_minutes?: number;  // Duration in minutes
 }
 
 export interface OrderItem {
@@ -49,9 +52,27 @@ export interface OrderItem {
   unit: string;
   unit_price?: number;
   total_price?: number;
-  weight?: number;
-  total_weight?: number;
+  weight?: number;  // Weight per unit (in kg) or total weight depending on context
+  weight_type?: 'fixed' | 'variable';  // Product weight type
+  fixed_weight?: number;  // Fixed weight for fixed weight products (in kg)
+  weight_unit?: string;  // Weight unit (kg, lb, g, etc.)
   volume?: number;
+  total_weight?: number;  // Total weight for the item (weight * quantity)
+  // Assignment fields
+  original_quantity?: number;
+  assigned_quantity?: number;
+  remaining_quantity?: number;
+  is_fully_assigned?: boolean;
+  is_partially_assigned?: boolean;
+  is_available?: boolean;
+  assignments?: OrderItemAssignment[];
+}
+
+export interface OrderItemAssignment {
+  trip_id: string;
+  assigned_quantity: number;
+  item_status: string;
+  assigned_at?: string;
 }
 
 export interface OrderDocument {
@@ -103,6 +124,7 @@ export interface OrderCreate {
     product_id: string;
     quantity: number;
     unit_price: number;
+    weight?: number;
   }[];
 }
 
@@ -138,7 +160,10 @@ export interface Product {
   };
   unit_price: number;
   special_price?: number;
-  weight?: number;
+  weight?: number;  // Deprecated - use fixed_weight
+  fixed_weight?: number;  // Fixed weight for FIXED type products (in kg)
+  weight_type?: 'fixed' | 'variable';  // Type of weight: fixed or variable
+  weight_unit?: string;  // Weight unit (kg, lb, g, etc.)
   current_stock: number;
   is_active: boolean;
   available_for_all_branches: boolean;
@@ -193,6 +218,7 @@ export const ordersApi = createApi({
       date_to?: string;
       sort_by?: string;
       sort_order?: 'asc' | 'desc';
+      search?: string;
     }>({
       query: (params) => ({
         url: '/',
@@ -204,6 +230,35 @@ export const ordersApi = createApi({
     getOrderById: builder.query<Order, string>({
       query: (id) => ({
         url: `/${id}`,
+      }),
+      providesTags: (result, error, id) => [{ type: 'Order', id }],
+    }),
+
+    getOrderItemsWithAssignments: builder.query<{
+      order_id: string;
+      order_number: string;
+      status: string;
+      tms_order_status: string;
+      items: Array<OrderItem & {
+        original_quantity: number;
+        assigned_quantity: number;
+        remaining_quantity: number;
+        is_fully_assigned: boolean;
+        is_partially_assigned: boolean;
+        is_available: boolean;
+        assignments: OrderItemAssignment[];
+      }>;
+      summary: {
+        total_original_quantity: number;
+        total_assigned_quantity: number;
+        total_remaining_quantity: number;
+        is_fully_assigned: boolean;
+        is_partially_assigned: boolean;
+        is_available: boolean;
+      };
+    }, string>({
+      query: (id) => ({
+        url: `/${id}/items-with-assignments`,
       }),
       providesTags: (result, error, id) => [{ type: 'Order', id }],
     }),
@@ -306,6 +361,7 @@ export const ordersApi = createApi({
 export const {
   useGetOrdersQuery,
   useGetOrderByIdQuery,
+  useGetOrderItemsWithAssignmentsQuery,
   useCreateOrderMutation,
   useUpdateOrderMutation,
   useSubmitOrderMutation,

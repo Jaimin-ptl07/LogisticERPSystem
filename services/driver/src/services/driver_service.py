@@ -2,8 +2,9 @@
 
 from typing import Optional, Dict, Any, List
 from datetime import date
-from src.http_client import TMSClient
+from src.http_client import TMSClient, OrdersClient
 from src.config import settings
+from src.security.auth import verify_token
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,10 +15,26 @@ class DriverService:
 
     def __init__(self, auth_token: Optional[str] = None):
         """Initialize driver service"""
-        self.driver_id = settings.DRIVER_ID
-        self.company_id = "company-001"  # Default company_id for driver operations
+        # Extract user_id and tenant_id from JWT token if available, otherwise fall back to hardcoded values
+        if auth_token:
+            try:
+                token_data = verify_token(auth_token)
+                self.driver_id = token_data.sub  # Use user_id from JWT token
+                # Use tenant_id from token as company_id
+                self.company_id = token_data.tenant_id or "company-001"
+                logger.info(f"DriverService initialized with user_id from token: {self.driver_id}, tenant_id: {self.company_id}")
+            except Exception as e:
+                logger.warning(f"Failed to decode JWT token, falling back to settings: {e}")
+                self.driver_id = settings.DRIVER_ID
+                self.company_id = "company-001"
+        else:
+            logger.warning("No auth_token provided, using settings values")
+            self.driver_id = settings.DRIVER_ID
+            self.company_id = "company-001"
+
         self.auth_token = auth_token
         self.tms_client = TMSClient(auth_token=auth_token)
+        self.orders_client = OrdersClient(auth_token=auth_token)
 
     async def get_driver_trips(
         self,
@@ -135,24 +152,19 @@ class DriverService:
 
     async def get_current_active_trip(
         self,
-        company_id: Optional[str] = None,
-        driver_id: Optional[str] = None
+        company_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get the current active trip for the driver.
 
         Args:
             company_id: Optional company ID filter
-            driver_id: Optional driver ID (uses configured one if not provided)
 
         Returns:
             TripSummary from TMS service or None
         """
         try:
-            # Use the provided driver_id or fallback to the configured one
-            effective_driver_id = driver_id or self.driver_id
             result = await self.tms_client.get_driver_current_trip(
-                driver_id=effective_driver_id,
                 company_id=company_id or self.company_id
             )
             return result
@@ -216,6 +228,66 @@ class DriverService:
             return result
         except Exception as e:
             logger.error(f"Error marking order {order_id} as delivered: {str(e)}")
+            raise
+
+    async def upload_delivery_proof(
+        self,
+        order_id: str,
+        file_content: bytes,
+        filename: str,
+        content_type: str,
+        document_type: str = "delivery_proof",
+        title: str = "Delivery Proof",
+        description: str = "Document uploaded by driver upon delivery"
+    ) -> Dict[str, Any]:
+        """
+        Upload delivery proof document for an order.
+
+        Args:
+            order_id: The order ID
+            file_content: File content as bytes
+            filename: Original filename
+            content_type: MIME type of the file
+            document_type: Type of document (default: delivery_proof)
+            title: Document title
+            description: Document description
+
+        Returns:
+            Document metadata from orders service
+        """
+        try:
+            result = await self.orders_client.upload_delivery_proof(
+                order_id=order_id,
+                file_content=file_content,
+                filename=filename,
+                content_type=content_type,
+                document_type=document_type,
+                title=title,
+                description=description
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Error uploading delivery proof for order {order_id}: {str(e)}")
+            raise
+
+    async def get_delivery_documents(
+        self,
+        order_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get delivery proof documents for an order.
+
+        Args:
+            order_id: The order ID
+
+        Returns:
+            List of delivery documents
+        """
+        try:
+            result = await self.orders_client.get_delivery_documents(order_id=order_id)
+            return result
+        except Exception as e:
+            logger.error(f"Error getting delivery documents for order {order_id}: {str(e)}")
             raise
 
 

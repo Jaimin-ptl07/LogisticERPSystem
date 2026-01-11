@@ -12,36 +12,32 @@ export interface EmployeeProfile extends UserProfile {
 export interface DriverProfile {
   id?: string
   user_id: string
-  employee_id?: string
+  employee_profile_id?: string
+  tenant_id?: string
+  driver_code?: string
   license_number?: string
-  license_types?: string[]
+  license_type?: string  // Backend returns single string, not array
   license_issue_date?: string
-  license_expiry_date?: string
+  license_expiry?: string  // Backend returns license_expiry, not license_expiry_date
   license_issuing_authority?: string
   badge_number?: string
-  badge_expiry_date?: string
-  vehicle_preferences?: string[]
+  badge_expiry?: string  // Backend returns badge_expiry, not badge_expiry_date
+  preferred_vehicle_types?: string[]  // Backend returns preferred_vehicle_types, not vehicle_preferences
   preferred_routes?: string[]
   experience_years?: number
-  accident_history?: {
-    date: string
-    description: string
-    severity: 'minor' | 'major' | 'critical'
-  }[]
-  training_certifications?: {
-    name: string
-    issued_date: string
-    expiry_date?: string
-    issuing_authority: string
-  }[]
-  medical_fitness_certificate?: {
-    certificate_number: string
-    issued_date: string
-    expiry_date: string
-    issuing_doctor: string
-  }
+  current_status?: string
+  last_trip_date?: string
+  total_trips?: number
+  total_distance?: number
+  average_rating?: number
+  accident_count?: number
+  traffic_violations?: number
+  medical_fitness_certificate_date?: string
+  police_verification_date?: string
+  is_active?: boolean
   created_at?: string
   updated_at?: string
+  employee?: EmployeeProfile
   user?: User
 }
 
@@ -55,16 +51,17 @@ export interface FinanceManagerProfile {
   user_id: string
   employee_profile_id?: string
   can_approve_payments?: boolean
-  max_approval_amount?: number
-  can_manage_payroll?: boolean
-  can_view_financial_reports?: boolean
-  can_create_invoices?: boolean
-  can_manage_expenses?: boolean
+  max_approval_limit?: number
+  managed_branches?: string[]
   access_levels?: {
     can_view_all_branches?: boolean
     can_access_bank_accounts?: boolean
     can_handle_tax_compliance?: boolean
     can_audit_transactions?: boolean
+    can_manage_payroll?: boolean
+    can_view_financial_reports?: boolean
+    can_create_invoices?: boolean
+    can_manage_expenses?: boolean
   }
   created_at?: string
   updated_at?: string
@@ -76,13 +73,15 @@ export interface LogisticsManagerProfile {
   id?: string
   user_id: string
   employee_profile_id?: string
-  managed_branches?: string[]
+  managed_zones?: string[]
+  can_assign_drivers?: boolean
+  can_approve_overtime?: boolean
   can_plan_routes?: boolean
-  can_dispatch_vehicles?: boolean
-  can_manage_drivers?: boolean
-  can_track_shipments?: boolean
-  can_handle_emergency_dispatch?: boolean
-  fleet_management_permissions?: {
+  vehicle_management_permissions?: {
+    can_dispatch_vehicles?: boolean
+    can_manage_drivers?: boolean
+    can_track_shipments?: boolean
+    can_handle_emergency_dispatch?: boolean
     can_maintain_vehicles?: boolean
     can_purchase_vehicles?: boolean
     can_sell_vehicles?: boolean
@@ -117,6 +116,7 @@ export interface EmployeeProfileForm {
 }
 
 export interface DriverProfileForm {
+  driver_code?: string
   license_number: string
   license_types: string[]
   license_issue_date: string
@@ -162,13 +162,15 @@ export interface FinanceManagerProfileForm {
 }
 
 export interface LogisticsManagerProfileForm {
-  managed_branches?: string[]
+  managed_zones?: string[]
+  can_assign_drivers?: boolean
+  can_approve_overtime?: boolean
   can_plan_routes?: boolean
-  can_dispatch_vehicles?: boolean
-  can_manage_drivers?: boolean
-  can_track_shipments?: boolean
-  can_handle_emergency_dispatch?: boolean
-  fleet_management_permissions?: {
+  vehicle_management_permissions?: {
+    can_dispatch_vehicles?: boolean
+    can_manage_drivers?: boolean
+    can_track_shipments?: boolean
+    can_handle_emergency_dispatch?: boolean
     can_maintain_vehicles?: boolean
     can_purchase_vehicles?: boolean
     can_sell_vehicles?: boolean
@@ -299,11 +301,15 @@ export const profileApi = createApi({
       query: (driverId) => `company/profiles/drivers/${driverId}`,
       providesTags: ['DriverProfile'],
     }),
+    getDriverProfileByUser: builder.query<DriverProfile, string>({
+      query: (userId) => `company/profiles/drivers/by-user/${userId}`,
+      providesTags: ['DriverProfile'],
+    }),
     createDriverProfile: builder.mutation<DriverProfile, { userId: string; profile: DriverProfileForm }>({
       query: ({ userId, profile }) => ({
         url: `company/profiles/drivers`,
         method: 'POST',
-        body: { user_id: userId, ...profile },
+        body: { employee_profile_id: userId, ...profile },
       }),
       invalidatesTags: ['DriverProfile', 'ProfileStats'],
     }),
@@ -325,28 +331,32 @@ export const profileApi = createApi({
 
     // Branch Manager Profile endpoints
     getBranchManagerProfile: builder.query<BranchManagerProfileExtended, string>({
-      query: (userId) => `company/profiles/branch-manager/${userId}`,
+      query: (userId) => `company/profiles/branch-managers/${userId}`,
+      providesTags: ['BranchManagerProfile'],
+    }),
+    getBranchManagerProfileByUser: builder.query<BranchManagerProfileExtended, string>({
+      query: (userId) => `company/profiles/branch-managers/by-user/${userId}`,
       providesTags: ['BranchManagerProfile'],
     }),
     createBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { userId: string; profile: BranchManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/branch-manager`,
+        url: `company/profiles/branch-managers`,
         method: 'POST',
-        body: { user_id: userId, ...profile },
+        body: { employee_profile_id: userId, ...profile },
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
     }),
-    updateBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { userId: string; profile: Partial<BranchManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/branch-manager/${userId}`,
+    updateBranchManagerProfile: builder.mutation<BranchManagerProfileExtended, { profileId: string; profile: Partial<BranchManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/branch-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
     }),
     deleteBranchManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/branch-manager/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/branch-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['BranchManagerProfile', 'ProfileStats'],
@@ -354,28 +364,32 @@ export const profileApi = createApi({
 
     // Finance Manager Profile endpoints
     getFinanceManagerProfile: builder.query<FinanceManagerProfile, string>({
-      query: (userId) => `company/profiles/finance-manager/${userId}`,
+      query: (userId) => `company/profiles/finance-managers/${userId}`,
+      providesTags: ['FinanceManagerProfile'],
+    }),
+    getFinanceManagerProfileByUser: builder.query<FinanceManagerProfile, string>({
+      query: (userId) => `company/profiles/finance-managers/by-user/${userId}`,
       providesTags: ['FinanceManagerProfile'],
     }),
     createFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { userId: string; profile: FinanceManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/finance-manager`,
+        url: `company/profiles/finance-managers`,
         method: 'POST',
-        body: { user_id: userId, ...profile },
+        body: { employee_profile_id: userId, ...profile },
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
     }),
-    updateFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { userId: string; profile: Partial<FinanceManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/finance-manager/${userId}`,
+    updateFinanceManagerProfile: builder.mutation<FinanceManagerProfile, { profileId: string; profile: Partial<FinanceManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/finance-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
     }),
     deleteFinanceManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/finance-manager/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/finance-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['FinanceManagerProfile', 'ProfileStats'],
@@ -383,28 +397,32 @@ export const profileApi = createApi({
 
     // Logistics Manager Profile endpoints
     getLogisticsManagerProfile: builder.query<LogisticsManagerProfile, string>({
-      query: (userId) => `company/profiles/logistics-manager/${userId}`,
+      query: (userId) => `company/profiles/logistics-managers/${userId}`,
+      providesTags: ['LogisticsManagerProfile'],
+    }),
+    getLogisticsManagerProfileByUser: builder.query<LogisticsManagerProfile, string>({
+      query: (userId) => `company/profiles/logistics-managers/by-user/${userId}`,
       providesTags: ['LogisticsManagerProfile'],
     }),
     createLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { userId: string; profile: LogisticsManagerProfileForm }>({
       query: ({ userId, profile }) => ({
-        url: `company/profiles/logistics-manager`,
+        url: `company/profiles/logistics-managers`,
         method: 'POST',
-        body: { user_id: userId, ...profile },
+        body: { employee_profile_id: userId, ...profile },
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
     }),
-    updateLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { userId: string; profile: Partial<LogisticsManagerProfileForm> }>({
-      query: ({ userId, profile }) => ({
-        url: `company/profiles/logistics-manager/${userId}`,
+    updateLogisticsManagerProfile: builder.mutation<LogisticsManagerProfile, { profileId: string; profile: Partial<LogisticsManagerProfileForm> }>({
+      query: ({ profileId, profile }) => ({
+        url: `company/profiles/logistics-managers/${profileId}`,
         method: 'PUT',
         body: profile,
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
     }),
     deleteLogisticsManagerProfile: builder.mutation<void, string>({
-      query: (userId) => ({
-        url: `company/profiles/logistics-manager/${userId}`,
+      query: (profileId) => ({
+        url: `company/profiles/logistics-managers/${profileId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['LogisticsManagerProfile', 'ProfileStats'],
@@ -454,21 +472,25 @@ export const {
   useDeleteEmployeeProfileMutation,
   // Driver Profile hooks
   useGetDriverProfileQuery,
+  useGetDriverProfileByUserQuery,
   useCreateDriverProfileMutation,
   useUpdateDriverProfileMutation,
   useDeleteDriverProfileMutation,
   // Branch Manager Profile hooks
   useGetBranchManagerProfileQuery,
+  useGetBranchManagerProfileByUserQuery,
   useCreateBranchManagerProfileMutation,
   useUpdateBranchManagerProfileMutation,
   useDeleteBranchManagerProfileMutation,
   // Finance Manager Profile hooks
   useGetFinanceManagerProfileQuery,
+  useGetFinanceManagerProfileByUserQuery,
   useCreateFinanceManagerProfileMutation,
   useUpdateFinanceManagerProfileMutation,
   useDeleteFinanceManagerProfileMutation,
   // Logistics Manager Profile hooks
   useGetLogisticsManagerProfileQuery,
+  useGetLogisticsManagerProfileByUserQuery,
   useCreateLogisticsManagerProfileMutation,
   useUpdateLogisticsManagerProfileMutation,
   useDeleteLogisticsManagerProfileMutation,

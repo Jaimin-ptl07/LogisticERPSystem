@@ -58,7 +58,7 @@ async def get_current_user(
             detail="User not found"
         )
 
-    # Prepare user data
+    # Prepare user data with role_name and is_system_role for consistent frontend routing
     user_data = {
         "id": user.id,
         "email": user.email,
@@ -66,11 +66,19 @@ async def get_current_user(
         "last_name": user.last_name,
         "tenant_id": user.tenant_id,
         "role_id": user.role_id,
+        "role_name": user.role.name if user.role else None,  # Consistent across tenants
+        "is_system_role": user.role.is_system if user.role else None,  # Whether this is a system role
         "is_active": user.is_active,
         "is_superuser": user.is_superuser,
         "permissions": token_data.permissions,
         "last_login": user.last_login,
-        "created_at": user.created_at
+        "created_at": user.created_at,
+        "role": {
+            "id": user.role.id,
+            "name": user.role.name,
+            "description": user.role.description,
+            "is_system": user.role.is_system
+        } if user.role else None
     }
 
     return user_data
@@ -101,11 +109,19 @@ async def refresh_token(
             detail="User not found or inactive"
         )
 
+    # Check if tenant is active
+    if user.tenant_id and not user.tenant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your company account has been deactivated. Please contact support."
+        )
+
     # Create new minimal access token
     access_token = create_access_token({
         "sub": user.id,
         "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
         "role_id": user.role_id,
+        "role": user.role.name,  # Include role name in token
         "email": user.email,
         "is_superuser": user.is_superuser
     })

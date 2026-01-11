@@ -3,9 +3,10 @@ Pydantic schemas for Company Service
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_serializer, computed_field
 from uuid import UUID
-from .database import BusinessType, VehicleType, VehicleStatus, ServiceType
+from .database import BusinessType, VehicleStatus, ServiceType, WeightType
+# Note: VehicleType enum is now deprecated, use VehicleTypeModel instead
 
 
 # Base schemas
@@ -60,22 +61,109 @@ class Branch(BranchInDB):
     pass
 
 
+# BusinessType schemas
+class BusinessTypeBase(BaseSchema):
+    """Base business type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class BusinessTypeCreate(BusinessTypeBase):
+    """Schema for creating a business type"""
+    pass
+
+
+class BusinessTypeUpdate(BaseSchema):
+    """Schema for updating a business type"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class BusinessTypeInDB(BusinessTypeBase):
+    """Schema for business type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class BusinessTypeModel(BusinessTypeInDB):
+    """Schema for business type response"""
+    pass
+
+
+# VehicleType schemas
+class VehicleTypeBase(BaseSchema):
+    """Base vehicle type schema"""
+    name: str = Field(..., min_length=2, max_length=100)
+    code: str = Field(..., min_length=2, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class VehicleTypeCreate(VehicleTypeBase):
+    """Schema for creating a vehicle type"""
+    pass
+
+
+class VehicleTypeUpdate(BaseSchema):
+    """Schema for updating a vehicle type"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class VehicleTypeInDB(VehicleTypeBase):
+    """Schema for vehicle type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class VehicleTypeModel(VehicleTypeInDB):
+    """Schema for vehicle type response"""
+    pass
+
+
 # Customer schemas
 class CustomerBase(BaseSchema):
     """Base customer schema"""
-    home_branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: bool = True
     code: str = Field(..., min_length=2, max_length=20)
     name: str = Field(..., min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=100)
+    contact_person_name: Optional[str] = Field(None, max_length=100)
     address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
-    business_type: Optional[BusinessType] = None
+    # Support both old enum, new foreign key, and multiple business types
+    business_type: Optional[BusinessType] = None  # Deprecated
+    business_type_id: Optional[UUID] = None  # Deprecated - single business type
+    business_type_ids: Optional[List[UUID]] = None  # New - multiple business types
     credit_limit: float = Field(default=0, ge=0)
     pricing_tier: str = Field(default="standard", max_length=20)
     is_active: bool = True
+    # Marketing person contact details
+    marketing_person_name: Optional[str] = Field(None, max_length=100)
+    marketing_person_phone: Optional[str] = Field(None, max_length=20)
+    marketing_person_email: Optional[str] = Field(None, max_length=100)
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_empty_business_type_to_none(cls, data):
+        """Convert empty string for business_type to None to avoid enum validation errors"""
+        if isinstance(data, dict):
+            business_type_value = data.get('business_type')
+            if business_type_value == '':
+                data['business_type'] = None
+        return data
 
 
 class CustomerCreate(CustomerBase):
@@ -85,18 +173,27 @@ class CustomerCreate(CustomerBase):
 
 class CustomerUpdate(BaseSchema):
     """Schema for updating a customer"""
-    home_branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: Optional[bool] = None
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=100)
+    contact_person_name: Optional[str] = Field(None, max_length=100)
     address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
-    business_type: Optional[BusinessType] = None
+    # Support both old enum, new foreign key, and multiple business types
+    business_type: Optional[BusinessType] = None  # Deprecated
+    business_type_id: Optional[UUID] = None  # Deprecated - single business type
+    business_type_ids: Optional[List[UUID]] = None  # New - multiple business types
     credit_limit: Optional[float] = Field(None, ge=0)
     pricing_tier: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
+    # Marketing person contact details
+    marketing_person_name: Optional[str] = Field(None, max_length=100)
+    marketing_person_phone: Optional[str] = Field(None, max_length=20)
+    marketing_person_email: Optional[str] = Field(None, max_length=100)
 
 
 class CustomerInDB(CustomerBase):
@@ -109,24 +206,103 @@ class CustomerInDB(CustomerBase):
 
 class Customer(CustomerInDB):
     """Schema for customer response"""
-    home_branch: Optional[Branch] = None
+    business_type_relation: Optional[BusinessTypeModel] = None  # Deprecated - single business type
+    available_for_all_branches: bool = True
+    branches: Optional[List["CustomerBranch"]] = None
+    business_types_raw: Optional[List[Any]] = Field(default=None, exclude=True, repr=False)  # Private field for internal use
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def business_types(self) -> Optional[List[BusinessTypeModel]]:
+        """Extract business types from CustomerBusinessType junction objects"""
+        if self.business_types_raw is None:
+            return None
+        result = []
+        for item in self.business_types_raw:
+            if isinstance(item, dict):
+                if 'business_type' in item and item['business_type']:
+                    if isinstance(item['business_type'], dict):
+                        result.append(BusinessTypeModel(**item['business_type']))
+                    else:
+                        result.append(item['business_type'])
+            elif hasattr(item, 'business_type') and item.business_type:
+                result.append(item.business_type)
+        return result if result else None
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Override model_validate to handle business_types extraction"""
+        # Handle SQLAlchemy objects directly
+        if hasattr(obj, '__table__'):  # SQLAlchemy model
+            # Convert business_types relationship before validation
+            if hasattr(obj, 'business_types'):
+                data = {
+                    'id': obj.id,
+                    'tenant_id': obj.tenant_id,
+                    'code': obj.code,
+                    'name': obj.name,
+                    'phone': obj.phone,
+                    'email': obj.email,
+                    'address': obj.address,
+                    'city': obj.city,
+                    'state': obj.state,
+                    'postal_code': obj.postal_code,
+                    'business_type': obj.business_type,
+                    'business_type_id': obj.business_type_id,
+                    'credit_limit': obj.credit_limit,
+                    'pricing_tier': obj.pricing_tier,
+                    'is_active': obj.is_active,
+                    'available_for_all_branches': obj.available_for_all_branches,
+                    'created_at': obj.created_at,
+                    'updated_at': obj.updated_at,
+                    'business_types_raw': list(obj.business_types) if obj.business_types else None,
+                    'business_type_relation': obj.business_type_relation,
+                    'branches': obj.branches,
+                    'marketing_person_name': getattr(obj, 'marketing_person_name', None),
+                    'marketing_person_phone': getattr(obj, 'marketing_person_phone', None),
+                    'marketing_person_email': getattr(obj, 'marketing_person_email', None),
+                }
+                return super().model_validate(data, **kwargs)
+        return super().model_validate(obj, **kwargs)
+
+
+class CustomerBranch(BaseSchema):
+    """Schema for customer-branch relationship"""
+    branch: Optional[Branch] = None
 
 
 # Vehicle schemas
 class VehicleBase(BaseSchema):
     """Base vehicle schema"""
-    branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: bool = True
     plate_number: str = Field(..., min_length=2, max_length=20)
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
-    vehicle_type: Optional[VehicleType] = None
+    # Support both old enum (as string) and new foreign key
+    vehicle_type: Optional[str] = None  # Deprecated: use vehicle_type_id instead
+    vehicle_type_id: Optional[UUID] = None
     capacity_weight: Optional[float] = Field(None, ge=0)  # in kg
     capacity_volume: Optional[float] = Field(None, ge=0)  # in cubic meters
     status: VehicleStatus = VehicleStatus.AVAILABLE
     last_maintenance: Optional[datetime] = None
     next_maintenance: Optional[datetime] = None
+    # Odometer and fuel economy tracking
+    current_odometer: Optional[float] = Field(None, ge=0)  # Current odometer reading in km
+    current_fuel_economy: Optional[float] = Field(None, ge=0)  # Current fuel economy in km/liter
+    last_odometer_update: Optional[datetime] = None
     is_active: bool = True
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_empty_vehicle_type_to_none(cls, data):
+        """Convert empty string for vehicle_type to None to avoid enum validation errors"""
+        if isinstance(data, dict):
+            vehicle_type_value = data.get('vehicle_type')
+            if vehicle_type_value == '':
+                data['vehicle_type'] = None
+        return data
 
 
 class VehicleCreate(VehicleBase):
@@ -136,16 +312,23 @@ class VehicleCreate(VehicleBase):
 
 class VehicleUpdate(BaseSchema):
     """Schema for updating a vehicle"""
-    branch_id: Optional[UUID] = None
+    branch_ids: Optional[List[UUID]] = None
+    available_for_all_branches: Optional[bool] = None
     make: Optional[str] = Field(None, max_length=50)
     model: Optional[str] = Field(None, max_length=50)
     year: Optional[int] = Field(None, ge=1900, le=2100)
-    vehicle_type: Optional[VehicleType] = None
+    # Support both old enum (as string) and new foreign key
+    vehicle_type: Optional[str] = None
+    vehicle_type_id: Optional[UUID] = None
     capacity_weight: Optional[float] = Field(None, ge=0)
     capacity_volume: Optional[float] = Field(None, ge=0)
     status: Optional[VehicleStatus] = None
     last_maintenance: Optional[datetime] = None
     next_maintenance: Optional[datetime] = None
+    # Odometer and fuel economy tracking
+    current_odometer: Optional[float] = Field(None, ge=0)
+    current_fuel_economy: Optional[float] = Field(None, ge=0)
+    last_odometer_update: Optional[datetime] = None
     is_active: Optional[bool] = None
 
 
@@ -159,7 +342,93 @@ class VehicleInDB(VehicleBase):
 
 class Vehicle(VehicleInDB):
     """Schema for vehicle response"""
+    vehicle_type_relation: Optional[VehicleTypeModel] = None
+    available_for_all_branches: bool = True
+    branches: Optional[List["VehicleBranch"]] = None
+
+
+class VehicleBranch(BaseSchema):
+    """Schema for vehicle-branch relationship"""
     branch: Optional[Branch] = None
+
+
+# Vehicle Odometer & Fuel Log schemas
+class VehicleOdometerFuelLogBase(BaseSchema):
+    """Base vehicle odometer and fuel log schema"""
+    vehicle_id: UUID
+    odometer_reading: float = Field(..., ge=0)
+    fuel_economy: Optional[float] = Field(None, ge=0)
+    fuel_consumed: Optional[float] = Field(None, ge=0)
+    distance_traveled: Optional[float] = Field(None, ge=0)
+    log_date: datetime
+    log_type: str = Field(..., min_length=1, max_length=20)  # 'manual', 'refueling', 'maintenance', 'trip_end'
+    notes: Optional[str] = Field(None, max_length=1000)
+    recorded_by_user_id: Optional[str] = None
+
+
+class VehicleOdometerFuelLogCreate(VehicleOdometerFuelLogBase):
+    """Schema for creating an odometer log"""
+    pass
+
+
+class VehicleOdometerFuelLogUpdate(BaseSchema):
+    """Schema for updating an odometer log"""
+    odometer_reading: Optional[float] = Field(None, ge=0)
+    fuel_economy: Optional[float] = Field(None, ge=0)
+    fuel_consumed: Optional[float] = Field(None, ge=0)
+    distance_traveled: Optional[float] = Field(None, ge=0)
+    log_date: Optional[datetime] = None
+    log_type: Optional[str] = Field(None, min_length=1, max_length=20)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class VehicleOdometerFuelLogInDB(VehicleOdometerFuelLogBase):
+    """Schema for odometer log in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+
+
+class VehicleOdometerFuelLog(VehicleOdometerFuelLogInDB):
+    """Schema for odometer log response"""
+    pass
+
+
+# Product Unit Type schemas
+class ProductUnitTypeBase(BaseSchema):
+    """Base product unit type schema"""
+    code: str = Field(..., min_length=1, max_length=20)
+    name: str = Field(..., min_length=1, max_length=100)
+    abbreviation: Optional[str] = Field(None, max_length=20)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class ProductUnitTypeCreate(ProductUnitTypeBase):
+    """Schema for creating a product unit type"""
+    pass
+
+
+class ProductUnitTypeUpdate(BaseSchema):
+    """Schema for updating a product unit type"""
+    code: Optional[str] = Field(None, min_length=1, max_length=20)
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    abbreviation: Optional[str] = Field(None, max_length=20)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class ProductUnitTypeInDB(ProductUnitTypeBase):
+    """Schema for product unit type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class ProductUnitType(ProductUnitTypeInDB):
+    """Schema for product unit type response"""
+    pass
 
 
 # Product Category schemas
@@ -205,21 +474,49 @@ class ProductBase(BaseSchema):
     branch_ids: Optional[List[UUID]] = None
     available_for_all_branches: bool = True
     category_id: Optional[UUID] = None
+    unit_type_id: Optional[UUID] = None
     code: str = Field(..., min_length=2, max_length=50)
     name: str = Field(..., min_length=2, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     unit_price: float = Field(..., gt=0)
     special_price: Optional[float] = Field(None, ge=0)
-    weight: Optional[float] = Field(None, ge=0)  # in kg
+
+    # Weight configuration - supports fixed and variable weight types
+    weight_type: WeightType = Field(default=WeightType.FIXED, description="Type of weight: fixed or variable")
+    weight: Optional[float] = Field(None, ge=0, description="Deprecated - use fixed_weight")  # in kg
+    fixed_weight: Optional[float] = Field(None, ge=0, description="Fixed weight in kg for FIXED type products")
+    weight_unit: str = Field(default="kg", max_length=20, description="Weight unit (kg, lb, g, etc.)")
+
+    @field_serializer('weight_type')
+    def serialize_weight_type(self, value: WeightType) -> str:
+        """Serialize WeightType enum to its string value"""
+        if value is None:
+            return WeightType.FIXED.value
+        return value.value if isinstance(value, WeightType) else str(value)
+
+    # Dimensions
     length: Optional[float] = Field(None, ge=0)  # in cm
     width: Optional[float] = Field(None, ge=0)   # in cm
     height: Optional[float] = Field(None, ge=0)  # in cm
     volume: Optional[float] = Field(None, ge=0)  # in cubic meters
+
     handling_requirements: Optional[List[str]] = Field(default_factory=list)
     min_stock_level: int = Field(default=0, ge=0)
     max_stock_level: Optional[int] = Field(None, ge=0)
     current_stock: int = Field(default=0, ge=0)
     is_active: bool = True
+
+    @model_validator(mode='after')
+    def validate_weight_fields(self):
+        """Validate weight fields based on weight_type"""
+        if self.weight_type == WeightType.FIXED:
+            if self.fixed_weight is None and self.weight is None:
+                raise ValueError("fixed_weight is required for FIXED weight type")
+            # If weight is provided (legacy), use it as fixed_weight
+            if self.weight is not None and self.fixed_weight is None:
+                self.fixed_weight = self.weight
+        # VARIABLE type doesn't require any weight fields - actual weight entered when creating orders
+        return self
 
 
 class ProductCreate(ProductBase):
@@ -237,7 +534,13 @@ class ProductUpdate(BaseSchema):
     description: Optional[str] = Field(None, max_length=500)
     unit_price: Optional[float] = Field(None, gt=0)
     special_price: Optional[float] = Field(None, ge=0)
+
+    # Weight configuration
+    weight_type: Optional[WeightType] = None
     weight: Optional[float] = Field(None, ge=0)
+    fixed_weight: Optional[float] = Field(None, ge=0)
+    weight_unit: Optional[str] = None
+
     length: Optional[float] = Field(None, ge=0)
     width: Optional[float] = Field(None, ge=0)
     height: Optional[float] = Field(None, ge=0)
@@ -262,6 +565,7 @@ class Product(ProductInDB):
     available_for_all_branches: bool = True
     branches: Optional[List["ProductBranch"]] = None
     category: Optional[ProductCategory] = None
+    unit_type: Optional["ProductUnitType"] = None
 
 
 class ProductBranch(BaseSchema):
@@ -442,13 +746,30 @@ class CompanyRole(CompanyRoleInDB):
     invitations: Optional[List[UserInvitation]] = None
 
 
+# Auth Service Role schema (for roles from the auth service)
+class AuthRole(BaseModel):
+    """Schema for auth service role response"""
+    id: int  # Auth service returns role ID as integer
+    role_name: str
+    name: str
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+    is_system_role: bool = False
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
+    employees: List[Any] = []
+    invitations: List[Any] = []
+
+
 # Employee Profile schemas
 class EmployeeProfileBase(BaseSchema):
     """Base employee profile schema"""
     user_id: str = Field(..., min_length=36, max_length=255)
     employee_code: Optional[str] = Field(None, max_length=20)
-    role_id: str = Field(..., min_length=36, max_length=36)
-    branch_id: Optional[UUID] = None
+    role_id: Optional[str] = Field(None, max_length=50)  # Now stores auth service role ID as string
+    branch_id: Optional[UUID] = None  # Deprecated: Use branch_ids for multiple branches
+    branch_ids: Optional[List[UUID]] = None  # New: Multiple branch assignments
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
@@ -456,6 +777,8 @@ class EmployeeProfileBase(BaseSchema):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = Field(None, max_length=10)
     blood_group: Optional[str] = Field(None, max_length=5)
+    marital_status: Optional[str] = Field(None, max_length=20)  # single, married, divorced, widowed
+    nationality: Optional[str] = Field("India", max_length=50)
     emergency_contact_name: Optional[str] = Field(None, max_length=100)
     emergency_contact_phone: Optional[str] = Field(None, max_length=20)
     address: Optional[str] = Field(None, max_length=1000)
@@ -474,19 +797,30 @@ class EmployeeProfileBase(BaseSchema):
     bank_ifsc: Optional[str] = Field(None, max_length=20)
     pan_number: Optional[str] = Field(None, max_length=20)
     aadhar_number: Optional[str] = Field(None, max_length=20)
+    passport_number: Optional[str] = Field(None, max_length=20)
     is_active: bool = True
 
 
 class EmployeeProfileCreate(EmployeeProfileBase):
     """Schema for creating an employee profile"""
-    pass
+
+    @model_validator(mode='after')
+    def validate_branch_assignment(self):
+        # Ensure at least one branch is assigned
+        if not self.branch_id and not self.branch_ids:
+            raise ValueError('At least one branch must be assigned')
+        # Auto-set branch_id from branch_ids[0] if not provided
+        if not self.branch_id and self.branch_ids:
+            self.branch_id = self.branch_ids[0]
+        return self
 
 
 class EmployeeProfileUpdate(BaseSchema):
     """Schema for updating an employee profile"""
     employee_code: Optional[str] = Field(None, max_length=20)
-    role_id: Optional[str] = Field(None, min_length=36, max_length=36)
-    branch_id: Optional[UUID] = None
+    role_id: Optional[str] = Field(None, max_length=50)  # Now stores auth service role ID as string
+    branch_id: Optional[UUID] = None  # Deprecated: Use branch_ids for multiple branches
+    branch_ids: Optional[List[UUID]] = None  # New: Multiple branch assignments
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
@@ -494,6 +828,8 @@ class EmployeeProfileUpdate(BaseSchema):
     date_of_birth: Optional[datetime] = None
     gender: Optional[str] = Field(None, max_length=10)
     blood_group: Optional[str] = Field(None, max_length=5)
+    marital_status: Optional[str] = Field(None, max_length=20)  # single, married, divorced, widowed
+    nationality: Optional[str] = Field(None, max_length=50)
     emergency_contact_name: Optional[str] = Field(None, max_length=100)
     emergency_contact_phone: Optional[str] = Field(None, max_length=20)
     address: Optional[str] = Field(None, max_length=1000)
@@ -512,6 +848,7 @@ class EmployeeProfileUpdate(BaseSchema):
     bank_ifsc: Optional[str] = Field(None, max_length=20)
     pan_number: Optional[str] = Field(None, max_length=20)
     aadhar_number: Optional[str] = Field(None, max_length=20)
+    passport_number: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
 
 
@@ -525,17 +862,46 @@ class EmployeeProfileInDB(EmployeeProfileBase):
 
 class EmployeeProfile(EmployeeProfileInDB):
     """Schema for employee profile response"""
-    role: Optional[CompanyRole] = None
+    role: Optional[AuthRole] = None  # Auth service role
     branch: Optional[Branch] = None
+    branches: Optional[List[Branch]] = None  # New: All assigned branches
     documents: Optional[List["EmployeeDocument"]] = None
+
+
+# Employee Branch schemas (Junction table)
+class EmployeeBranchBase(BaseSchema):
+    """Base employee-branch assignment schema"""
+    employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    branch_id: UUID
+
+
+class EmployeeBranchCreate(EmployeeBranchBase):
+    """Schema for creating an employee-branch assignment"""
+    pass
+
+
+class EmployeeBranchInDB(EmployeeBranchBase):
+    """Schema for employee-branch assignment in database"""
+    id: UUID
+    tenant_id: str
+    assigned_at: datetime
+    assigned_by: Optional[str] = None
+    created_at: datetime
+
+
+class EmployeeBranch(EmployeeBranchInDB):
+    """Schema for employee-branch assignment response"""
+    employee: Optional[EmployeeProfile] = None
+    branch: Optional[Branch] = None
 
 
 # Driver Profile schemas
 class DriverProfileBase(BaseSchema):
     """Base driver profile schema"""
     employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    driver_code: Optional[str] = Field(None, max_length=50)  # Unique driver code for identification
     license_number: str = Field(..., min_length=2, max_length=50)
-    license_type: str = Field(..., max_length=20)
+    license_type: str = Field(..., max_length=50)  # Increased from 20 to accommodate longer license types
     license_expiry: datetime
     license_issuing_authority: Optional[str] = Field(None, max_length=100)
     badge_number: Optional[str] = Field(None, max_length=50)
@@ -561,8 +927,9 @@ class DriverProfileCreate(DriverProfileBase):
 
 class DriverProfileUpdate(BaseSchema):
     """Schema for updating a driver profile"""
+    driver_code: Optional[str] = Field(None, max_length=50)  # Unique driver code for identification
     license_number: Optional[str] = Field(None, min_length=2, max_length=50)
-    license_type: Optional[str] = Field(None, max_length=20)
+    license_type: Optional[str] = Field(None, max_length=50)  # Increased from 20 to match base schema
     license_expiry: Optional[datetime] = None
     license_issuing_authority: Optional[str] = Field(None, max_length=100)
     badge_number: Optional[str] = Field(None, max_length=50)
@@ -920,6 +1287,89 @@ class ProfileChangeHistory(BaseSchema):
     profile_id: str
     profile_type: str
     changes: List[ProfileAuditLog]
+
+
+# Audit Log schemas
+class AuditLogCreate(BaseSchema):
+    """Schema for creating audit log (called by other services)"""
+    tenant_id: str
+    user_id: str
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_role: Optional[str] = None
+    action: str
+    module: str
+    entity_type: str
+    entity_id: str
+    description: str
+    old_values: Optional[Dict[str, Any]] = None
+    new_values: Optional[Dict[str, Any]] = None
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    approval_status: Optional[str] = None
+    reason: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    service_name: str
+
+
+class AuditLogResponse(BaseSchema):
+    """Schema for audit log response"""
+    id: UUID
+    tenant_id: str
+    user_id: str
+    user_name: Optional[str]
+    user_email: Optional[str]
+    user_role: Optional[str]
+    action: str
+    module: str
+    entity_type: str
+    entity_id: str
+    description: str
+    old_values: Optional[Dict[str, Any]]
+    new_values: Optional[Dict[str, Any]]
+    from_status: Optional[str]
+    to_status: Optional[str]
+    approval_status: Optional[str]
+    reason: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    service_name: Optional[str]
+    created_at: datetime
+
+
+class AuditLogQueryParams(BaseSchema):
+    """Schema for audit log query parameters"""
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+    user_id: Optional[str] = None
+    module: Optional[str] = None
+    action: Optional[str] = None
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    per_page: int = Field(default=50, ge=1, le=100)
+
+
+class AuditLogListResponse(BaseSchema):
+    """Schema for paginated audit log list"""
+    items: List[AuditLogResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class AuditLogSummaryResponse(BaseSchema):
+    """Schema for audit log summary statistics"""
+    total_logs: int
+    unique_users: int
+    unique_modules: List[Dict[str, Any]]
+    unique_actions: List[Dict[str, Any]]
+    logs_by_module: Dict[str, int]
+    logs_by_action: Dict[str, int]
+    logs_by_date: List[Dict[str, Any]]
+    top_users: List[Dict[str, Any]]
 
 
 # Update forward references
