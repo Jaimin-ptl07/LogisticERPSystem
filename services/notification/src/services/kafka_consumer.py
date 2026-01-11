@@ -126,6 +126,30 @@ class NotificationKafkaConsumer:
             "priority": "high",
             "recipients": []  # Dynamically resolved from notify_roles field
         },
+        "order.due_day_reminder": {
+            "type": "order_event",
+            "category": "due_day_reminder",
+            "title_template": "Order #{{order_number}} Due Soon - {{days_remaining}} Days Left",
+            "message_template": "Order #{{order_number}} is due on {{due_date}} ({{days_remaining}} days remaining). Please ensure timely delivery.",
+            "priority": "high",
+            "recipients": ["admin", "branch_manager"]
+        },
+        "order.failed": {
+            "type": "order_event",
+            "category": "failed",
+            "title_template": "Order #{{order_number}} Delivery Failed",
+            "message_template": "Order #{{order_number}} delivery has failed. {% if reason %}Reason: {{reason}}{% endif %}",
+            "priority": "urgent",
+            "recipients": ["admin", "branch_manager", "logistics_manager"]
+        },
+        "order.returned": {
+            "type": "order_event",
+            "category": "returned",
+            "title_template": "Order #{{order_number}} Returned",
+            "message_template": "Order #{{order_number}} has been returned. {% if reason %}Reason: {{reason}}{% endif %}",
+            "priority": "high",
+            "recipients": ["admin", "branch_manager", "logistics_manager", "finance_manager"]
+        },
         # Trip events
         "trip.loading_started": {
             "type": "trip_event",

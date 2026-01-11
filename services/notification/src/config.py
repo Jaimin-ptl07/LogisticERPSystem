@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Auth Service
     AUTH_SERVICE_URL: str = "http://auth-service:8001"
 
+    # Orders Service
+    ORDERS_SERVICE_URL: str = "http://orders-service:8003"
+
     # JWT - Use the same GLOBAL_JWT_SECRET as other services
     JWT_SECRET: str = os.getenv(
         "GLOBAL_JWT_SECRET",

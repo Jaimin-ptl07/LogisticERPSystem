@@ -351,6 +351,82 @@ class OrderEventProducer:
             }
         )
 
+    def publish_order_due_day_reminder(
+        self,
+        order_id: str,
+        order_number: str,
+        tenant_id: str,
+        branch_id: str,
+        customer_id: str,
+        due_days: int,
+        days_remaining: int,
+        due_date: str,
+        total_amount: float
+    ) -> bool:
+        """Publish order.due_day_reminder event - sent when order is 4 days before due date"""
+        return self.publish_event(
+            event_type="order.due_day_reminder",
+            tenant_id=tenant_id,
+            data={
+                "entity_type": "order",
+                "entity_id": order_id,
+                "order_number": order_number,
+                "branch_id": branch_id,
+                "customer_id": customer_id,
+                "due_days": due_days,
+                "days_remaining": days_remaining,
+                "due_date": due_date,
+                "total_amount": float(total_amount),
+                "action_url": f"/orders/{order_id}"
+            }
+        )
+
+    def publish_order_failed_delivery(
+        self,
+        order_id: str,
+        order_number: str,
+        tenant_id: str,
+        reason: Optional[str] = None
+    ) -> bool:
+        """Publish order.failed event - when delivery fails"""
+        data = {
+            "entity_type": "order",
+            "entity_id": order_id,
+            "order_number": order_number,
+            "action_url": f"/orders/{order_id}"
+        }
+        if reason:
+            data["reason"] = reason
+
+        return self.publish_event(
+            event_type="order.failed",
+            tenant_id=tenant_id,
+            data=data
+        )
+
+    def publish_order_returned(
+        self,
+        order_id: str,
+        order_number: str,
+        tenant_id: str,
+        reason: Optional[str] = None
+    ) -> bool:
+        """Publish order.returned event - when order is returned"""
+        data = {
+            "entity_type": "order",
+            "entity_id": order_id,
+            "order_number": order_number,
+            "action_url": f"/orders/{order_id}"
+        }
+        if reason:
+            data["reason"] = reason
+
+        return self.publish_event(
+            event_type="order.returned",
+            tenant_id=tenant_id,
+            data=data
+        )
+
     def flush(self):
         """Flush any pending messages"""
         if self._producer:

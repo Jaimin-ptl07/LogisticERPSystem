@@ -261,6 +261,11 @@ app.include_router(
     prefix="/api/v1/internal",
     tags=["Internal"]
 )
+app.include_router(
+    due_days.router,
+    prefix="/api/v1/internal/due-days",
+    tags=["Internal Due Days"]
+)
 
 
 # Security exception handlers
