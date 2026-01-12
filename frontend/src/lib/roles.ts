@@ -72,6 +72,14 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
   [ROLES.USER]: [], // User role - no access yet (awaiting instructions)
 };
 
+// Analytics routes - accessible to all management roles
+export const ANALYTICS_ROUTES: string[] = [
+  "/company-admin/analytics",
+  "/branch-manager/analytics",
+  "/finance-manager/analytics",
+  "/logistics-manager/analytics",
+];
+
 // Default redirect per role
 export const ROLE_DEFAULT_ROUTE: Record<Role, string> = {
   [ROLES.SUPER_ADMIN]: "/super-admin/dashboard",

@@ -636,6 +636,54 @@ services:
       retries: 3
       start_period: 40s
 
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./services/analytics
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./services/analytics/src:/app/src
+      - ./services/analytics/pyproject.toml:/app/pyproject.toml
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_COMPANY_DB=company_db
+      - POSTGRES_ORDERS_DB=orders_db
+      - POSTGRES_TMS_DB=tms_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - PORT=8008
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
+      - COMPANY_SERVICE_URL=http://company-service:8002
+      - ORDERS_SERVICE_URL=http://orders-service:8003
+      - TMS_SERVICE_URL=http://tms-service:8004
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      company-service:
+        condition: service_started
+    networks:
+      - logistics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   postgres_data:
   timescaledb_data:
