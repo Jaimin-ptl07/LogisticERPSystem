@@ -6,6 +6,12 @@
 -- 4. Driver code field for driver profiles
 
 -- ============================================================================
+-- PREREQUISITE: Enable pgcrypto extension for gen_random_uuid()
+-- ============================================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- ============================================================================
 -- 1. CUSTOMER TABLE - Add contact_person_name column
 -- ============================================================================
 
@@ -150,15 +156,17 @@ ALTER TABLE vehicle_odometer_fuel_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_unit_types ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies for vehicle_odometer_fuel_logs
+DROP POLICY IF EXISTS vehicle_odometer_fuel_logs_tenant_policy ON vehicle_odometer_fuel_logs;
+
 CREATE POLICY vehicle_odometer_fuel_logs_tenant_policy
     ON vehicle_odometer_fuel_logs
-    USING (tenant_id = current_setting('app.current_tenant_id')::VARCHAR(255))
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::VARCHAR(255));
+    USING (tenant_id = current_setting('app.current_tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
 
 -- Create RLS policies for product_unit_types
+DROP POLICY IF EXISTS product_unit_types_tenant_policy ON product_unit_types;
+
 CREATE POLICY product_unit_types_tenant_policy
     ON product_unit_types
-    USING (tenant_id = current_setting('app.current_tenant_id')::VARCHAR(255))
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id')::VARCHAR(255));
-
-COMMIT;
+    USING (tenant_id = current_setting('app.current_tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));

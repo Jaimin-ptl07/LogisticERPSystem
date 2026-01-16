@@ -4,12 +4,12 @@ Provides executive dashboard summary and entity timeline drill-down
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy import text
+from sqlalchemy import text, select, func
 import logging
 from datetime import datetime
 from pydantic import BaseModel
 
-from src.database import get_multi_db, MultiDBSession
+from src.database import get_multi_db, MultiDBSession, DriverProfile, Vehicle, Order, Trip
 from src.models.schemas import (
     DateRangePreset,
     DateRangeFilter,
@@ -152,7 +152,7 @@ class EntityTimelineResponse(BaseModel):
 # Dashboard Summary Endpoint
 # ============================================================================
 
-@router.post("/summary", response_model=DashboardSummaryResponse)
+@router.post("/summary")
 async def get_dashboard_summary(
     date_range: DateRange,
     multi_db: MultiDBSession = Depends(get_multi_db),
@@ -161,7 +161,10 @@ async def get_dashboard_summary(
     Get executive dashboard summary
 
     Returns high-level KPIs and summary metrics for orders, trips, drivers, and trucks.
+    Uses actual database tables for current counts (not audit_logs).
     """
+    logger.info(f"Dashboard summary request - preset: {date_range.preset}, start_date: {date_range.start_date}, end_date: {date_range.end_date}")
+
     # Map preset string to enum
     preset_map = {
         "today": DateRangePreset.TODAY,
@@ -180,10 +183,40 @@ async def get_dashboard_summary(
         date_to = datetime.fromisoformat(date_range.end_date.replace('Z', '+00:00'))
 
     start_date, end_date = calculate_date_range(preset, date_from, date_to)
+    logger.info(f"Calculated date range - start: {start_date}, end: {end_date}")
 
     try:
-        # Get Order KPIs
-        order_stats_query = text("""
+        # ====================================================================
+        # Get Order KPIs from orders table (orders_db)
+        # ====================================================================
+        logger.info("Fetching order stats from orders table...")
+
+        # Total orders count - use raw SQL
+        total_orders_query = text("""
+            SELECT COUNT(*) as count
+            FROM orders
+            WHERE is_active = true
+        """)
+        total_orders_result = await multi_db.orders.execute(total_orders_query)
+        total_orders = total_orders_result.scalar() or 0
+        logger.info(f"Total orders: {total_orders}")
+
+        # Orders delivered today - use audit_logs for date-based stats
+        delivered_today_query = text("""
+            SELECT COUNT(DISTINCT entity_id) as count
+            FROM audit_logs
+            WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
+                AND module = 'orders'
+                AND entity_type = 'order'
+                AND to_status = 'delivered'
+                AND DATE(created_at) = CURRENT_DATE
+        """)
+        delivered_today_result = await multi_db.company.execute(delivered_today_query)
+        delivered_today = delivered_today_result.scalar() or 0
+        logger.info(f"Delivered today: {delivered_today}")
+
+        # Average fulfillment time - use audit_logs
+        avg_fulfillment_query = text("""
             WITH order_lifecycles AS (
                 SELECT
                     entity_id,
@@ -197,79 +230,31 @@ async def get_dashboard_summary(
                     AND created_at <= :end_date
                 GROUP BY entity_id
             )
-            SELECT
-                (SELECT COUNT(*) FROM order_lifecycles WHERE created_at IS NOT NULL) as total_orders,
-                (SELECT COUNT(*) FROM order_lifecycles WHERE delivered_at IS NOT NULL) as delivered_today,
-                AVG(EXTRACT(EPOCH FROM (delivered_at - created_at)) / 3600.0) as avg_fulfillment_hours
+            SELECT AVG(EXTRACT(EPOCH FROM (delivered_at - created_at)) / 3600.0) as avg_hours
             FROM order_lifecycles
             WHERE created_at IS NOT NULL AND delivered_at IS NOT NULL
         """)
+        avg_fulfillment_result = await multi_db.company.execute(avg_fulfillment_query, {"start_date": start_date, "end_date": end_date})
+        avg_fulfillment = round(float(avg_fulfillment_result.scalar() or 0), 1)
+        logger.info(f"Avg fulfillment: {avg_fulfillment} hours")
 
-        order_result = await multi_db.company.execute(order_stats_query, {"start_date": start_date, "end_date": end_date})
-        order_row = order_result.first()
+        # ====================================================================
+        # Get Trip KPIs from trips table (tms_db)
+        # ====================================================================
+        logger.info("Fetching trip stats from trips table...")
 
-        # Get Trip KPIs
-        trip_stats_query = text("""
-            SELECT
-                COUNT(DISTINCT entity_id) FILTER (WHERE to_status = 'on-route') as active_trips
-            FROM (
-                SELECT DISTINCT ON (entity_id)
-                    entity_id,
-                    to_status,
-                    created_at
-                FROM audit_logs
-                WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
-                    AND module = 'trips'
-                    AND entity_type = 'trip'
-                    AND created_at >= :start_date
-                    AND created_at <= :end_date
-                ORDER BY entity_id, created_at DESC
-            ) latest_trips
+        # Active trips = 'loading', 'on-route', 'paused' - use raw SQL
+        active_trips_query = text("""
+            SELECT COUNT(*) as count
+            FROM trips
+            WHERE status IN ('loading', 'on-route', 'paused')
         """)
+        active_trips_result = await multi_db.tms.execute(active_trips_query)
+        active_trips = active_trips_result.scalar() or 0
+        logger.info(f"Active trips: {active_trips}")
 
-        trip_result = await multi_db.tms.execute(trip_stats_query, {"start_date": start_date, "end_date": end_date})
-        trip_row = trip_result.first()
-
-        # Get Driver KPIs
-        driver_stats_query = text("""
-            SELECT
-                COUNT(DISTINCT entity_id) FILTER (WHERE to_status = 'available') as available_drivers
-            FROM (
-                SELECT DISTINCT ON (entity_id)
-                    entity_id,
-                    to_status
-                FROM audit_logs
-                WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
-                    AND module = 'drivers'
-                    AND entity_type = 'driver'
-                ORDER BY entity_id, created_at DESC
-            ) latest_drivers
-        """)
-
-        driver_result = await multi_db.company.execute(driver_stats_query)
-        driver_row = driver_result.first()
-
-        # Get Truck KPIs
-        truck_stats_query = text("""
-            SELECT
-                COUNT(DISTINCT entity_id) FILTER (WHERE to_status = 'available') as available_trucks
-            FROM (
-                SELECT DISTINCT ON (entity_id)
-                    entity_id,
-                    to_status
-                FROM audit_logs
-                WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
-                    AND module = 'vehicles'
-                    AND entity_type = 'vehicle'
-                ORDER BY entity_id, created_at DESC
-            ) latest_vehicles
-        """)
-
-        truck_result = await multi_db.company.execute(truck_stats_query)
-        truck_row = truck_result.first()
-
-        # Get bottleneck counts
-        bottleneck_query = text("""
+        # Trips delayed - use audit_logs to find stuck trips
+        trips_delayed_query = text("""
             WITH latest_status AS (
                 SELECT DISTINCT ON (entity_id)
                     entity_id,
@@ -277,20 +262,45 @@ async def get_dashboard_summary(
                     created_at as status_since
                 FROM audit_logs
                 WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
-                    AND module = 'orders'
-                    AND entity_type = 'order'
-                    AND to_status NOT IN ('delivered', 'cancelled')
+                    AND module = 'trips'
+                    AND entity_type = 'trip'
+                    AND to_status NOT IN ('completed', 'cancelled')
                 ORDER BY entity_id, created_at DESC
             )
-            SELECT COUNT(*) as bottleneck_count
+            SELECT COUNT(*) as delayed_count
             FROM latest_status
-            WHERE EXTRACT(EPOCH FROM (NOW() - status_since)) / 3600.0 > 4
+            WHERE EXTRACT(EPOCH FROM (NOW() - status_since)) / 3600.0 > 24
         """)
+        trips_delayed_result = await multi_db.company.execute(trips_delayed_query)
+        trips_delayed = trips_delayed_result.scalar() or 0
+        logger.info(f"Trips delayed: {trips_delayed}")
 
-        bottleneck_result = await multi_db.company.execute(bottleneck_query)
-        bottleneck_row = bottleneck_result.first()
+        # ====================================================================
+        # Get Driver KPIs from driver_profiles table (company_db)
+        # ====================================================================
+        logger.info("Fetching driver stats from driver_profiles table...")
 
-        # Calculate driver utilization (simplified)
+        # Available drivers - use raw SQL
+        available_drivers_query = text("""
+            SELECT COUNT(*) as count
+            FROM driver_profiles
+            WHERE current_status = 'available' AND is_active = true
+        """)
+        available_drivers_result = await multi_db.company.execute(available_drivers_query)
+        available_drivers = available_drivers_result.scalar() or 0
+        logger.info(f"Available drivers: {available_drivers}")
+
+        # Total active drivers - use raw SQL
+        total_drivers_query = text("""
+            SELECT COUNT(*) as count
+            FROM driver_profiles
+            WHERE is_active = true
+        """)
+        total_drivers_result = await multi_db.company.execute(total_drivers_query)
+        total_drivers = total_drivers_result.scalar() or 0
+        logger.info(f"Total drivers: {total_drivers}")
+
+        # Driver utilization - use audit_logs for time-based calculation
         driver_util_query = text("""
             WITH driver_periods AS (
                 SELECT
@@ -310,54 +320,112 @@ async def get_dashboard_summary(
                     to_status,
                     EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 3600.0 as hours
                 FROM driver_periods
-                WHERE hours >= 0
+                WHERE EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 3600.0 >= 0
             )
             SELECT
                 SUM(CASE WHEN to_status = 'on_trip' THEN hours ELSE 0 END) * 100.0 / NULLIF(SUM(hours), 0) as util_percent
             FROM period_durations
         """)
-
         util_result = await multi_db.company.execute(driver_util_query, {"start_date": start_date})
-        util_row = util_result.first()
+        driver_util = round(float(util_result.scalar() or 0), 1)
+        logger.info(f"Driver utilization: {driver_util}%")
 
-        return DashboardSummaryResponse(
-            total_orders=KPIMetric(
-                value=float(order_row[0]) if order_row and order_row[0] else 0,
-                unit="orders",
-                trend="neutral"
+        # ====================================================================
+        # Get Truck KPIs from vehicles table (company_db)
+        # ====================================================================
+        logger.info("Fetching truck stats from vehicles table...")
+
+        # Available trucks - use raw SQL to avoid enum type issues
+        available_trucks_query = text("""
+            SELECT COUNT(*) as count
+            FROM vehicles
+            WHERE status = 'available' AND is_active = true
+        """)
+        available_trucks_result = await multi_db.company.execute(available_trucks_query)
+        available_trucks = available_trucks_result.scalar() or 0
+        logger.info(f"Available trucks: {available_trucks}")
+
+        # Total active trucks - use raw SQL to avoid enum type issues
+        total_trucks_query = text("""
+            SELECT COUNT(*) as count
+            FROM vehicles
+            WHERE is_active = true
+        """)
+        total_trucks_result = await multi_db.company.execute(total_trucks_query)
+        total_trucks = total_trucks_result.scalar() or 0
+        logger.info(f"Total trucks: {total_trucks}")
+
+        # Truck utilization - use audit_logs for time-based calculation
+        truck_util_query = text("""
+            WITH vehicle_periods AS (
+                SELECT
+                    entity_id,
+                    to_status,
+                    created_at as period_start,
+                    LEAD(created_at) OVER (PARTITION BY entity_id ORDER BY created_at) as period_end
+                FROM audit_logs
+                WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
+                    AND module = 'vehicles'
+                    AND entity_type = 'vehicle'
+                    AND to_status IN ('available', 'on_trip', 'maintenance', 'out_of_service')
+                    AND created_at >= :start_date
             ),
-            orders_delivered_today=KPIMetric(
-                value=float(order_row[1]) if order_row and order_row[1] else 0,
-                unit="delivered",
-                trend="up"
-            ),
-            avg_fulfillment_time=KPIMetric(
-                value=round(float(order_row[2]), 1) if order_row and order_row[2] else 0,
-                unit="hours",
-                trend="down"
-            ),
-            active_trips=KPIMetric(
-                value=float(trip_row[0]) if trip_row and trip_row[0] else 0,
-                unit="trips",
-                trend="neutral"
-            ),
-            available_drivers=KPIMetric(
-                value=float(driver_row[0]) if driver_row and driver_row[0] else 0,
-                unit="drivers",
-                trend="neutral"
-            ),
-            available_trucks=KPIMetric(
-                value=float(truck_row[0]) if truck_row and truck_row[0] else 0,
-                unit="trucks",
-                trend="up"
-            ),
-            driver_utilization_percent=round(float(util_row[0]), 1) if util_row and util_row[0] else 0,
-            truck_utilization_percent=68.0,  # Placeholder - would need similar calculation
-            orders_in_bottleneck=int(bottleneck_row[0]) if bottleneck_row and bottleneck_row[0] else 0,
-            trips_delayed=0  # Placeholder - would need trip delay calculation
-        )
+            period_durations AS (
+                SELECT
+                    to_status,
+                    EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 3600.0 as hours
+                FROM vehicle_periods
+                WHERE EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 3600.0 >= 0
+            )
+            SELECT
+                SUM(CASE WHEN to_status = 'on_trip' THEN hours ELSE 0 END) * 100.0 / NULLIF(SUM(hours), 0) as util_percent
+            FROM period_durations
+        """)
+        truck_util_result = await multi_db.company.execute(truck_util_query, {"start_date": start_date})
+        truck_util = round(float(truck_util_result.scalar() or 0), 1)
+        logger.info(f"Truck utilization: {truck_util}%")
+
+        # ====================================================================
+        # Get bottleneck counts from audit_logs (for time-based analysis)
+        # ====================================================================
+        logger.info("Fetching bottleneck stats...")
+        bottleneck_query = text("""
+            WITH latest_status AS (
+                SELECT DISTINCT ON (entity_id)
+                    entity_id,
+                    to_status,
+                    created_at as status_since
+                FROM audit_logs
+                WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
+                    AND module = 'orders'
+                    AND entity_type = 'order'
+                    AND to_status NOT IN ('delivered', 'cancelled')
+                ORDER BY entity_id, created_at DESC
+            )
+            SELECT COUNT(*) as bottleneck_count
+            FROM latest_status
+            WHERE EXTRACT(EPOCH FROM (NOW() - status_since)) / 3600.0 > 4
+        """)
+        bottleneck_result = await multi_db.company.execute(bottleneck_query)
+        bottlenecks = bottleneck_result.scalar() or 0
+        logger.info(f"Bottlenecks: {bottlenecks}")
+
+        logger.info(f"Summary - orders: {total_orders}, delivered: {delivered_today}, avg_fulfillment: {avg_fulfillment}h, active_trips: {active_trips}, available_drivers: {available_drivers}, available_trucks: {available_trucks}")
+
+        return {
+            "total_orders": {"value": total_orders, "unit": "orders", "trend": "neutral"},
+            "orders_delivered_today": {"value": delivered_today, "unit": "delivered", "trend": "up"},
+            "avg_fulfillment_time": {"value": avg_fulfillment, "unit": "hours", "trend": "down"},
+            "active_trips": {"value": active_trips, "unit": "trips", "trend": "neutral"},
+            "available_drivers": {"value": available_drivers, "unit": "drivers", "trend": "neutral"},
+            "available_trucks": {"value": available_trucks, "unit": "trucks", "trend": "up"},
+            "driver_utilization_percent": driver_util,
+            "truck_utilization_percent": truck_util,
+            "orders_in_bottleneck": bottlenecks,
+            "trips_delayed": trips_delayed
+        }
     except Exception as e:
-        logger.error(f"Error getting dashboard summary: {str(e)}")
+        logger.error(f"Error getting dashboard summary: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get dashboard summary: {str(e)}")
 
 
@@ -366,49 +434,27 @@ async def get_order_status_counts(
     date_range: DateRange,
     multi_db: MultiDBSession = Depends(get_multi_db),
 ):
-    """Get order status counts"""
-    preset_map = {
-        "today": DateRangePreset.TODAY,
-        "last_7_days": DateRangePreset.LAST_7_DAYS,
-        "last_30_days": DateRangePreset.LAST_30_DAYS,
-        "custom": DateRangePreset.CUSTOM,
-    }
-    preset = preset_map.get(date_range.preset, DateRangePreset.LAST_7_DAYS)
-
-    date_from = None
-    date_to = None
-    if date_range.start_date:
-        date_from = datetime.fromisoformat(date_range.start_date.replace('Z', '+00:00'))
-    if date_range.end_date:
-        date_to = datetime.fromisoformat(date_range.end_date.replace('Z', '+00:00'))
-
-    start_date, end_date = calculate_date_range(preset, date_from, date_to)
+    """
+    Get order status counts from orders table
+    Uses actual orders table for current status (not audit_logs)
+    """
+    logger.info(f"Order status counts request - preset: {date_range.preset}")
 
     try:
+        # Query orders table directly for current status counts - use raw SQL
         query = text("""
-            WITH latest_status AS (
-                SELECT DISTINCT ON (entity_id)
-                    entity_id,
-                    to_status as status
-                FROM audit_logs
-                WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
-                    AND module = 'orders'
-                    AND entity_type = 'order'
-                    AND created_at >= :start_date
-                    AND created_at <= :end_date
-                    AND to_status IS NOT NULL
-                ORDER BY entity_id, created_at DESC
-            )
             SELECT status, COUNT(*) as count
-            FROM latest_status
+            FROM orders
+            WHERE is_active = true
             GROUP BY status
             ORDER BY count DESC
         """)
 
-        result = await multi_db.company.execute(query, {"start_date": start_date, "end_date": end_date})
+        result = await multi_db.orders.execute(query)
         rows = result.all()
 
         total = sum(row[1] for row in rows) if rows else 0
+        logger.info(f"Total orders: {total}, status breakdown: {rows}")
 
         status_counts = [
             StatusCount(
@@ -425,7 +471,7 @@ async def get_order_status_counts(
             status_counts=status_counts
         )
     except Exception as e:
-        logger.error(f"Error getting order status counts: {str(e)}")
+        logger.error(f"Error getting order status counts: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get order status counts: {str(e)}")
 
 
@@ -434,49 +480,26 @@ async def get_trip_status_counts(
     date_range: DateRange,
     multi_db: MultiDBSession = Depends(get_multi_db),
 ):
-    """Get trip status counts"""
-    preset_map = {
-        "today": DateRangePreset.TODAY,
-        "last_7_days": DateRangePreset.LAST_7_DAYS,
-        "last_30_days": DateRangePreset.LAST_30_DAYS,
-        "custom": DateRangePreset.CUSTOM,
-    }
-    preset = preset_map.get(date_range.preset, DateRangePreset.LAST_7_DAYS)
-
-    date_from = None
-    date_to = None
-    if date_range.start_date:
-        date_from = datetime.fromisoformat(date_range.start_date.replace('Z', '+00:00'))
-    if date_range.end_date:
-        date_to = datetime.fromisoformat(date_range.end_date.replace('Z', '+00:00'))
-
-    start_date, end_date = calculate_date_range(preset, date_from, date_to)
+    """
+    Get trip status counts from trips table
+    Uses actual trips table for current status (not audit_logs)
+    """
+    logger.info(f"Trip status counts request - preset: {date_range.preset}")
 
     try:
+        # Query trips table directly for current status counts - use raw SQL
         query = text("""
-            WITH latest_status AS (
-                SELECT DISTINCT ON (entity_id)
-                    entity_id,
-                    to_status as status
-                FROM audit_logs
-                WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM audit_logs LIMIT 1)
-                    AND module = 'trips'
-                    AND entity_type = 'trip'
-                    AND created_at >= :start_date
-                    AND created_at <= :end_date
-                    AND to_status IS NOT NULL
-                ORDER BY entity_id, created_at DESC
-            )
             SELECT status, COUNT(*) as count
-            FROM latest_status
+            FROM trips
             GROUP BY status
             ORDER BY count DESC
         """)
 
-        result = await multi_db.company.execute(query, {"start_date": start_date, "end_date": end_date})
+        result = await multi_db.tms.execute(query)
         rows = result.all()
 
         total = sum(row[1] for row in rows) if rows else 0
+        logger.info(f"Total trips: {total}, status breakdown: {rows}")
 
         status_counts = [
             StatusCount(
@@ -493,7 +516,7 @@ async def get_trip_status_counts(
             status_counts=status_counts
         )
     except Exception as e:
-        logger.error(f"Error getting trip status counts: {str(e)}")
+        logger.error(f"Error getting trip status counts: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get trip status counts: {str(e)}")
 
 
@@ -578,7 +601,7 @@ async def get_driver_utilization(
                     to_status,
                     EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 3600.0 as hours
                 FROM driver_periods
-                WHERE hours >= 0
+                WHERE EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 3600.0 >= 0
             ),
             util_calcs AS (
                 SELECT
@@ -612,18 +635,19 @@ async def get_driver_utilization(
         rows = result.all()
 
         drivers = []
-        avg_util = 0
+        avg_util = 0.0
 
         for row in rows:
-            drivers.append(UtilizationMetrics(
-                entity_id=str(row[0]),
-                entity_name=None,
-                utilization_percent=round(float(row[5]), 1),
-                total_hours=round(float(row[4]), 1),
-                active_hours=round(float(row[1]), 1),
-                idle_hours=round(float(row[2]), 1)
-            ))
-            avg_util = float(row[6])
+            if len(row) >= 7:
+                drivers.append(UtilizationMetrics(
+                    entity_id=str(row[0]),
+                    entity_name=None,
+                    utilization_percent=round(float(row[5]), 1),
+                    total_hours=round(float(row[4]), 1),
+                    active_hours=round(float(row[1]), 1),
+                    idle_hours=round(float(row[2]), 1)
+                ))
+                avg_util = float(row[6]) if row[6] is not None else 0.0
 
         return DriverUtilizationResponse(
             date_range=date_range,
@@ -661,7 +685,7 @@ async def get_truck_utilization(
                     to_status,
                     EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 24.0 as days
                 FROM vehicle_periods
-                WHERE days >= 0
+                WHERE EXTRACT(EPOCH FROM (COALESCE(period_end, NOW()) - period_start)) / 24.0 >= 0
             ),
             util_calcs AS (
                 SELECT
@@ -697,18 +721,19 @@ async def get_truck_utilization(
         rows = result.all()
 
         trucks = []
-        avg_util = 0
+        avg_util = 0.0
 
         for row in rows:
-            trucks.append(UtilizationMetrics(
-                entity_id=str(row[0]),
-                entity_name=None,
-                utilization_percent=round(float(row[5]), 1),
-                total_hours=round(float(row[4]), 1),
-                active_hours=round(float(row[1]), 1),
-                idle_hours=round(float(row[2]), 1)
-            ))
-            avg_util = float(row[6])
+            if len(row) >= 7:
+                trucks.append(UtilizationMetrics(
+                    entity_id=str(row[0]),
+                    entity_name=None,
+                    utilization_percent=round(float(row[5]), 1),
+                    total_hours=round(float(row[4]), 1),
+                    active_hours=round(float(row[1]), 1),
+                    idle_hours=round(float(row[2]), 1)
+                ))
+                avg_util = float(row[6]) if row[6] is not None else 0.0
 
         return TruckUtilizationResponse(
             date_range=date_range,

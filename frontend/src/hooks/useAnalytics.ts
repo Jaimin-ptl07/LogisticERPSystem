@@ -28,27 +28,44 @@ function useAnalyticsData<T>(
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  // Use JSON stringified dateRange for stable dependency
+  const dateRangeKey = JSON.stringify(dateRange);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await fetcher(dateRange);
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRangeKey, enabled]);
+
+  const refetch = useCallback(() => {
     if (!enabled) return;
 
     setLoading(true);
     setError(null);
 
-    try {
-      const result = await fetcher(dateRange);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setLoading(false);
-    }
-  }, [fetcher, dateRange, enabled]);
+    fetcher(dateRange)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : "An error occurred"))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRangeKey, enabled]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  return { data, loading, error, refetch: fetchData };
+  return { data, loading, error, refetch };
 }
 
 // Dashboard Summary Hook
@@ -159,27 +176,39 @@ export function useEntityTimeline(
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTimeline = useCallback(async () => {
+  useEffect(() => {
+    if (!enabled || !entityId) return;
+
+    const fetchTimeline = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await analyticsAPI.getEntityTimeline(entityType, entityId);
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTimeline();
+  }, [entityType, entityId, enabled]);
+
+  const refetch = useCallback(() => {
     if (!enabled || !entityId) return;
 
     setLoading(true);
     setError(null);
 
-    try {
-      const result = await analyticsAPI.getEntityTimeline(entityType, entityId);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setLoading(false);
-    }
+    analyticsAPI.getEntityTimeline(entityType, entityId)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : "An error occurred"))
+      .finally(() => setLoading(false));
   }, [entityType, entityId, enabled]);
 
-  useEffect(() => {
-    fetchTimeline();
-  }, [fetchTimeline]);
-
-  return { data, loading, error, refetch: fetchTimeline };
+  return { data, loading, error, refetch };
 }
 
 // Combined hook for all dashboard data

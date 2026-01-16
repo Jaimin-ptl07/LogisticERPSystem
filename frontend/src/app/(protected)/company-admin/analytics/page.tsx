@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import {
   BarChart3,
   Package,
@@ -11,10 +12,16 @@ import {
   AlertCircle,
   RefreshCw,
   XCircle,
+  Eye,
+  ExternalLink,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAnalyticsDashboard } from "@/hooks/useAnalytics";
 import { DateRangePreset, DateRange } from "@/services/analytics";
+import { useStatusTimeline } from "@/components/analytics/StatusTimeline";
+import { useOrdersList } from "@/components/analytics/OrdersList";
+import { useTripsList } from "@/components/analytics/TripsList";
 
 // Status color mapping for orders
 const orderStatusColors: Record<string, string> = {
@@ -53,7 +60,11 @@ function formatStatus(status: string): string {
 }
 
 export default function AnalyticsPage() {
+  const router = useRouter();
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("last_7_days");
+  const { open: openTimeline, TimelineModal: StatusTimelineModal } = useStatusTimeline();
+  const { open: openOrdersList, OrdersListModal: OrdersListModalComponent } = useOrdersList();
+  const { open: openTripsList, TripsListModal: TripsListModalComponent } = useTripsList();
 
   // Build date range object from preset
   const buildDateRange = (preset: DateRangePreset): DateRange => {
@@ -372,6 +383,99 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
+      {/* Sample Orders & Trips with Timeline View */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Sample Orders */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Recent Orders
+              <span className="text-xs font-normal text-gray-500 ml-2">
+                Click to view timeline
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                   onClick={() => openTimeline("order", "ORD-20260112-2F91EEBE")}>
+                <div className="flex items-center gap-3">
+                  <Package className="w-4 h-4 text-blue-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">ORD-20260112-2F91EEBE</p>
+                    <p className="text-xs text-gray-500">Finance Approved • 0.1h total</p>
+                  </div>
+                </div>
+                <Eye className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                   onClick={() => openTimeline("order", "ORD-20260112-55DD9FA3")}>
+                <div className="flex items-center gap-3">
+                  <Package className="w-4 h-4 text-indigo-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">ORD-20260112-55DD9FA3</p>
+                    <p className="text-xs text-gray-500">Finance Approved • 0.1h total</p>
+                  </div>
+                </div>
+                <Eye className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="text-center pt-2">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => openOrdersList()}>
+                  <ExternalLink className="w-3 h-3 mr-1" />
+                  View All Orders
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sample Trips */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="w-5 h-5" />
+              Recent Trips
+              <span className="text-xs font-normal text-gray-500 ml-2">
+                Click to view timeline
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                   onClick={() => openTimeline("trip", "TRIP-01CFE183")}>
+                <div className="flex items-center gap-3">
+                  <Truck className="w-4 h-4 text-green-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">TRIP-01CFE183</p>
+                    <p className="text-xs text-gray-500">Completed • 0.5h total</p>
+                  </div>
+                </div>
+                <Eye className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                   onClick={() => openTimeline("trip", "TRIP-71EB2FB0")}>
+                <div className="flex items-center gap-3">
+                  <Truck className="w-4 h-4 text-yellow-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">TRIP-71EB2FB0</p>
+                    <p className="text-xs text-gray-500">Completed • 0.3h total</p>
+                  </div>
+                </div>
+                <Eye className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="text-center pt-2">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => openTripsList()}>
+                  <ExternalLink className="w-3 h-3 mr-1" />
+                  View All Trips
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Bottlenecks & Utilization */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Order Bottlenecks */}
@@ -518,6 +622,13 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Status Timeline Modal */}
+      <StatusTimelineModal />
+      {/* Orders List Modal */}
+      <OrdersListModalComponent />
+      {/* Trips List Modal */}
+      <TripsListModalComponent />
     </div>
   );
 }

@@ -24,11 +24,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/status-counts", response_model=TruckStatusCountsResponse)
+@router.post("/status-counts")
 async def get_truck_status_counts(
-    preset: DateRangePreset = Query(DateRangePreset.LAST_7_DAYS, description="Date range preset"),
-    date_from: Optional[datetime] = Query(None, description="Custom date from"),
-    date_to: Optional[datetime] = Query(None, description="Custom date to"),
+    date_range_request: dict,
     multi_db: MultiDBSession = Depends(get_multi_db),
 ):
     """
@@ -37,6 +35,25 @@ async def get_truck_status_counts(
     Returns the number of trucks in each status.
     Uses current truck status from the company database.
     """
+    from datetime import datetime
+
+    # Parse date range from request body
+    preset_map = {
+        "today": DateRangePreset.TODAY,
+        "last_7_days": DateRangePreset.LAST_7_DAYS,
+        "last_30_days": DateRangePreset.LAST_30_DAYS,
+        "custom": DateRangePreset.CUSTOM,
+    }
+    preset_str = date_range_request.get("preset", "last_7_days")
+    preset = preset_map.get(preset_str, DateRangePreset.LAST_7_DAYS)
+
+    date_from = None
+    date_to = None
+    if date_range_request.get("start_date"):
+        date_from = datetime.fromisoformat(date_range_request["start_date"].replace('Z', '+00:00'))
+    if date_range_request.get("end_date"):
+        date_to = datetime.fromisoformat(date_range_request["end_date"].replace('Z', '+00:00'))
+
     start_date, end_date = calculate_date_range(preset, date_from, date_to)
 
     try:
@@ -53,24 +70,29 @@ async def get_truck_status_counts(
         result = await multi_db.company.execute(query)
         rows = result.all()
 
+        total_trucks = sum(row[1] for row in rows) if rows else 0
+
+        # Build status counts with percentage
         status_counts = [
-            TruckStatusCount(status=row[0], count=row[1])
+            {
+                "status": row[0],
+                "count": row[1],
+                "percentage": round((row[1] / total_trucks * 100), 1) if total_trucks > 0 else 0.0
+            }
             for row in rows
         ]
 
-        total_trucks = sum(sc.count for sc in status_counts)
-
-        return TruckStatusCountsResponse(
-            date_range=DateRangeFilter(preset=preset, date_from=date_from, date_to=date_to),
-            total_trucks=total_trucks,
-            status_counts=status_counts
-        )
+        return {
+            "date_range": DateRangeFilter(preset=preset, date_from=date_from, date_to=date_to).model_dump(),
+            "total_trucks": total_trucks,
+            "status_counts": status_counts
+        }
     except Exception as e:
         logger.error(f"Error getting truck status counts: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get truck status counts: {str(e)}")
 
 
-@router.get("/utilization", response_model=TruckUtilizationResponse)
+@router.post("/utilization", response_model=TruckUtilizationResponse)
 async def get_truck_utilization(
     preset: DateRangePreset = Query(DateRangePreset.LAST_7_DAYS, description="Date range preset"),
     date_from: Optional[datetime] = Query(None, description="Custom date from"),

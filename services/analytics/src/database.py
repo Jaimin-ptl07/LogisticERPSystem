@@ -96,7 +96,7 @@ class Trip(Base):
 # Create engines for each database
 company_engine = create_async_engine(
     settings.COMPANY_DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
@@ -104,7 +104,7 @@ company_engine = create_async_engine(
 
 orders_engine = create_async_engine(
     settings.ORDERS_DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
@@ -112,7 +112,7 @@ orders_engine = create_async_engine(
 
 tms_engine = create_async_engine(
     settings.TMS_DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,

@@ -1985,12 +1985,31 @@ async def get_order_items_with_assignments(
     total_assigned_quantity = 0
     total_remaining_quantity = 0
 
+    # Items status summary
+    items_status_summary = {
+        "planning": 0,
+        "loading": 0,
+        "on_route": 0,
+        "delivered": 0
+    }
+
     for item in items:
         item_assignments = assignments_by_item.get(item.id, [])
 
         # Split assignments by status - only count active assignments
         assigned_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] in ('planning', 'loading', 'on_route'))
         delivered_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'delivered')
+
+        # Calculate status quantities for this item
+        planning_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'planning')
+        loading_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'loading')
+        on_route_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'on_route')
+
+        # Add to overall status summary
+        items_status_summary["planning"] += planning_qty
+        items_status_summary["loading"] += loading_qty
+        items_status_summary["on_route"] += on_route_qty
+        items_status_summary["delivered"] += delivered_qty
 
         # The order_items.quantity is the ORIGINAL quantity (not reduced)
         # trip_item_assignments tracks what has been assigned to trips
@@ -2033,6 +2052,7 @@ async def get_order_items_with_assignments(
 
     logger.info(f"Order {order.order_number} items-with-assignments: original={total_original_quantity}, assigned={total_assigned_quantity}, remaining={total_remaining_quantity}")
     logger.info(f"Items data: {items_with_assignments}")
+    logger.info(f"Items status summary: {items_status_summary}")
 
     return {
         "order_id": order.id,
@@ -2047,6 +2067,7 @@ async def get_order_items_with_assignments(
             "is_fully_assigned": total_remaining_quantity == 0,
             "is_partially_assigned": 0 < total_remaining_quantity < total_original_quantity,
             "is_available": total_remaining_quantity == total_original_quantity
-        }
+        },
+        "items_status_summary": items_status_summary
     }
 

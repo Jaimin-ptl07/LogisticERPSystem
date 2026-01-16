@@ -229,6 +229,9 @@ class TripResponse(BaseSchema):
     # Time in current status
     current_status_since: Optional[str] = None
     time_in_current_status_minutes: Optional[int] = None
+    # Status change information
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
 
 
 class TripWithOrders(TripResponse):

@@ -451,6 +451,32 @@ export default function Orders() {
                                 </div>
                               </div>
 
+                              {/* Items Status Summary */}
+                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                                  <TrendingUp className="w-4 h-4" />
+                                  <span>Items Status</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="bg-blue-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-blue-700">{itemsData?.items_status_summary?.planning || 0}</p>
+                                    <p className="text-xs text-blue-600">Planning</p>
+                                  </div>
+                                  <div className="bg-orange-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-orange-700">{itemsData?.items_status_summary?.loading || 0}</p>
+                                    <p className="text-xs text-orange-600">Loading</p>
+                                  </div>
+                                  <div className="bg-purple-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-purple-700">{itemsData?.items_status_summary?.on_route || 0}</p>
+                                    <p className="text-xs text-purple-600">On Route</p>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-green-700">{itemsData?.items_status_summary?.delivered || 0}</p>
+                                    <p className="text-xs text-green-600">Delivered</p>
+                                  </div>
+                                </div>
+                              </div>
+
                               {/* TMS Status Badge */}
                               {itemsData?.tms_order_status && (
                                 <div className="mt-3">

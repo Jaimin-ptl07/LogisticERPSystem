@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     SERVICE_NAME: str = "analytics-service"
     VERSION: str = "1.0.0"
     ENV: str = os.getenv("ENV", "development")
-    DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     PORT: int = int(os.getenv("PORT", "8008"))
 
     # Logging

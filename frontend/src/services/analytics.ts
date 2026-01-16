@@ -1,5 +1,8 @@
 import { API_BASE_URL } from "./config";
 
+// Use frontend API routes for analytics (which proxy to backend service)
+const FRONTEND_API_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
 // Types for Analytics API responses
 
 export type DateRangePreset = "today" | "last_7_days" | "last_30_days" | "custom";
@@ -178,6 +181,72 @@ export interface EntityTimelineResponse {
   total_duration_hours: number;
 }
 
+// Status Timeline types (new)
+export interface StatusTimelineItem {
+  sequence: number;
+  from_status?: string;
+  to_status?: string;
+  timestamp: string;
+  duration_hours?: number;
+  user_name?: string;
+  description?: string;
+}
+
+export interface OrderStatusTimelineResponse {
+  order_number: string;
+  order_id: string;
+  current_status: string;
+  total_duration_hours: number;
+  timeline: StatusTimelineItem[];
+}
+
+export interface TripStatusTimelineResponse {
+  trip_id: string;
+  current_status: string;
+  total_duration_hours: number;
+  timeline: StatusTimelineItem[];
+}
+
+// Paginated List types
+export interface OrderTimelineSummary {
+  order_number: string;
+  order_id: string;
+  current_status: string;
+  total_duration_hours: number;
+  status_changes_count: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface OrdersListResponse {
+  orders: OrderTimelineSummary[];
+  total_count: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface TripTimelineSummary {
+  trip_id: string;
+  current_status: string;
+  total_duration_hours: number;
+  status_changes_count: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface TripsListResponse {
+  trips: TripTimelineSummary[];
+  total_count: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
 // API Client class
 class AnalyticsAPIClient {
   private baseURL: string;
@@ -306,7 +375,7 @@ class AnalyticsAPIClient {
   }
 
   async getDriverUtilization(dateRange: DateRange): Promise<DriverUtilizationResponse> {
-    return this.request<DriverUtilizationResponse>("/api/v1/drivers/utilization", {
+    return this.request<DriverUtilizationResponse>("/api/v1/dashboard/drivers/utilization", {
       method: "POST",
       body: JSON.stringify(dateRange),
     });
@@ -321,7 +390,7 @@ class AnalyticsAPIClient {
   }
 
   async getTruckUtilization(dateRange: DateRange): Promise<TruckUtilizationResponse> {
-    return this.request<TruckUtilizationResponse>("/api/v1/trucks/utilization", {
+    return this.request<TruckUtilizationResponse>("/api/v1/dashboard/trucks/utilization", {
       method: "POST",
       body: JSON.stringify(dateRange),
     });
@@ -336,6 +405,64 @@ class AnalyticsAPIClient {
       `/api/v1/timeline/${entityType}/${entityId}`
     );
   }
+
+  // Order Status Timeline (new)
+  async getOrderStatusTimeline(orderNumber: string): Promise<OrderStatusTimelineResponse> {
+    return this.request<OrderStatusTimelineResponse>(
+      `/api/v1/orders/${orderNumber}/timeline`
+    );
+  }
+
+  // Trip Status Timeline (new)
+  async getTripStatusTimeline(tripId: string): Promise<TripStatusTimelineResponse> {
+    return this.request<TripStatusTimelineResponse>(
+      `/api/v1/trips/${tripId}/timeline`
+    );
+  }
+
+  // Orders List (paginated) - uses frontend API route
+  async getOrdersList(
+    page: number = 1,
+    perPage: number = 10
+  ): Promise<OrdersListResponse> {
+    const url = `${FRONTEND_API_URL}/api/analytics/orders/list?page=${page}&per_page=${perPage}`;
+    const response = await fetch(url, {
+      headers: {
+        ...this.authHeaders,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: "Unknown error occurred",
+      }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  // Trips List (paginated) - uses frontend API route
+  async getTripsList(
+    page: number = 1,
+    perPage: number = 10
+  ): Promise<TripsListResponse> {
+    const url = `${FRONTEND_API_URL}/api/analytics/trips/list?page=${page}&per_page=${perPage}`;
+    const response = await fetch(url, {
+      headers: {
+        ...this.authHeaders,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: "Unknown error occurred",
+      }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
 }
 
 // Export singleton instance
@@ -349,4 +476,11 @@ export type {
   BottleneckItem,
   UtilizationMetrics,
   TimelineEvent,
+  StatusTimelineItem,
+  OrderStatusTimelineResponse,
+  TripStatusTimelineResponse,
+  OrderTimelineSummary,
+  OrdersListResponse,
+  TripTimelineSummary,
+  TripsListResponse,
 };

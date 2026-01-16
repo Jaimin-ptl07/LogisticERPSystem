@@ -262,6 +262,83 @@ class EntityTimelineResponse(BaseModel):
 
 
 # ============================================================================
+# Status Timeline Schemas
+# ============================================================================
+class StatusTimelineItem(BaseModel):
+    """Single status change in timeline"""
+    sequence: int
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    timestamp: datetime
+    duration_hours: Optional[float] = None
+    user_name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class OrderStatusTimelineResponse(BaseModel):
+    """Order status timeline response"""
+    order_number: str
+    order_id: str
+    current_status: str
+    total_duration_hours: float
+    timeline: List[StatusTimelineItem]
+
+
+class TripStatusTimelineResponse(BaseModel):
+    """Trip status timeline response"""
+    trip_id: str
+    current_status: str
+    total_duration_hours: float
+    timeline: List[StatusTimelineItem]
+
+
+# ============================================================================
+# Paginated List Schemas
+# ============================================================================
+class OrderTimelineSummary(BaseModel):
+    """Order with timeline summary for list view"""
+    order_number: str
+    order_id: str
+    current_status: str
+    total_duration_hours: float
+    status_changes_count: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class OrdersListResponse(BaseModel):
+    """Paginated orders list response"""
+    orders: List[OrderTimelineSummary]
+    total_count: int
+    page: int
+    per_page: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool
+
+
+class TripTimelineSummary(BaseModel):
+    """Trip with timeline summary for list view"""
+    trip_id: str
+    current_status: str
+    total_duration_hours: float
+    status_changes_count: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class TripsListResponse(BaseModel):
+    """Paginated trips list response"""
+    trips: List[TripTimelineSummary]
+    total_count: int
+    page: int
+    per_page: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool
+
+
+# ============================================================================
 # Generic Response Schema
 # ============================================================================
 class AnalyticsResponse(BaseModel):

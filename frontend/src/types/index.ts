@@ -55,6 +55,9 @@ export interface Trip {
   // Time in current status
   current_status_since?: string;
   time_in_current_status_minutes?: number;
+  // Status change information
+  from_status?: string;
+  to_status?: string;
 }
 
 export interface OrderItem {

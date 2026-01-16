@@ -120,19 +120,21 @@ app.add_middleware(
     exclude_health_checks=True
 )
 
-# Rate limiting
+# Rate limiting - Increased limits for 30-40 concurrent users
+# Each user can make ~100 requests/minute, with higher limits for sensitive endpoints
 app.add_middleware(
     RateLimitMiddleware,
     default_limits={
-        "requests_per_minute": 60,
-        "requests_per_hour": 1000,
-        "requests_per_day": 10000
+        "requests_per_minute": 3000,    # ~75 req/min per user for 40 users
+        "requests_per_hour": 18000,     # ~450 req/hour per user for 40 users
+        "requests_per_day": 100000      # ~2500 req/day per user for 40 users
     },
     endpoint_limits={
-        "/api/v1/orders/": {"requests_per_minute": 120},
-        "/api/v1/orders/finance-approval": {"requests_per_minute": 20},
-        "/api/v1/orders/logistics-approval": {"requests_per_minute": 20},
-        "/api/v1/reports/": {"requests_per_minute": 30},
+        "/api/v1/orders/": {"requests_per_minute": 1500},
+        "/api/v1/orders/finance-approval": {"requests_per_minute": 1000},
+        "/api/v1/orders/logistics-approval": {"requests_per_minute": 1000},
+        "/api/v1/orders/documents/": {"requests_per_minute": 500},
+        "/api/v1/reports/": {"requests_per_minute": 500},
     }
 )
 

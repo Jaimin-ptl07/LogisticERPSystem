@@ -123,11 +123,6 @@ const navigationStructure: NavItem[] = [
         href: "/branch-manager/dashboard",
         icon: LayoutDashboard,
       },
-      {
-        label: "Analytics Dashboard",
-        href: "/branch-manager/analytics",
-        icon: BarChart3,
-      },
     ],
   },
   {
@@ -139,11 +134,6 @@ const navigationStructure: NavItem[] = [
         label: "Dashboard",
         href: "/finance-manager/dashboard",
         icon: LayoutDashboard,
-      },
-      {
-        label: "Analytics Dashboard",
-        href: "/finance-manager/analytics",
-        icon: BarChart3,
       },
       // { label: "Invoices", href: "/finance-manager/invoices", icon: FileText },
       // { label: "Reports", href: "/finance-manager/reports", icon: FileText },
@@ -163,11 +153,6 @@ const navigationStructure: NavItem[] = [
         label: "Dashboard",
         href: "/logistics-manager/trips-management",
         icon: LayoutDashboard,
-      },
-      {
-        label: "Analytics Dashboard",
-        href: "/logistics-manager/analytics",
-        icon: BarChart3,
       },
       // {
       //   label: "Fleet Management",

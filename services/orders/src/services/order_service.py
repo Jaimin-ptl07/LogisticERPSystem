@@ -928,6 +928,25 @@ class OrderService:
         )
         self.db.add(history)
 
+        # Write audit log to company_db
+        try:
+            from src.database import write_audit_log_to_company
+            await write_audit_log_to_company(
+                entity_id=str(order.id),
+                entity_type="order",
+                module="orders",
+                action="status_change",
+                from_status=str(old_status.value) if old_status else None,
+                to_status=str(new_status.value) if new_status else None,
+                description=f"Order {order.order_number} status changed from {old_status.value if old_status else 'None'} to {new_status.value}",
+                user_id=user_id,
+                tenant_id=tenant_id
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to write audit log to company_db: {e}")
+
         # Publish Kafka events for status changes
         status_to_event_type = {
             OrderStatus.PICKED_UP: "picked_up",

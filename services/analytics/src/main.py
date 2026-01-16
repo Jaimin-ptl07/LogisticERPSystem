@@ -158,7 +158,7 @@ async def readiness_check():
 # Include API routers (dashboard first to avoid route conflicts)
 app.include_router(
     dashboard.router,
-    prefix="/api/v1",
+    prefix="/api/v1/dashboard",
     tags=["Dashboard"]
 )
 
