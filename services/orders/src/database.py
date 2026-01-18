@@ -1,5 +1,5 @@
 """
-Database configuration for Orders Service (based on auth service)
+Database configuration for Orders Service
 """
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -32,6 +32,16 @@ AsyncSessionLocal = async_sessionmaker(
 
 # Base class for models
 Base = declarative_base()
+
+# Import ALL models so they're registered with SQLAlchemy
+# This is CRITICAL for Alembic autogenerate to work
+from src.models.order import Order
+from src.models.order_item import OrderItem
+from src.models.order_document import OrderDocument, DocumentType
+from src.models.order_status_history import OrderStatusHistory
+
+# Import enums for use in models
+from src.models.order import OrderStatus, OrderType, PaymentType
 
 # Dependency to get DB session
 

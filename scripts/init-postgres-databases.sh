@@ -5,7 +5,8 @@ set -e
 echo "Creating databases..."
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    -- Create core databases
+    -- Create core databases ONLY
+    -- Schema initialization is now handled by Alembic migrations per service
     CREATE DATABASE auth_db;
     CREATE DATABASE company_db;
     CREATE DATABASE orders_db;
@@ -28,28 +29,5 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT ALL PRIVILEGES ON DATABASE notification_db TO $POSTGRES_USER;
 EOSQL
 
-# Initialize auth database schema
-echo "Initializing auth database schema..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "auth_db" -f /docker-entrypoint-initdb.d/02-auth-schema.sql
-
-# Initialize orders database schema
-echo "Initializing orders database schema..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "orders_db" -f /docker-entrypoint-initdb.d/03-orders-schema.sql
-echo "Database initialization complete!"+
-# Initialize TMS database schema
-echo "Initializing TMS database schema..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "tms_db" -f /docker-entrypoint-initdb.d/03-tms-schema.sql
-
-# Initialize company database schema
-echo "Initializing company database schema..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "company_db" -f /docker-entrypoint-initdb.d/04-company-schema.sql
-
-# Initialize finance database schema
-echo "Initializing finance database schema..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "finance_db" -f /docker-entrypoint-initdb.d/05-finance-schema.sql
-
-# Initialize notification database schema
-echo "Initializing notification database schema..."
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "notification_db" -f /docker-entrypoint-initdb.d/06-notification-schema.sql
-
-echo "Database initialization complete!"
+echo "Database creation complete!"
+echo "Schema initialization will be handled by Alembic migrations per service."

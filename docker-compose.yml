@@ -13,19 +13,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh
-      - ./scripts/init-auth-schema.sql:/docker-entrypoint-initdb.d/02-auth-schema.sql
-      - ./scripts/init-orders-schema.sql:/docker-entrypoint-initdb.d/03-orders-schema.sql
-      - ./scripts/init-tms-schema.sql:/docker-entrypoint-initdb.d/03-tms-schema.sql
-      - ./scripts/init-company-schema.sql:/docker-entrypoint-initdb.d/04-company-schema.sql
-      - ./scripts/init-finance-schema.sql:/docker-entrypoint-initdb.d/05-finance-schema.sql
-      - ./scripts/init-notification-schema.sql:/docker-entrypoint-initdb.d/06-notification-schema.sql
+      # Schema initialization removed - now handled by Alembic migrations per service
     networks:
       - logistics-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 10s
+      interval: 20s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   # TimescaleDB for telemetry data
   timescaledb:
@@ -372,6 +368,7 @@ services:
     build:
       context: ./services/auth
       dockerfile: Dockerfile
+    image: auth-service:latest
     container_name: auth-service
     restart: unless-stopped
     ports:
@@ -411,6 +408,7 @@ services:
     build:
       context: ./services/company
       dockerfile: Dockerfile
+    image: company-service:latest
     container_name: company-service
     restart: unless-stopped
     ports:
@@ -454,6 +452,7 @@ services:
     build:
       context: ./services/tms
       dockerfile: Dockerfile
+    image: tms-service:latest
     container_name: tms-service
     restart: unless-stopped
     ports:
@@ -483,6 +482,7 @@ services:
     build:
       context: ./services/orders
       dockerfile: Dockerfile
+    image: orders-service:latest
     container_name: orders-service
     restart: unless-stopped
     ports:
@@ -515,6 +515,7 @@ services:
     build:
       context: ./services/finance
       dockerfile: Dockerfile
+    image: finance-service:latest
     container_name: finance-service
     restart: unless-stopped
     ports:
@@ -558,6 +559,7 @@ services:
     build:
       context: ./services/driver
       dockerfile: Dockerfile
+    image: driver-service:latest
     container_name: driver-service
     restart: unless-stopped
     ports:
@@ -597,6 +599,7 @@ services:
     build:
       context: ./services/notification
       dockerfile: Dockerfile
+    image: notification-service:latest
     container_name: notification-service
     restart: unless-stopped
     ports:
@@ -604,6 +607,7 @@ services:
     volumes:
       - ./services/notification/src:/app/src
       - ./services/notification/pyproject.toml:/app/pyproject.toml
+      - ./services/notification/migrations:/app/migrations
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/notification_db
       - REDIS_URL=redis://redis:6379
@@ -635,6 +639,137 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Migration Jobs - Run once and exit for database schema management
+  # These services run Alembic migrations to initialize and evolve database schemas
+  # Each service owns its own database schema and migrations
+  # Migration services reuse the existing service images instead of rebuilding
+
+  auth-service-migration:
+    image: auth-service:latest
+    container_name: auth-service-migration
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 80 &&
+        cd /app/migrations &&
+        alembic upgrade head
+      "
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_AUTH_DB=auth_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    restart: "no"
+
+  company-service-migration:
+    image: company-service:latest
+    container_name: company-service-migration
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 80 &&
+        cd /app/migrations &&
+        alembic upgrade head
+      "
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_COMPANY_DB=company_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    restart: "no"
+
+  orders-service-migration:
+    image: orders-service:latest
+    container_name: orders-service-migration
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 80 &&
+        cd /app/migrations &&
+        alembic upgrade head
+      "
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_ORDERS_DB=orders_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    restart: "no"
+
+  tms-service-migration:
+    image: tms-service:latest
+    container_name: tms-service-migration
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 80 &&
+        cd /app/migrations &&
+        alembic upgrade head
+      "
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    restart: "no"
+
+  finance-service-migration:
+    image: finance-service:latest
+    container_name: finance-service-migration
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 80 &&
+        cd /app/migrations &&
+        alembic upgrade head
+      "
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/finance_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    restart: "no"
+
+  notification-service-migration:
+    image: notification-service:latest
+    container_name: notification-service-migration
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 80 &&
+        cd /app/migrations &&
+        alembic upgrade head
+      "
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/notification_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    restart: "no"
 
 volumes:
   postgres_data:

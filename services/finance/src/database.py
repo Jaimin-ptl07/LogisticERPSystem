@@ -32,6 +32,9 @@ AsyncSessionLocal = async_sessionmaker(
 # Base class for models
 Base = declarative_base()
 
+# Import ALL models so they're registered with SQLAlchemy
+# This is CRITICAL for Alembic autogenerate to work
+from src.models.approval import ApprovalAction, ApprovalAudit, ApprovalType, ApprovalStatus
 
 # Dependency to get DB session
 async def get_db():
