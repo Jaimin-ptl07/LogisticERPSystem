@@ -171,9 +171,12 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
             "permissions": [
                 "orders:read", "orders:update", "orders:tracking_update", "orders:delivery_confirm", "orders:logistics_view",
                 "order_documents:read", "order_documents:download",
-                "vehicles:read",
-                "shipping:read", "shipping:update",
+                "vehicles:read", "vehicles:update",
+                "drivers:update", "drivers:read",
                 "driver:read", "driver:update",
+                "tms:status_update",
+                "users:update_own",
+                "shipping:read", "shipping:update",
                 "dashboard:read",
             ]
         },
