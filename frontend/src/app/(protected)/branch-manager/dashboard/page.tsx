@@ -11,8 +11,5 @@ export default async function BranchManagerDashboard() {
   );
 }
 
-// Export revalidate for ISR (Incremental Static Regeneration)
-export const revalidate = 300; // Revalidate every 5 minutes
-
-// Export dynamic rendering configuration
-export const dynamic = "force-static";
+// Export dynamic rendering configuration - force dynamic to prevent cache bleeding between users
+export const dynamic = "force-dynamic";

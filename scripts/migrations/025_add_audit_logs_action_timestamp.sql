@@ -41,3 +41,6 @@ ON audit_logs (action_timestamp DESC);
 -- Create composite index for tenant and action_timestamp (for efficient queries)
 CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created
 ON audit_logs (tenant_id, action_timestamp DESC);
+
+
+docker exec -it postgres_ERP psql -U postgres -d company_db -c "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS action_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP; ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS entity_name VARCHAR(500); CREATE INDEX IF NOT EXISTS idx_audit_logs_action_timestamp ON audit_logs (action_timestamp DESC); CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created ON audit_logs (tenant_id, action_timestamp DESC);"

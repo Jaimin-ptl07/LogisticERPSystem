@@ -64,6 +64,9 @@ export default function Orders() {
     page: 1,
     per_page: 20,
     search: searchQuery || undefined,
+  }, {
+    // Force refetch on mount to prevent cache bleeding between users
+    refetchOnMountOrArgChange: true,
   });
 
   // Auto-refresh orders every hour (3600000 ms) to update time-in-status

@@ -1,9 +1,11 @@
 -- Notification Service Database Schema
 -- Run this script to create the notification service database tables
 
--- Create database
-CREATE DATABASE IF NOT EXISTS notification_db;
+-- Note: The notification_db database should be created separately
+-- This script assumes the database already exists
+-- To create the database manually, run: CREATE DATABASE notification_db;
 
+-- Connect to notification database
 \c notification_db
 
 -- Enable UUID extension
