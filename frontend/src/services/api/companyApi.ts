@@ -1175,11 +1175,11 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['User'],
     }),
-    resetUserPassword: builder.mutation<void, { id: string; new_password: string }>({
-      query: ({ id, new_password }) => ({
-        url: `company/users/${id}/reset-password`,
-        method: 'POST',
-        body: { new_password },
+    changeUserPassword: builder.mutation<{ message: string }, { id: string; current_password?: string; new_password: string }>({
+      query: ({ id, current_password, new_password }) => ({
+        url: `company/users/${id}/password`,
+        method: 'PUT',
+        body: { current_password, new_password },
       }),
     }),
     bulkUpdateUsers: builder.mutation<User[], { updates: Array<{ id: string; [key: string]: any }> }>({
@@ -1510,7 +1510,7 @@ export const {
   useInviteUserMutation,
   useBulkInviteUsersMutation,
   useUpdateUserStatusMutation,
-  useResetUserPasswordMutation,
+  useChangeUserPasswordMutation,
   useBulkUpdateUsersMutation,
   useExportUsersMutation,
   // Role Management hooks
