@@ -305,6 +305,7 @@ class OrderTimelineSummary(BaseModel):
     status_changes_count: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    user_email: Optional[str] = None
 
 
 class OrdersListResponse(BaseModel):
@@ -327,6 +328,7 @@ class TripTimelineSummary(BaseModel):
     status_changes_count: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    user_email: Optional[str] = None
 
 
 class TripsListResponse(BaseModel):

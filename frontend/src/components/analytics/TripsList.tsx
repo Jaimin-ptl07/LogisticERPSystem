@@ -15,6 +15,7 @@ import { useState, useEffect } from "react";
 import { analyticsAPI, TripTimelineSummary, TripsListResponse } from "@/services/analytics";
 import { useStatusTimeline } from "./StatusTimeline";
 import { useBranches } from "@/hooks/useBranches";
+import { useUserEmails } from "@/hooks/useUserEmails";
 
 const statusColors: Record<string, string> = {
   planning: "bg-blue-100 text-blue-700 border-blue-200",
@@ -67,8 +68,10 @@ export function TripsList({ onClose }: TripsListProps) {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedUserEmail, setSelectedUserEmail] = useState<string>("all");
   const { open: openTimeline, TimelineModal: StatusTimelineModal } = useStatusTimeline();
   const { branches, loading: branchesLoading } = useBranches();
+  const { userEmails, loading: userEmailsLoading } = useUserEmails();
 
   useEffect(() => {
     async function fetchTrips() {
@@ -100,10 +103,11 @@ export function TripsList({ onClose }: TripsListProps) {
     }
   };
 
-  // Filter trips by branch
+  // Filter trips by branch and user email
   const filteredTrips = data?.trips.filter((trip) => {
-    if (selectedBranch === "all") return true;
-    return trip.branch_id === selectedBranch;
+    if (selectedBranch !== "all" && trip.branch_id !== selectedBranch) return false;
+    if (selectedUserEmail !== "all" && trip.user_email !== selectedUserEmail) return false;
+    return true;
   }) || [];
 
   // Calculate overall totals (use filtered trips for display)
@@ -215,7 +219,38 @@ export function TripsList({ onClose }: TripsListProps) {
                       onClick={() => setSelectedBranch("all")}
                       className="text-xs"
                     >
-                      Clear Filter
+                      Clear Branch
+                    </Button>
+                  )}
+                </div>
+
+                {/* User Email Filter */}
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700">Filter by User Email:</label>
+                  {userEmailsLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                  ) : (
+                    <select
+                      value={selectedUserEmail}
+                      onChange={(e) => setSelectedUserEmail(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    >
+                      <option value="all">All User Emails</option>
+                      {userEmails.map((user) => (
+                        <option key={user.email} value={user.email}>
+                          {user.email} {user.name ? `(${user.name})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedUserEmail !== "all" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedUserEmail("all")}
+                      className="text-xs"
+                    >
+                      Clear User Email
                     </Button>
                   )}
                 </div>
@@ -295,7 +330,7 @@ export function TripsList({ onClose }: TripsListProps) {
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">
                     Showing {filteredTrips.length} of {data.total_count} trips
-                    {selectedBranch !== "all" && ` (filtered by branch)`}
+                    {(selectedBranch !== "all" || selectedUserEmail !== "all") && ` (filtered)`}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

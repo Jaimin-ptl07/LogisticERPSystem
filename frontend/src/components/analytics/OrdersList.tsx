@@ -15,6 +15,7 @@ import { useState, useEffect } from "react";
 import { analyticsAPI, OrderTimelineSummary, OrdersListResponse } from "@/services/analytics";
 import { useStatusTimeline } from "./StatusTimeline";
 import { useBranches } from "@/hooks/useBranches";
+import { useUserEmails } from "@/hooks/useUserEmails";
 
 const statusColors: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700 border-gray-200",
@@ -72,8 +73,10 @@ export function OrdersList({ onClose }: OrdersListProps) {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedUserEmail, setSelectedUserEmail] = useState<string>("all");
   const { open: openTimeline, TimelineModal: StatusTimelineModal } = useStatusTimeline();
   const { branches, loading: branchesLoading } = useBranches();
+  const { userEmails, loading: userEmailsLoading } = useUserEmails();
 
   useEffect(() => {
     async function fetchOrders() {
@@ -82,6 +85,10 @@ export function OrdersList({ onClose }: OrdersListProps) {
 
       try {
         const result = await analyticsAPI.getOrdersList(currentPage, 10);
+        console.log('📋 Orders data received:', result);
+        if (result.orders && result.orders.length > 0) {
+          console.log('📋 First order with user_email:', result.orders[0]);
+        }
         setData(result);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load orders");
@@ -105,10 +112,11 @@ export function OrdersList({ onClose }: OrdersListProps) {
     }
   };
 
-  // Filter orders by branch
+  // Filter orders by branch and user email
   const filteredOrders = data?.orders.filter((order) => {
-    if (selectedBranch === "all") return true;
-    return order.branch_id === selectedBranch;
+    if (selectedBranch !== "all" && order.branch_id !== selectedBranch) return false;
+    if (selectedUserEmail !== "all" && order.user_email !== selectedUserEmail) return false;
+    return true;
   }) || [];
 
   // Calculate overall totals (use filtered orders for display)
@@ -220,7 +228,38 @@ export function OrdersList({ onClose }: OrdersListProps) {
                       onClick={() => setSelectedBranch("all")}
                       className="text-xs"
                     >
-                      Clear Filter
+                      Clear Branch
+                    </Button>
+                  )}
+                </div>
+
+                {/* User Email Filter */}
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700">Filter by User Email:</label>
+                  {userEmailsLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  ) : (
+                    <select
+                      value={selectedUserEmail}
+                      onChange={(e) => setSelectedUserEmail(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="all">All User Emails</option>
+                      {userEmails.map((user) => (
+                        <option key={user.email} value={user.email}>
+                          {user.email} {user.name ? `(${user.name})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedUserEmail !== "all" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedUserEmail("all")}
+                      className="text-xs"
+                    >
+                      Clear User Email
                     </Button>
                   )}
                 </div>
@@ -300,7 +339,7 @@ export function OrdersList({ onClose }: OrdersListProps) {
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">
                     Showing {filteredOrders.length} of {data.total_count} orders
-                    {selectedBranch !== "all" && ` (filtered by branch)`}
+                    {(selectedBranch !== "all" || selectedUserEmail !== "all") && ` (filtered)`}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
