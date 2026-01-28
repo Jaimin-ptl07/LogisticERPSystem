@@ -415,6 +415,42 @@ export default function EditUserPage() {
           </CardContent>
         </Card>
 
+        {/* Form Actions */}
+        <div className="flex justify-end space-x-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              router.push(`/company-admin/masters/users/${userId}`)
+            }
+            disabled={isSubmitting}
+            className="bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium"
+          >
+            <X className="w-4 h-4 mr-2" />
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={!isValid || !isDirty || isSubmitting}
+            className="min-w-[120px] bg-[#1F40AE] hover:bg-[#203BA0] active:bg-[#192F80] text-white px-4 py-2 rounded-lg font-medium"
+          >
+            {isSubmitting ? (
+              <div className="flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                Updating...
+              </div>
+            ) : (
+              <div className="flex items-center">
+                <Save className="w-4 h-4 mr-2" />
+                Update User
+              </div>
+            )}
+          </Button>
+        </div>
+      </form>
+
+      {/* Password Change Form - Separate from main user form */}
+      <form onSubmit={handlePasswordSubmit(onPasswordChange)} className="space-y-6">
         {/* Password Change */}
         <Card>
           <CardHeader>
@@ -442,14 +478,14 @@ export default function EditUserPage() {
                 Click "Change Password" to update this user's password.
               </p>
             ) : (
-              <form onSubmit={handlePasswordSubmit(onPasswordChange)} className="space-y-4">
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="new_password">New Password *</Label>
                     <div className="relative">
                       <Input
                         id="new_password"
-                        type={showNewPassword ? "text" : "password"}
+                      type={showNewPassword ? "text" : "password"}
                         {...registerPassword("new_password")}
                         placeholder="Enter new password"
                         className={passwordErrors.new_password ? "border-red-500 pr-10" : "pr-10"}
@@ -481,7 +517,7 @@ export default function EditUserPage() {
                     <div className="relative">
                       <Input
                         id="confirm_password"
-                        type={showConfirmPassword ? "text" : "password"}
+                      type={showConfirmPassword ? "text" : "password"}
                         {...registerPassword("confirm_password")}
                         placeholder="Confirm new password"
                         className={passwordErrors.confirm_password ? "border-red-500 pr-10" : "pr-10"}
@@ -534,43 +570,10 @@ export default function EditUserPage() {
                     )}
                   </Button>
                 </div>
-              </form>
+              </div>
             )}
           </CardContent>
         </Card>
-
-        {/* Form Actions */}
-        <div className="flex justify-end space-x-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              router.push(`/company-admin/masters/users/${userId}`)
-            }
-            disabled={isSubmitting}
-            className="bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium"
-          >
-            <X className="w-4 h-4 mr-2" />
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={!isValid || !isDirty || isSubmitting}
-            className="min-w-[120px] bg-[#1F40AE] hover:bg-[#203BA0] active:bg-[#192F80] text-white px-4 py-2 rounded-lg font-medium"
-          >
-            {isSubmitting ? (
-              <div className="flex items-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Updating...
-              </div>
-            ) : (
-              <div className="flex items-center">
-                <Save className="w-4 h-4 mr-2" />
-                Update User
-              </div>
-            )}
-          </Button>
-        </div>
       </form>
     </div>
   );
