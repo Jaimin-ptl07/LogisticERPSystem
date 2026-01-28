@@ -211,6 +211,7 @@ export interface TripStatusTimelineResponse {
 export interface OrderTimelineSummary {
   order_number: string;
   order_id: string;
+  branch_id?: string;
   current_status: string;
   total_duration_hours: number;
   status_changes_count: number;
@@ -230,6 +231,7 @@ export interface OrdersListResponse {
 
 export interface TripTimelineSummary {
   trip_id: string;
+  branch_id?: string;
   current_status: string;
   total_duration_hours: number;
   status_changes_count: number;
@@ -245,6 +247,23 @@ export interface TripsListResponse {
   total_pages: number;
   has_next: boolean;
   has_previous: boolean;
+}
+
+// Branch types
+export interface Branch {
+  id: string;
+  code: string;
+  name: string;
+  city?: string;
+  is_active: boolean;
+}
+
+export interface BranchesListResponse {
+  items: Branch[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
 }
 
 // API Client class

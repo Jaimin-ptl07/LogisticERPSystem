@@ -299,6 +299,7 @@ class OrderTimelineSummary(BaseModel):
     """Order with timeline summary for list view"""
     order_number: str
     order_id: str
+    branch_id: Optional[str] = None
     current_status: str
     total_duration_hours: float
     status_changes_count: int
@@ -320,6 +321,7 @@ class OrdersListResponse(BaseModel):
 class TripTimelineSummary(BaseModel):
     """Trip with timeline summary for list view"""
     trip_id: str
+    branch_id: Optional[str] = None
     current_status: str
     total_duration_hours: float
     status_changes_count: int

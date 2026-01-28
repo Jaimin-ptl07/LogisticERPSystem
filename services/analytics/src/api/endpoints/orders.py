@@ -500,6 +500,7 @@ async def list_orders_with_timeline(
             SELECT
                 id,
                 order_number,
+                branch_id,
                 status,
                 created_at,
                 updated_at
@@ -568,11 +569,12 @@ async def list_orders_with_timeline(
             orders.append(OrderTimelineSummary(
                 order_number=row[1],
                 order_id=order_id,
-                current_status=row[2],
+                branch_id=row[2],
+                current_status=row[3],
                 total_duration_hours=round(float(total_duration), 2),
                 status_changes_count=int(status_count),
-                created_at=row[3],
-                updated_at=row[4]
+                created_at=row[4],
+                updated_at=row[5]
             ))
 
         return OrdersListResponse(

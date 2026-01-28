@@ -487,6 +487,7 @@ async def list_trips_with_timeline(
         trips_query = text("""
             SELECT
                 id,
+                branch,
                 status,
                 created_at,
                 updated_at
@@ -553,11 +554,12 @@ async def list_trips_with_timeline(
 
             trips.append(TripTimelineSummary(
                 trip_id=trip_id,
-                current_status=row[1],
+                branch_id=row[1],
+                current_status=row[2],
                 total_duration_hours=round(float(total_duration), 2),
                 status_changes_count=int(status_count),
-                created_at=row[2],
-                updated_at=row[3]
+                created_at=row[3],
+                updated_at=row[4]
             ))
 
         return TripsListResponse(
