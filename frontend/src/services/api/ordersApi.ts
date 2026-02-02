@@ -34,6 +34,7 @@ export interface Order {
   payment_type: 'cod' | 'prepaid' | 'credit';
   created_at: string;
   updated_at?: string;
+  created_by_role?: 'admin' | 'branch_manager' | 'marketing_person';
   due_days?: number;
   due_days_marked_created?: boolean;
   items: OrderItem[];

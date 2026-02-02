@@ -617,6 +617,7 @@ async def list_orders(
             # Time in current status
             'current_status_since': current_status_since.isoformat() if current_status_since else None,
             'time_in_current_status_minutes': time_in_status_minutes,
+            'created_by_role': order.created_by_role,
         }
         enriched_orders.append(OrderListResponse(**order_dict))
 
@@ -692,6 +693,7 @@ async def get_order(
         'special_instructions': order.special_instructions,
         'delivery_instructions': order.delivery_instructions,
         'created_by': order.created_by,
+        'created_by_role': order.created_by_role,
         'updated_by': order.updated_by,
         'driver_id': order.driver_id,
         'trip_id': order.trip_id,
