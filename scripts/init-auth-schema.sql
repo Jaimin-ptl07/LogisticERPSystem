@@ -268,6 +268,12 @@ VALUES (
         false
     ),
     (
+        'Marketing Person',
+        'Marketing team member with branch-level access',
+        '550e8400-e29b-41d4-a716-446655440000',
+        false
+    ),
+    (
         'User',
         'Regular user',
         '550e8400-e29b-41d4-a716-446655440000',
@@ -1328,6 +1334,28 @@ VALUES
     'audit',
     'export',
     'Export audit logs'
+),
+
+-- Marketing Person Assignment permissions
+(
+    'marketing_person_assignments',
+    'read',
+    'View marketing person customer assignments'
+),
+(
+    'marketing_person_assignments',
+    'create',
+    'Create marketing person customer assignments'
+),
+(
+    'marketing_person_assignments',
+    'update',
+    'Update marketing person customer assignments'
+),
+(
+    'marketing_person_assignments',
+    'delete',
+    'Delete marketing person customer assignments'
 ) ON CONFLICT (resource, action) DO NOTHING;
 
 -- Assign all permissions to super admin role (ID = 1)
@@ -1438,7 +1466,7 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers', 'shipping',
-                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles', 'audit')
+                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles', 'audit', 'marketing_person_assignments')
   AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'manage_all', 'manage_own',
                    'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own',
                    'approve', 'approve_bulk', 'reports', 'export', 'invite', 'activate', 'upload_avatar',
@@ -2965,59 +2993,11 @@ VALUES
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- Assign user permissions (ID = 7) - Regular users
+-- Assign marketing person permissions (ID = 7) - Same as Branch Manager
 INSERT INTO
     role_permissions (role_id, permission_id)
-VALUES (
-        7,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'users'
-                AND action = 'read_own'
-        )
-    ),
-    (
-        7,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'users'
-                AND action = 'update_own'
-        )
-    ),
-    (
-        7,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'read'
-        )
-    ),
-    (
-        7,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'read_own'
-        )
-    ),
-    (
-        7,
-        (
-            SELECT id
-            FROM permissions
-            WHERE
-                resource = 'orders'
-                AND action = 'update_own'
-        )
-    ),
+VALUES
+    -- Order management - Full CRUD
     (
         7,
         (
@@ -3035,20 +3015,80 @@ VALUES (
             FROM permissions
             WHERE
                 resource = 'orders'
-                AND action = 'cancel'
+                AND action = 'read'
         )
     ),
-    -- Order documents for own orders
     (
         7,
         (
             SELECT id
             FROM permissions
             WHERE
-                resource = 'order_documents'
-                AND action = 'read_own'
+                resource = 'orders'
+                AND action = 'read_all'
         )
     ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'update'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'delete'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'cancel'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'status_update'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'priority_update'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'export'
+        )
+    ),
+    -- Order documents
     (
         7,
         (
@@ -3066,7 +3106,7 @@ VALUES (
             FROM permissions
             WHERE
                 resource = 'order_documents'
-                AND action = 'update_own'
+                AND action = 'read'
         )
     ),
     (
@@ -3076,7 +3116,27 @@ VALUES (
             FROM permissions
             WHERE
                 resource = 'order_documents'
-                AND action = 'delete_own'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'order_documents'
+                AND action = 'update'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'order_documents'
+                AND action = 'delete'
         )
     ),
     (
@@ -3089,7 +3149,7 @@ VALUES (
                 AND action = 'download'
         )
     ),
-    -- Basic company permissions for users
+    -- Branch management
     (
         7,
         (
@@ -3106,10 +3166,72 @@ VALUES (
             SELECT id
             FROM permissions
             WHERE
+                resource = 'branches'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'update'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'manage_own'
+        )
+    ),
+    -- Customer management
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
                 resource = 'customers'
                 AND action = 'read'
         )
     ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'create'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'update'
+        )
+    ),
+    -- Vehicle management
     (
         7,
         (
@@ -3126,6 +3248,27 @@ VALUES (
             SELECT id
             FROM permissions
             WHERE
+                resource = 'vehicles'
+                AND action = 'read_all'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'vehicles'
+                AND action = 'assign'
+        )
+    ),
+    -- Products
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
                 resource = 'products'
                 AND action = 'read'
         )
@@ -3136,7 +3279,18 @@ VALUES (
             SELECT id
             FROM permissions
             WHERE
-                resource = 'product_categories'
+                resource = 'products'
+                AND action = 'read_all'
+        )
+    ),
+    -- Reports
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'company_reports'
                 AND action = 'read'
         )
     ),
@@ -3147,7 +3301,17 @@ VALUES (
             FROM permissions
             WHERE
                 resource = 'company_reports'
-                AND action = 'read_own'
+                AND action = 'export'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'reports'
+                AND action = 'read'
         )
     ),
     (
@@ -3160,9 +3324,226 @@ VALUES (
                 AND action = 'read'
         )
     ),
-    -- Finance Service permissions for regular User (read only)
+    -- Finance Service permissions for Marketing Person (read and reports only)
     (
         7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'read'
+        )
+    ),
+    (
+        7,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'finance'
+                AND action = 'reports'
+        )
+    ) ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- Assign user permissions (ID = 8) - Regular users
+INSERT INTO
+    role_permissions (role_id, permission_id)
+VALUES (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'users'
+                AND action = 'read_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'users'
+                AND action = 'update_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'read'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'read_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'update_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'create'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'cancel'
+        )
+    ),
+    -- Order documents for own orders
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'order_documents'
+                AND action = 'read_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'order_documents'
+                AND action = 'upload'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'order_documents'
+                AND action = 'update_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'order_documents'
+                AND action = 'delete_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'order_documents'
+                AND action = 'download'
+        )
+    ),
+    -- Basic company permissions for users
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'branches'
+                AND action = 'read'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'customers'
+                AND action = 'read'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'vehicles'
+                AND action = 'read'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'products'
+                AND action = 'read'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'product_categories'
+                AND action = 'read'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'company_reports'
+                AND action = 'read_own'
+        )
+    ),
+    (
+        8,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'dashboard'
+                AND action = 'read'
+        )
+    ),
+    -- Finance Service permissions for regular User (read only)
+    (
+        8,
         (
             SELECT id
             FROM permissions
@@ -3326,7 +3707,7 @@ VALUES (
         true,
         false,
         '550e8400-e29b-41d4-a716-446655440000',
-        7
+        8
     ) ON CONFLICT (id) DO NOTHING;
 
 -- Note: Super admin (id: a5dc781f-9e43-4863-9e35-8772b26a7b77) is NOT assigned to any tenant

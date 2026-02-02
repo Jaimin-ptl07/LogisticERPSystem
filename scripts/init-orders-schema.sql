@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS orders (
     tms_order_status VARCHAR(50) DEFAULT 'available' CHECK (
         tms_order_status IN ('available', 'partial', 'fully_assigned')
     ),
+    items_json JSONB,
+    remaining_items_json JSONB,
 
     -- Pickup information
     pickup_address TEXT,
@@ -85,6 +87,11 @@ CREATE TABLE IF NOT EXISTS orders (
     due_days INTEGER,
     due_days_marked_created BOOLEAN DEFAULT false
 );
+
+-- Add comments for TMS status columns
+COMMENT ON COLUMN orders.tms_order_status IS 'TMS-specific status: available (not assigned to any trip), partial (some items assigned to trip), fully_assigned (all items assigned)';
+COMMENT ON COLUMN orders.items_json IS 'JSON array of items assigned to trip';
+COMMENT ON COLUMN orders.remaining_items_json IS 'JSON array of items remaining after partial assignment';
 
 -- Create order_items table
 CREATE TABLE IF NOT EXISTS order_items (
