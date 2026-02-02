@@ -223,7 +223,8 @@ class OrderService:
         self,
         order_data: OrderCreate,
         user_id: str,
-        tenant_id: str
+        tenant_id: str,
+        created_by_role: str = 'admin'
     ) -> Order:
         """Create a new order with items in a transaction-safe manner"""
         try:
@@ -318,6 +319,7 @@ class OrderService:
                 delivery_date=order_data.delivery_date,
                 due_days=order_data.due_days if hasattr(order_data, 'due_days') else 7,
                 created_by=user_id,
+                created_by_role=created_by_role,
                 updated_by=user_id
             )
 

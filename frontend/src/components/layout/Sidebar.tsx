@@ -131,6 +131,18 @@ const navigationStructure: NavItem[] = [
     ],
   },
   {
+    label: "Marketing Person",
+    icon: UserCheck,
+    role: ROLES.MARKETING_PERSON,
+    subItems: [
+      {
+        label: "Dashboard",
+        href: "/marketing-person/dashboard",
+        icon: LayoutDashboard,
+      },
+    ],
+  },
+  {
     label: "Finance Manager",
     icon: DollarSign,
     role: ROLES.FINANCE_MANAGER,

@@ -48,6 +48,8 @@ interface CreateOrderModalProps {
   onClose: () => void;
   onSuccess?: (order: any) => void;
   order?: Order;  // Add this for edit mode
+  userType?: 'branch-manager' | 'marketing-person';  // NEW: Type of user creating order
+  marketingPersonId?: string;  // NEW: Marketing person ID (for filtering customers)
 }
 
 // Searchable Select Component
@@ -216,6 +218,8 @@ export function CreateOrderModal({
   onClose,
   onSuccess,
   order,
+  userType = 'branch-manager',
+  marketingPersonId,
 }: CreateOrderModalProps) {
   const [showBranchNote, setShowBranchNote] = useState(false);
   const lastItemRef = useRef<HTMLDivElement>(null);
@@ -260,9 +264,14 @@ export function CreateOrderModal({
 
   // Fetch real data from APIs
   const { data: branchesData, isLoading: branchesLoading } = useGetBranchesQuery();
-  const { data: customersData, isLoading: customersLoading } = useGetCustomersQuery(
-    selectedBranch ? { branch_id: selectedBranch } : {}
-  );
+
+  // Build customers query params - for marketing person, filter by their assignments
+  const customersQueryParams = selectedBranch ? { branch_id: selectedBranch } : {};
+  if (userType === 'marketing-person' && marketingPersonId) {
+    customersQueryParams.marketing_person_id = marketingPersonId;
+  }
+
+  const { data: customersData, isLoading: customersLoading } = useGetCustomersQuery(customersQueryParams);
   const { data: productsData, isLoading: productsLoading } = useGetProductsQuery(
     selectedBranch ? { branch_id: selectedBranch } : skipToken
   );

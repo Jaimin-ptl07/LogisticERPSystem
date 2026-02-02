@@ -613,3 +613,72 @@ async def delete_marketing_person_assignment(
     await db.commit()
 
     return {"message": "Assignment deleted successfully"}
+
+
+@router.get("/marketing-person/{marketing_person_id}/customers")
+async def get_marketing_person_customers_by_branch(
+    marketing_person_id: str,
+    search: Optional[str] = Query(None),
+    is_active: bool = Query(True),
+    token_data: TokenData = Depends(require_any_permission(["customers:read_all", "customers:read", "orders:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get customers assigned to a marketing person
+
+    Returns customers who are:
+    1. Assigned to this marketing person (is_active=true in marketing_person_customers)
+    2. Optionally filtered by search term
+    """
+    # Get customer IDs assigned to this marketing person
+    mpc_query = select(MarketingPersonCustomer.customer_id).where(
+        MarketingPersonCustomer.marketing_person_id == marketing_person_id,
+        MarketingPersonCustomer.tenant_id == tenant_id,
+        MarketingPersonCustomer.is_active == True
+    )
+    mpc_result = await db.execute(mpc_query)
+    assigned_customer_ids = [row[0] for row in mpc_result.all()]
+
+    if not assigned_customer_ids:
+        return {"items": [], "total": 0}
+
+    # Build customer query
+    query = select(Customer).where(
+        Customer.id.in_(assigned_customer_ids),
+        Customer.tenant_id == tenant_id,
+        Customer.is_active == is_active
+    )
+
+    # Note: branch_id filtering is not applied here since Customer doesn't have branch_id directly
+    # The frontend can handle branch filtering if needed
+    # For now, we return all assigned customers
+
+    # Apply search filter
+    if search:
+        query = query.where(
+            Customer.name.ilike(f"%{search}%") |
+            Customer.code.ilike(f"%{search}%") |
+            Customer.email.ilike(f"%{search}%") |
+            Customer.phone.ilike(f"%{search}%")
+        )
+
+    query = query.order_by(Customer.name)
+
+    result = await db.execute(query)
+    customers = result.scalars().all()
+
+    # Build response
+    response = []
+    for customer in customers:
+        response.append({
+            "id": str(customer.id),
+            "code": customer.code,
+            "name": customer.name,
+            "email": customer.email,
+            "phone": customer.phone,
+            "city": customer.city,
+            "is_active": customer.is_active
+        })
+
+    return {"items": response, "total": len(response)}
