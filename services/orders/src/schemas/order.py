@@ -53,7 +53,7 @@ class OrderBase(BaseModel):
 
 class OrderCreate(OrderBase):
     """Schema for creating an order"""
-    order_number: str = Field(..., max_length=50)
+    order_number: Optional[str] = Field(None, max_length=50, description="Order number - if not provided, backend will generate one")
     tenant_id: str
     customer_id: str
     branch_id: str

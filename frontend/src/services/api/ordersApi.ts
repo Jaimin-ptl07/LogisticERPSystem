@@ -92,7 +92,7 @@ export interface OrderDocument {
 }
 
 export interface OrderCreate {
-  order_number: string;
+  order_number?: string; // Optional - backend generates if not provided
   tenant_id: string;
   customer_id: string;
   branch_id: string;
