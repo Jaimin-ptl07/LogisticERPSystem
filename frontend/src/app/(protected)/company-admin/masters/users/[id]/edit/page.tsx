@@ -27,18 +27,16 @@ import {
   useGetUserQuery,
   useUpdateUserMutation,
   useGetBranchesQuery,
-  useGetRolesQuery,
   useChangeUserPasswordMutation,
 } from "@/services/api/companyApi";
-import { UserUpdate, Role, Branch } from "@/services/api/companyApi";
+import { UserUpdate, Branch } from "@/services/api/companyApi";
 
 const userUpdateSchema = z.object({
   email: z.string().email("Invalid email address").optional(),
   first_name: z.string().min(1, "First name is required").optional(),
   last_name: z.string().min(1, "Last name is required").optional(),
   phone_number: z.string().optional(),
-  role_id: z.number().min(1, "Role is required").optional(),
-  branch_id: z.string().optional(),
+  branch_ids: z.array(z.string()).min(1, "At least one branch is required").optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -70,12 +68,11 @@ export default function EditUserPage() {
     skip: !userId,
   });
 
-  // Fetch branches and roles
+  // Fetch branches
   const { data: branchesData } = useGetBranchesQuery({
     page: 1,
     per_page: 100,
   });
-  const { data: roles } = useGetRolesQuery({});
 
   // Mutations
   const [updateUser] = useUpdateUserMutation();
@@ -112,11 +109,27 @@ export default function EditUserPage() {
       first_name: "",
       last_name: "",
       phone_number: "",
-      role_id: 0,
-      branch_id: "",
+      branch_ids: [],
       is_active: true,
     },
   });
+
+  const selectedBranchIds = watch("branch_ids") || [];
+
+  // Handle multi-select for branches
+  const handleBranchChange = (branchId: string) => {
+    const currentIds = selectedBranchIds || [];
+    if (currentIds.includes(branchId)) {
+      // Remove branch if already selected
+      setValue(
+        "branch_ids",
+        currentIds.filter((id) => id !== branchId)
+      );
+    } else {
+      // Add branch
+      setValue("branch_ids", [...currentIds, branchId]);
+    }
+  };
 
   // Reset form when user data is loaded
   useEffect(() => {
@@ -126,13 +139,7 @@ export default function EditUserPage() {
         first_name: user.first_name,
         last_name: user.last_name,
         phone_number: user.phone_number || "",
-        role_id:
-          typeof user.role_id === "number"
-            ? user.role_id
-            : user.role_id
-            ? parseInt(user.role_id)
-            : 0,
-        branch_id: user.branch_id || "",
+        branch_ids: user.branch_ids || user.branches?.map((b) => b.id) || [],
         is_active: user.is_active,
       });
     }
@@ -150,9 +157,13 @@ export default function EditUserPage() {
         updateData.last_name = data.last_name;
       if (data.phone_number !== user?.phone_number)
         updateData.phone_number = data.phone_number;
-      if (data.role_id !== user?.role_id) updateData.role_id = data.role_id;
-      if (data.branch_id !== user?.branch_id)
-        updateData.branch_id = data.branch_id || undefined;
+
+      // Compare branch_ids arrays
+      const currentBranchIds = user?.branch_ids || user?.branches?.map((b) => b.id) || [];
+      if (JSON.stringify(data.branch_ids?.sort()) !== JSON.stringify(currentBranchIds.sort())) {
+        updateData.branch_ids = data.branch_ids;
+      }
+
       if (data.is_active !== user?.is_active)
         updateData.is_active = data.is_active;
 
@@ -321,48 +332,52 @@ export default function EditUserPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="role_id">Role *</Label>
-                <select
-                  id="role_id"
-                  {...register("role_id", { valueAsNumber: true })}
-                  className={`w-full px-3 text-black py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.role_id ? "border-red-500" : "border-gray-300"
-                  }`}
-                >
-                  <option value="0">Select Role</option>
-                  {roles?.items?.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.role_id && (
-                  <p className="text-sm text-red-600 mt-1">Role is required</p>
-                )}
+            <div>
+              <Label htmlFor="branch_ids">Assigned Branches *</Label>
+              <p className="text-xs text-gray-500 mb-2">
+                Select one or more branches for this user
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                {branches.map((branch) => {
+                  const isSelected = selectedBranchIds.includes(branch.id);
+                  return (
+                    <label
+                      key={branch.id}
+                      className={`flex items-center text-black space-x-3 p-2 rounded cursor-pointer transition-colors ${
+                        isSelected
+                          ? "bg-blue-50 border border-blue-200"
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleBranchChange(branch.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="flex-1">{branch.name}</span>
+                      <span className="text-xs text-gray-500">
+                        {branch.code}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
-
-              <div>
-                <Label htmlFor="branch_id">Assigned Branch</Label>
-                <select
-                  id="branch_id"
-                  {...register("branch_id")}
-                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Branch (Optional)</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.branch_id && (
-                  <p className="text-sm text-red-600 mt-1">
-                    {errors.branch_id.message}
-                  </p>
-                )}
-              </div>
+              {selectedBranchIds.length > 0 && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {selectedBranchIds.length} branch
+                  {selectedBranchIds.length > 1 ? "es" : ""} selected
+                </p>
+              )}
+              {errors.branch_ids && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.branch_ids.message}
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Users can be assigned to multiple branches for cross-branch
+                operations
+              </p>
             </div>
 
             <div>
