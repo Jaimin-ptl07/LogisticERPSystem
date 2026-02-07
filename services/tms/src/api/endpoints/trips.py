@@ -13,7 +13,7 @@ from httpx import AsyncClient
 import uuid
 import logging
 
-from src.database import get_db, Trip, TripOrder, TMSAuditLog
+from src.database import get_db, Trip, TripOrder, TMSAuditLog, CompanyAuditLog, write_audit_log_to_company, get_company_db_session
 from src.schemas import (
     TripCreate, TripUpdate, TripResponse, TripWithOrders,
     AssignOrdersRequest, TripOrderCreate, TripOrderResponse,
@@ -30,6 +30,7 @@ from src.security import (
 )
 from src.config import settings
 from src.services.audit_client import AuditClient
+from src.services.trip_service import TripService
 
 logger = logging.getLogger(__name__)
 
@@ -409,58 +410,70 @@ async def fetch_latest_trip_status_change(
     trip_ids: List[str]
 ) -> dict:
     """
-    Fetch the latest status change timestamp for multiple trips from audit logs.
+    Fetch the latest status change info for multiple trips from centralized audit logs.
 
-    Returns: Dict mapping trip_id -> most recent status change timestamp
+    Returns: Dict mapping trip_id -> status change info dict with keys:
+        - timestamp: datetime of the status change
+        - from_status: previous status
+        - to_status: new status
     """
     import json
+    from src.database import company_async_session_maker
 
     logger.info(f"TMS - Fetching status changes for {len(trip_ids)} trips: {trip_ids[:3]}...")
 
-    # Subquery to get the latest audit log entry for each trip
-    latest_audit_subquery = (
-        select(
-            TMSAuditLog.record_id,
-            func.max(TMSAuditLog.timestamp).label('latest_timestamp')
+    # Query the centralized audit_logs table in company_db
+    async with company_async_session_maker() as company_db:
+        # Subquery to get the latest audit log entry for each trip
+        latest_audit_subquery = (
+            select(
+                CompanyAuditLog.entity_id,
+                func.max(CompanyAuditLog.action_timestamp).label('latest_timestamp')
+            )
+            .where(
+                and_(
+                    CompanyAuditLog.entity_type == 'trip',
+                    CompanyAuditLog.action == 'status_change',
+                    CompanyAuditLog.entity_id.in_(trip_ids)
+                )
+            )
+            .group_by(CompanyAuditLog.entity_id)
+            .subquery()
         )
-        .where(
-            and_(
-                TMSAuditLog.record_type == 'trip',
-                TMSAuditLog.record_id.in_(trip_ids)
+
+        # Main query to get the latest audit log records
+        query = (
+            select(CompanyAuditLog)
+            .join(
+                latest_audit_subquery,
+                and_(
+                    CompanyAuditLog.entity_id == latest_audit_subquery.c.entity_id,
+                    CompanyAuditLog.action_timestamp == latest_audit_subquery.c.latest_timestamp
+                )
             )
         )
-        .group_by(TMSAuditLog.record_id)
-        .subquery()
-    )
 
-    # Main query to get the latest audit log records
-    query = (
-        select(TMSAuditLog)
-        .join(
-            latest_audit_subquery,
-            and_(
-                TMSAuditLog.record_id == latest_audit_subquery.c.record_id,
-                TMSAuditLog.timestamp == latest_audit_subquery.c.latest_timestamp
-            )
-        )
-    )
+        result = await company_db.execute(query)
+        audit_records = result.scalars().all()
 
-    result = await db.execute(query)
-    audit_records = result.scalars().all()
+    logger.info(f"TMS - Found {len(audit_records)} audit log records from company_db")
 
-    logger.info(f"TMS - Found {len(audit_records)} audit log records")
-
-    # Build mapping: trip_id -> latest status change timestamp
+    # Build mapping: trip_id -> status change info
     status_change_map = {}
     for record in audit_records:
-        try:
-            details = json.loads(record.details) if isinstance(record.details, str) else record.details
-            # Only include if this is actually a status change (has to_status)
-            if details and isinstance(details, dict) and details.get('to_status'):
-                status_change_map[record.record_id] = record.timestamp
-        except (json.JSONDecodeError, TypeError):
-            # If JSON parsing fails, use the timestamp anyway
-            status_change_map[record.record_id] = record.timestamp
+        # Extract from_status and to_status from old_values and new_values
+        old_values = record.old_values if isinstance(record.old_values, dict) else {}
+        new_values = record.new_values if isinstance(record.new_values, dict) else {}
+
+        from_status = old_values.get('from_status') or old_values.get('status')
+        to_status = new_values.get('to_status') or new_values.get('status')
+
+        if to_status:
+            status_change_map[record.entity_id] = {
+                'timestamp': record.action_timestamp,
+                'from_status': from_status,
+                'to_status': to_status
+            }
 
     logger.info(f"TMS - Built status_change_map with {len(status_change_map)} entries: {list(status_change_map.keys())[:3]}")
     return status_change_map
@@ -764,9 +777,20 @@ async def get_trips(
             )
             order_responses.append(order_response)
 
-        # Calculate time in current status
+        # Calculate time in current status and get status change info
         try:
-            current_status_since = latest_status_changes.get(trip.id, trip.created_at)
+            status_change_info = latest_status_changes.get(trip.id)
+
+            if status_change_info:
+                # We have a status change record
+                current_status_since = status_change_info.get('timestamp', trip.created_at)
+                from_status = status_change_info.get('from_status')
+                to_status = status_change_info.get('to_status')
+            else:
+                # No status change record, use created_at
+                current_status_since = trip.created_at
+                from_status = None
+                to_status = None
 
             # Ensure both datetimes are timezone-aware for proper comparison
             if current_status_since.tzinfo is None:
@@ -778,11 +802,14 @@ async def get_trips(
         except Exception as e:
             logger.error(f"Error calculating time_in_status for trip {trip.id}: {str(e)}")
             current_status_since = trip.created_at
+            from_status = None
+            to_status = None
             time_in_status_minutes = 0
 
         # Debug: Log first trip time_in_status
         if trip == list(trips)[0]:
             logger.info(f"TMS - First trip: {trip.id}, status={trip.status}, "
+                      f"from_status={from_status}, to_status={to_status}, "
                       f"time_in_status_minutes={time_in_status_minutes}, "
                       f"current_status_since={current_status_since}")
 
@@ -814,7 +841,9 @@ async def get_trips(
             created_at=trip.created_at,
             updated_at=trip.updated_at,
             current_status_since=current_status_since.isoformat() if current_status_since else None,
-            time_in_current_status_minutes=time_in_status_minutes
+            time_in_current_status_minutes=time_in_status_minutes,
+            from_status=from_status,
+            to_status=to_status
         )
 
         # Add orders to the response
@@ -989,38 +1018,15 @@ async def create_trip(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new trip"""
+    """Create a new trip with sequential trip ID (TRIP-DDMMYYYY-{sequence})"""
     # Get authorization header for audit client
     auth_headers = {}
     auth_header = request.headers.get("authorization")
     if auth_header:
         auth_headers["Authorization"] = auth_header
 
-    # Create new trip
-    trip = Trip(
-        user_id=user_id,
-        company_id=tenant_id,
-        branch=trip_data.branch,  # Contains branch UUID
-        truck_plate=trip_data.truck_plate,
-        truck_model=trip_data.truck_model,
-        truck_capacity=trip_data.truck_capacity,
-        driver_id=trip_data.driver_id,
-        driver_name=trip_data.driver_name,
-        driver_phone=trip_data.driver_phone,
-        status=trip_data.status,
-        origin=trip_data.origin,
-        destination=trip_data.destination,
-        distance=trip_data.distance,
-        estimated_duration=trip_data.estimated_duration,
-        pre_trip_time=trip_data.pre_trip_time,
-        post_trip_time=trip_data.post_trip_time,
-        capacity_total=trip_data.capacity_total,
-        trip_date=trip_data.trip_date
-    )
-
-    db.add(trip)
-    await db.commit()
-    await db.refresh(trip)
+    # Create new trip using service (generates sequential ID)
+    trip = await TripService.create_trip(db, trip_data, user_id, tenant_id)
 
     # Update truck and driver status to 'assigned' when trip is created
     await _update_resource_statuses_for_trip(
@@ -1170,6 +1176,28 @@ async def update_trip(
                 )
             except Exception as e:
                 logger.error(f"Failed to publish trip.on_route event: {e}")
+
+        # Write audit log for status change
+        try:
+            audit_client = AuditClient(auth_headers)
+            await audit_client.log_event(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                user_role=token_data.role,
+                action="status_change",
+                module="trips",
+                entity_type="trip",
+                entity_id=str(trip.id),
+                description=f"Trip {trip.id} status changed from {old_status} to {trip.status}",
+                from_status=old_status,
+                to_status=trip.status,
+                old_values={"status": old_status},
+                new_values={"status": trip.status}
+            )
+            await audit_client.close()
+            logger.info(f"Trip {trip_id} status change audit log written: {old_status} -> {trip.status}")
+        except Exception as e:
+            logger.error(f"Failed to write audit log for trip status change: {e}")
 
     # Fetch orders for this trip to avoid lazy loading issues
     orders_query = select(TripOrder).where(
@@ -1371,6 +1399,8 @@ async def pause_trip(
         entity_type="trip",
         entity_id=str(trip.id),
         description=f"Trip {trip.id} paused due to {pause_data.reason}",
+        from_status=old_status,
+        to_status="paused",
         old_values={"status": old_status},
         new_values={
             "status": "paused",
@@ -1495,6 +1525,8 @@ async def resume_trip(
         entity_type="trip",
         entity_id=str(trip.id),
         description=f"Trip {trip.id} resumed",
+        from_status="paused",
+        to_status="on-route",
         old_values={"status": "paused"},
         new_values={
             "status": "on-route",
@@ -2946,6 +2978,8 @@ async def confirm_loading_assignment(
             entity_type="trip",
             entity_id=trip_id,
             description=f"Trip {trip_id} changed to loading status with {items_confirmed} items confirmed, {items_skipped} skipped (total: {total_assigned_weight}kg)",
+            from_status="planning",
+            to_status="loading",
             old_values={"status": "planning"},
             new_values={"status": "loading", "capacity_used": total_assigned_weight}
         )

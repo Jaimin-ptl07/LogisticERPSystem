@@ -154,6 +154,8 @@ export default function Trips() {
           status: data[0].status,
           time_in_current_status_minutes: data[0].time_in_current_status_minutes,
           current_status_since: data[0].current_status_since,
+          from_status: data[0].from_status,
+          to_status: data[0].to_status,
           createdAt: data[0].createdAt
         });
       }
@@ -1764,13 +1766,22 @@ export default function Trips() {
                                     LOCKED
                                   </Badge>
                                 )}
-                                {/* Time in current status */}
+                                {/* Time in current status with from/to status */}
                                 {(trip.time_in_current_status_minutes !== undefined && trip.time_in_current_status_minutes !== null) && (
-                                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-600">
-                                    <Clock className="w-3 h-3" />
-                                    <span>
-                                      For <DurationDisplay minutes={trip.time_in_current_status_minutes || 0} />
-                                    </span>
+                                  <div className="mt-2 text-xs text-gray-600">
+                                    {trip.from_status && trip.to_status ? (
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <span className="font-medium">
+                                          {trip.from_status.replace("-", " ")} → {trip.to_status.replace("-", " ")}
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>
+                                        For <DurationDisplay minutes={trip.time_in_current_status_minutes || 0} />
+                                      </span>
+                                    </div>
                                   </div>
                                 )}
                               </div>

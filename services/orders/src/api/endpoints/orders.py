@@ -133,6 +133,7 @@ async def list_orders(
     order_type: Optional[str] = Query(None, description="Filter by order type"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     payment_type: Optional[str] = Query(None, description="Filter by payment type"),
+    created_by_role: Optional[str] = Query(None, description="Filter by creator role: admin, branch_manager, marketing_person"),
     date_from: Optional[datetime] = Query(None, description="Filter by date from"),
     date_to: Optional[datetime] = Query(None, description="Filter by date to"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -219,6 +220,8 @@ async def list_orders(
         filters.append(Order.priority == priority)
     if payment_type:
         filters.append(Order.payment_type == payment_type)
+    if created_by_role:
+        filters.append(Order.created_by_role == created_by_role)
     if date_from:
         filters.append(Order.created_at >= date_from)
     if date_to:
@@ -614,6 +617,7 @@ async def list_orders(
             # Time in current status
             'current_status_since': current_status_since.isoformat() if current_status_since else None,
             'time_in_current_status_minutes': time_in_status_minutes,
+            'created_by_role': order.created_by_role,
         }
         enriched_orders.append(OrderListResponse(**order_dict))
 
@@ -689,6 +693,7 @@ async def get_order(
         'special_instructions': order.special_instructions,
         'delivery_instructions': order.delivery_instructions,
         'created_by': order.created_by,
+        'created_by_role': order.created_by_role,
         'updated_by': order.updated_by,
         'driver_id': order.driver_id,
         'trip_id': order.trip_id,
@@ -743,8 +748,16 @@ async def create_order(
 
     order_service = OrderService(db, auth_headers, tenant_id)
 
+    # Determine created_by_role based on user's role
+    created_by_role = 'admin'  # default
+    user_role_lower = token_data.role.lower() if token_data.role else ''
+    if user_role_lower == 'branch manager':
+        created_by_role = 'branch_manager'
+    elif user_role_lower == 'marketing person':
+        created_by_role = 'marketing_person'
+
     # Order service will use the tenant_id from the token
-    order = await order_service.create_order(order_data, user_id, tenant_id)
+    order = await order_service.create_order(order_data, user_id, tenant_id, created_by_role)
 
     return order
 
@@ -1209,6 +1222,23 @@ async def update_item_status(
 
     # SECOND: Update order_items table
     # Build the query for updating items using the order UUID
+
+    # First, get the list of item IDs that have assignments in trip_item_assignments for this trip
+    # This is necessary because order_items.trip_id is never set (code is commented out)
+    # So we need to use trip_item_assignments as the source of truth for which items belong to this trip
+    assigned_item_ids = set()
+    if status_data.trip_id:
+        # Get item IDs from trip_item_assignments that are assigned to this trip
+        assignments_for_trip_query = select(TripItemAssignment.order_item_id).where(
+            and_(
+                TripItemAssignment.order_id == order.id,
+                TripItemAssignment.trip_id == status_data.trip_id
+            )
+        )
+        assignments_result = await db.execute(assignments_for_trip_query)
+        assigned_item_ids = set(assignments_result.scalars().all())
+        logger.info(f"Found {len(assigned_item_ids)} items assigned to trip {status_data.trip_id} in trip_item_assignments")
+
     if status_data.item_ids:
         # Update specific items
         query = select(OrderItem).where(
@@ -1235,10 +1265,10 @@ async def update_item_status(
     updated_count = 0
     for item in items:
         # For split assignments, only update if the item is assigned to THIS trip
-        # If status_data.trip_id is provided, only update items assigned to that trip
-        if status_data.trip_id and item.trip_id != status_data.trip_id:
-            # This item is assigned to a different trip, skip it
-            logger.info(f"Item {item.id} assigned to trip {item.trip_id}, skipping (target trip: {status_data.trip_id})")
+        # If status_data.trip_id is provided, only update items that have assignments in trip_item_assignments for that trip
+        if status_data.trip_id and item.id not in assigned_item_ids:
+            # This item is not assigned to this trip (based on trip_item_assignments table), skip it
+            logger.info(f"Item {item.id} not found in trip_item_assignments for trip {status_data.trip_id}, skipping")
             continue
 
         # Update the item status
@@ -1985,12 +2015,31 @@ async def get_order_items_with_assignments(
     total_assigned_quantity = 0
     total_remaining_quantity = 0
 
+    # Items status summary
+    items_status_summary = {
+        "planning": 0,
+        "loading": 0,
+        "on_route": 0,
+        "delivered": 0
+    }
+
     for item in items:
         item_assignments = assignments_by_item.get(item.id, [])
 
         # Split assignments by status - only count active assignments
         assigned_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] in ('planning', 'loading', 'on_route'))
         delivered_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'delivered')
+
+        # Calculate status quantities for this item
+        planning_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'planning')
+        loading_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'loading')
+        on_route_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'on_route')
+
+        # Add to overall status summary
+        items_status_summary["planning"] += planning_qty
+        items_status_summary["loading"] += loading_qty
+        items_status_summary["on_route"] += on_route_qty
+        items_status_summary["delivered"] += delivered_qty
 
         # The order_items.quantity is the ORIGINAL quantity (not reduced)
         # trip_item_assignments tracks what has been assigned to trips
@@ -2033,6 +2082,7 @@ async def get_order_items_with_assignments(
 
     logger.info(f"Order {order.order_number} items-with-assignments: original={total_original_quantity}, assigned={total_assigned_quantity}, remaining={total_remaining_quantity}")
     logger.info(f"Items data: {items_with_assignments}")
+    logger.info(f"Items status summary: {items_status_summary}")
 
     return {
         "order_id": order.id,
@@ -2047,6 +2097,7 @@ async def get_order_items_with_assignments(
             "is_fully_assigned": total_remaining_quantity == 0,
             "is_partially_assigned": 0 < total_remaining_quantity < total_original_quantity,
             "is_available": total_remaining_quantity == total_original_quantity
-        }
+        },
+        "items_status_summary": items_status_summary
     }
 

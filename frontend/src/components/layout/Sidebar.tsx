@@ -22,6 +22,7 @@ import {
   UserCircle,
   UserCheck,
   FileClock,
+  BarChart3,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -105,6 +106,16 @@ const navigationStructure: NavItem[] = [
         href: "/company-admin/masters/audit-logs",
         icon: FileClock,
       },
+      {
+        label: "Analytics Dashboard",
+        href: "/company-admin/analytics",
+        icon: BarChart3,
+      },
+      {
+        label: "Marketing Assignments",
+        href: "/company-admin/masters/marketing-person-assignments",
+        icon: UserCheck,
+      },
     ],
   },
   {
@@ -117,11 +128,18 @@ const navigationStructure: NavItem[] = [
         href: "/branch-manager/dashboard",
         icon: LayoutDashboard,
       },
-      // {
-      //   label: "Dashboard New",
-      //   href: "/branch-manager/orders",
-      //   icon: LayoutDashboard,
-      // },
+    ],
+  },
+  {
+    label: "Marketing Person",
+    icon: UserCheck,
+    role: ROLES.MARKETING_PERSON,
+    subItems: [
+      {
+        label: "Dashboard",
+        href: "/marketing-person/dashboard",
+        icon: LayoutDashboard,
+      },
     ],
   },
   {
@@ -340,14 +358,14 @@ export function Sidebar({
                 {/* Sub Menu Items with Animation */}
                 <div
                   className={cn(
-                    "overflow-hidden transition-all duration-300 ease-in-out",
+                    "transition-all duration-300 ease-in-out",
                     isExpanded && !isCollapsed
-                      ? "max-h-96 opacity-100"
-                      : "max-h-0 opacity-0"
+                      ? "max-h-96 opacity-100 overflow-y-auto"
+                      : "max-h-0 opacity-0 overflow-hidden"
                   )}
                 >
                   {item.subItems && (
-                    <ul className="mt-1 ml-4 space-y-1">
+                    <ul className="mt-1 ml-4 space-y-1 pr-1">
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon || ChevronRight;
                         // More precise active check: exact match OR starts with followed by slash

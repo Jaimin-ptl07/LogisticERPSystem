@@ -18,48 +18,85 @@ import {
   Shield,
   Building,
   Phone,
+  Key,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  GitBranch,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
   useGetUserQuery,
   useUpdateUserMutation,
   useGetBranchesQuery,
-  useGetRolesQuery,
+  useChangeUserPasswordMutation,
 } from "@/services/api/companyApi";
-import { UserUpdate, Role, Branch } from "@/services/api/companyApi";
+import { UserUpdate, Branch } from "@/services/api/companyApi";
 
 const userUpdateSchema = z.object({
   email: z.string().email("Invalid email address").optional(),
   first_name: z.string().min(1, "First name is required").optional(),
   last_name: z.string().min(1, "Last name is required").optional(),
   phone_number: z.string().optional(),
-  role_id: z.number().min(1, "Role is required").optional(),
-  branch_id: z.string().optional(),
+  branch_ids: z.array(z.string()).min(1, "At least one branch is required").optional(),
   is_active: z.boolean().optional(),
 });
 
 type UserUpdateFormData = z.infer<typeof userUpdateSchema>;
+
+// Password change schema
+const passwordChangeSchema = z.object({
+  new_password: z.string().min(8, "Password must be at least 8 characters"),
+  confirm_password: z.string().min(1, "Please confirm the password"),
+}).refine((data) => data.new_password === data.confirm_password, {
+  message: "Passwords do not match",
+  path: ["confirm_password"],
+});
+
+type PasswordChangeFormData = z.infer<typeof passwordChangeSchema>;
 
 export default function EditUserPage() {
   const params = useParams();
   const router = useRouter();
   const userId = params.id as string;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+  // Local state for branch selection to avoid read-only array issues
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
 
   // Fetch user data
   const { data: user, isLoading } = useGetUserQuery(userId, {
     skip: !userId,
   });
 
-  // Fetch branches and roles
+  // Fetch branches
   const { data: branchesData } = useGetBranchesQuery({
     page: 1,
     per_page: 100,
   });
-  const { data: roles } = useGetRolesQuery({});
 
-  // Mutation
+  // Mutations
   const [updateUser] = useUpdateUserMutation();
+  const [changeUserPassword] = useChangeUserPasswordMutation();
+
+  // Password form
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    formState: { errors: passwordErrors, isValid: isPasswordValid },
+    reset: resetPassword,
+    watch: watchPassword,
+  } = useForm<PasswordChangeFormData>({
+    resolver: zodResolver(passwordChangeSchema),
+    defaultValues: {
+      new_password: "",
+      confirm_password: "",
+    },
+  });
 
   const branches = branchesData?.items || [];
 
@@ -68,7 +105,6 @@ export default function EditUserPage() {
     handleSubmit,
     formState: { errors, isValid, isDirty },
     reset,
-    watch,
     setValue,
   } = useForm<UserUpdateFormData>({
     resolver: zodResolver(userUpdateSchema),
@@ -77,27 +113,39 @@ export default function EditUserPage() {
       first_name: "",
       last_name: "",
       phone_number: "",
-      role_id: 0,
-      branch_id: "",
+      branch_ids: [],
       is_active: true,
     },
   });
 
+  // Handle multi-select for branches using local state
+  const handleBranchChange = (branchId: string) => {
+    const currentIds = [...selectedBranchIds];
+    if (currentIds.includes(branchId)) {
+      // Remove branch if already selected
+      const newIds = currentIds.filter((id) => id !== branchId);
+      setSelectedBranchIds(newIds);
+      setValue("branch_ids", newIds, { shouldDirty: true });
+    } else {
+      // Add branch
+      const newIds = [...currentIds, branchId];
+      setSelectedBranchIds(newIds);
+      setValue("branch_ids", newIds, { shouldDirty: true });
+    }
+  };
+
   // Reset form when user data is loaded
   useEffect(() => {
     if (user) {
+      // Create new array to avoid frozen array from API response
+      const branchIds = [...(user.branch_ids || user.branches?.map((b) => b.id) || [])];
+      setSelectedBranchIds(branchIds);
       reset({
         email: user.email,
         first_name: user.first_name,
         last_name: user.last_name,
-        phone_number: user.phone_number || "",
-        role_id:
-          typeof user.role_id === "number"
-            ? user.role_id
-            : user.role_id
-            ? parseInt(user.role_id)
-            : 0,
-        branch_id: user.branch_id || "",
+        phone_number: user.phone || "",
+        branch_ids: branchIds,
         is_active: user.is_active,
       });
     }
@@ -115,9 +163,14 @@ export default function EditUserPage() {
         updateData.last_name = data.last_name;
       if (data.phone_number !== user?.phone_number)
         updateData.phone_number = data.phone_number;
-      if (data.role_id !== user?.role_id) updateData.role_id = data.role_id;
-      if (data.branch_id !== user?.branch_id)
-        updateData.branch_id = data.branch_id || undefined;
+
+      // Compare branch_ids arrays - create copies before sorting to avoid mutating frozen arrays
+      const currentBranchIds = [...(user?.branch_ids || user?.branches?.map((b) => b.id) || [])];
+      const formBranchIds = data.branch_ids ? [...data.branch_ids] : [];
+      if (JSON.stringify(formBranchIds.sort()) !== JSON.stringify([...currentBranchIds].sort())) {
+        updateData.branch_ids = data.branch_ids;
+      }
+
       if (data.is_active !== user?.is_active)
         updateData.is_active = data.is_active;
 
@@ -137,6 +190,26 @@ export default function EditUserPage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const onPasswordChange = async (data: PasswordChangeFormData) => {
+    setIsChangingPassword(true);
+    try {
+      await changeUserPassword({
+        id: userId,
+        new_password: data.new_password,
+      }).unwrap();
+      toast.success("Password changed successfully");
+      resetPassword();
+      setShowPasswordFields(false);
+    } catch (error: any) {
+      console.error("Password change error:", error);
+      toast.error(
+        error?.data?.detail || error?.message || "Failed to change password"
+      );
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -266,48 +339,96 @@ export default function EditUserPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="role_id">Role *</Label>
-                <select
-                  id="role_id"
-                  {...register("role_id", { valueAsNumber: true })}
-                  className={`w-full px-3 text-black py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.role_id ? "border-red-500" : "border-gray-300"
-                  }`}
+            <div>
+              <Label htmlFor="branch_ids">Assigned Branches *</Label>
+              <p className="text-xs text-gray-500 mb-2">
+                Select one or more branches for this user
+              </p>
+
+              {/* Selected Branches as Badges */}
+              {selectedBranchIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2 p-2 border border-gray-200 rounded-lg bg-gray-50">
+                  {selectedBranchIds.map((branchId) => {
+                    const branch = branches.find((b) => b.id === branchId);
+                    return branch ? (
+                      <span
+                        key={branch.id}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+                      >
+                        <GitBranch className="w-3 h-3" />
+                        {branch.name}
+                        <button
+                          type="button"
+                          onClick={() => handleBranchChange(branch.id)}
+                          className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+              )}
+
+              {/* Dropdown for branch selection */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
+                  className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="0">Select Role</option>
-                  {roles?.items?.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.role_id && (
-                  <p className="text-sm text-red-600 mt-1">Role is required</p>
+                  <span className="text-gray-700">
+                    {branchDropdownOpen ? "Hide branches" : "Show branches"}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-gray-500 transition-transform ${
+                      branchDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {branchDropdownOpen && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {branches.map((branch) => {
+                      const isSelected = selectedBranchIds.includes(branch.id);
+                      return (
+                        <label
+                          key={branch.id}
+                          className={`flex items-center text-black space-x-3 p-2 cursor-pointer hover:bg-gray-50 ${
+                            isSelected ? "bg-blue-50" : ""
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleBranchChange(branch.id)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="flex-1">{branch.name}</span>
+                          <span className="text-xs text-gray-500">
+                            {branch.code}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
-              <div>
-                <Label htmlFor="branch_id">Assigned Branch</Label>
-                <select
-                  id="branch_id"
-                  {...register("branch_id")}
-                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Branch (Optional)</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.branch_id && (
-                  <p className="text-sm text-red-600 mt-1">
-                    {errors.branch_id.message}
-                  </p>
-                )}
-              </div>
+              {selectedBranchIds.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Please select at least one branch
+                </p>
+              )}
+              {errors.branch_ids && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.branch_ids.message}
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Users can be assigned to multiple branches for cross-branch
+                operations
+              </p>
             </div>
 
             <div>
@@ -392,6 +513,133 @@ export default function EditUserPage() {
             )}
           </Button>
         </div>
+      </form>
+
+      {/* Password Change Form - Separate from main user form */}
+      <form onSubmit={handlePasswordSubmit(onPasswordChange)} className="space-y-6">
+        {/* Password Change */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Key className="w-5 h-5 mr-2" />
+                Change Password
+              </div>
+              {!showPasswordFields && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPasswordFields(true)}
+                  className="text-sm"
+                >
+                  Change Password
+                </Button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!showPasswordFields ? (
+              <p className="text-sm text-gray-600">
+                Click "Change Password" to update this user's password.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="new_password">New Password *</Label>
+                    <div className="relative">
+                      <Input
+                        id="new_password"
+                      type={showNewPassword ? "text" : "password"}
+                        {...registerPassword("new_password")}
+                        placeholder="Enter new password"
+                        className={passwordErrors.new_password ? "border-red-500 pr-10" : "pr-10"}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showNewPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    {passwordErrors.new_password && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {passwordErrors.new_password.message}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Must be at least 8 characters long
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="confirm_password">Confirm Password *</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirm_password"
+                      type={showConfirmPassword ? "text" : "password"}
+                        {...registerPassword("confirm_password")}
+                        placeholder="Confirm new password"
+                        className={passwordErrors.confirm_password ? "border-red-500 pr-10" : "pr-10"}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    {passwordErrors.confirm_password && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {passwordErrors.confirm_password.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowPasswordFields(false);
+                      resetPassword();
+                    }}
+                    disabled={isChangingPassword}
+                    className="bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={!isPasswordValid || isChangingPassword}
+                    className="bg-[#1F40AE] hover:bg-[#203BA0] active:bg-[#192F80] text-white px-4 py-2 rounded-lg font-medium"
+                  >
+                    {isChangingPassword ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Updating...
+                      </div>
+                    ) : (
+                      "Update Password"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </form>
     </div>
   );

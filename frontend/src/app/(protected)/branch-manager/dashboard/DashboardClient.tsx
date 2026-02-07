@@ -4,9 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Select } from "@/components/ui/Select";
 import { CreateOrderModal } from "@/components/Modal";
 import { OrderDocumentsViewer } from "@/components/branch";
 import { DueDaysTab } from "@/components/orders/DueDaysTab";
+import { RoleBadge } from "@/components/orders/RoleBadge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import {
   useGetOrdersQuery,
@@ -29,13 +31,8 @@ import {
   DollarSign,
   Clock,
   TrendingUp,
-  Box,
   Building2,
   Hash,
-  FileText,
-  Truck,
-  CheckCircle,
-  AlertCircle,
   ChevronDown,
   ChevronRight,
   Edit
@@ -196,19 +193,18 @@ export default function Orders() {
     total: orders.length,
     draft: orders.filter((o) => o.status === "draft").length,
     submitted: orders.filter((o) => o.status === "submitted").length,
-    approved: orders.filter(
-      (o) => o.status === "finance_approved" || o.status === "logistics_approved"
-    ).length,
+    finance_approved: orders.filter((o) => o.status === "finance_approved").length,
+    finance_rejected: orders.filter((o) => o.status === "finance_rejected").length,
+    assigned: orders.filter((o) => o.status === "assigned").length,
+    in_transit: orders.filter((o) => o.status === "in_transit").length,
+    partial_in_transit: orders.filter((o) => o.status === "partial_in_transit").length,
+    partial_delivered: orders.filter((o) => o.status === "partial_delivered").length,
+    delivered: orders.filter((o) => o.status === "delivered").length,
   };
 
   // Filter orders based on status filter
   const filteredOrders = statusFilter
-    ? orders.filter((o) => {
-      if (statusFilter === "approved") {
-        return o.status === "finance_approved" || o.status === "logistics_approved";
-      }
-      return o.status === statusFilter;
-    })
+    ? orders.filter((o) => o.status === statusFilter)
     : orders;
 
   return (
@@ -250,85 +246,40 @@ export default function Orders() {
           {/* Orders Tab */}
           <TabsContent value="orders">
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card
-            className={`bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === null ? 'ring-4 ring-blue-500' : ''
-              }`}
-            onClick={() => setStatusFilter(null)}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-2">
-                <Box className="w-8 h-8 text-gray-600" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900 mb-1">
-                {orderStats.total}
-              </p>
-              <p className="text-sm text-gray-600 font-medium">Total Orders</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={`bg-gradient-to-br from-gray-50 to-slate-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'draft' ? 'ring-4 ring-gray-500' : ''
-              }`}
-            onClick={() => setStatusFilter(statusFilter === 'draft' ? null : 'draft')}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-2">
-                <FileText className="w-8 h-8 text-gray-600" />
-              </div>
-              <p className="text-3xl font-bold text-gray-700 mb-1">
-                {orderStats.draft}
-              </p>
-              <p className="text-sm text-gray-700 font-medium">Draft</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={`bg-gradient-to-br from-yellow-50 to-orange-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'submitted' ? 'ring-4 ring-yellow-500' : ''
-              }`}
-            onClick={() => setStatusFilter(statusFilter === 'submitted' ? null : 'submitted')}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-2">
-                <Clock className="w-8 h-8 text-yellow-600" />
-              </div>
-              <p className="text-3xl font-bold text-yellow-700 mb-1">
-                {orderStats.submitted}
-              </p>
-              <p className="text-sm text-yellow-700 font-medium">Submitted</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={`bg-gradient-to-br from-green-50 to-emerald-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${statusFilter === 'approved' ? 'ring-4 ring-green-500' : ''
-              }`}
-            onClick={() => setStatusFilter(statusFilter === 'approved' ? null : 'approved')}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-2">
-                <Package className="w-8 h-8 text-green-600" />
-              </div>
-              <p className="text-3xl font-bold text-green-700 mb-1">
-                {orderStats.approved}
-              </p>
-              <p className="text-sm text-green-700 font-medium">Approved</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Search Bar */}
+        {/* Search and Filter Bar */}
         <Card className="mb-8 border-0 shadow-lg bg-white">
           <CardContent className="p-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search orders by customer, ID, or status..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border-2 border-gray-200 rounded-xl outline-none transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
+            <div className="flex flex-col md:flex-row gap-4">
+              {/* Search Input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Search orders by customer, ID, or status..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border-2 border-gray-200 rounded-xl outline-none transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+              {/* Status Filter Dropdown */}
+              <div className="md:w-64">
+                <Select
+                  value={statusFilter || ""}
+                  onChange={(e) => setStatusFilter(e.target.value || null)}
+                  className="w-full h-full"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="draft">Draft ({orderStats.draft})</option>
+                  <option value="submitted">Submitted ({orderStats.submitted})</option>
+                  <option value="finance_approved">Finance Approved ({orderStats.finance_approved})</option>
+                  <option value="finance_rejected">Finance Rejected ({orderStats.finance_rejected})</option>
+                  <option value="assigned">Assigned ({orderStats.assigned})</option>
+                  <option value="in_transit">In Transit ({orderStats.in_transit})</option>
+                  <option value="partial_in_transit">Partial In Transit ({orderStats.partial_in_transit})</option>
+                  <option value="partial_delivered">Partial Delivered ({orderStats.partial_delivered})</option>
+                  <option value="delivered">Delivered ({orderStats.delivered})</option>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -385,6 +336,17 @@ export default function Orders() {
                             </div>
                           )}
                         </div>
+
+                        {/* Created By Information */}
+                        {order.created_by_role && (
+                          <div className="mb-6 pb-6 border-b border-gray-200">
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                              <User className="w-4 h-4" />
+                              <span>Created By</span>
+                            </div>
+                            <RoleBadge role={order.created_by_role} />
+                          </div>
+                        )}
 
                         {/* Customer Information */}
                         <div className="space-y-4">
@@ -447,6 +409,32 @@ export default function Orders() {
                                   <div className="flex justify-between items-center">
                                     <span className="text-xs text-gray-600">Remaining:</span>
                                     <span className="text-sm font-bold text-orange-700">{summary.total_remaining_quantity}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Items Status Summary */}
+                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                                  <TrendingUp className="w-4 h-4" />
+                                  <span>Items Status</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="bg-blue-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-blue-700">{itemsData?.items_status_summary?.planning || 0}</p>
+                                    <p className="text-xs text-blue-600">Planning</p>
+                                  </div>
+                                  <div className="bg-orange-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-orange-700">{itemsData?.items_status_summary?.loading || 0}</p>
+                                    <p className="text-xs text-orange-600">Loading</p>
+                                  </div>
+                                  <div className="bg-purple-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-purple-700">{itemsData?.items_status_summary?.on_route || 0}</p>
+                                    <p className="text-xs text-purple-600">On Route</p>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-green-700">{itemsData?.items_status_summary?.delivered || 0}</p>
+                                    <p className="text-xs text-green-600">Delivered</p>
                                   </div>
                                 </div>
                               </div>
@@ -545,8 +533,7 @@ export default function Orders() {
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Quantity</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Wt/Unit</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Wt</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Price/Unit</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Price</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Remaining Qty</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">planning</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">loading</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">on_route</th>
@@ -587,6 +574,10 @@ export default function Orders() {
                                       });
                                     }
 
+                                    // Calculate remaining quantity
+                                    const totalAssignedQty = statusQuantities.planning + statusQuantities.loading + statusQuantities.on_route + statusQuantities.delivered;
+                                    const remainingQuantity = displayQty - totalAssignedQty;
+
                                     return (
                                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                                         <td className="py-4 px-2 text-sm text-gray-900">{index + 1}</td>
@@ -613,11 +604,8 @@ export default function Orders() {
                                         <td className="py-4 px-2 text-center text-sm text-gray-900">
                                           {totalItemWeight > 0 ? totalItemWeight.toFixed(2) : '0.00'}
                                         </td>
-                                        <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                          {item.unit_price ? <CurrencyDisplay amount={item.unit_price} /> : 'N/A'}
-                                        </td>
-                                        <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                          {item.total_price ? <CurrencyDisplay amount={item.total_price} /> : item.unit_price ? <CurrencyDisplay amount={item.unit_price * totalQty} /> : 'N/A'}
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-orange-600">
+                                          {remainingQuantity}
                                         </td>
                                         <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">
                                           {statusQuantities.planning || 0}
@@ -643,13 +631,77 @@ export default function Orders() {
                             </div>
                           )}
 
-                          {/* Overall Totals */}
-                          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <div className="flex items-center justify-between">
-                              <h5 className="text-sm font-bold text-gray-700">Total Amount</h5>
-                              <p className="text-xl font-bold text-blue-700">{order.total_amount ? <CurrencyDisplay amount={order.total_amount} /> : 'N/A'}</p>
-                            </div>
-                          </div>
+                          {/* Status Summary Footer - Always shown */}
+                          {(() => {
+                            // Calculate summary from items directly
+                            const itemsList = itemsWithAssignments || order.items || [];
+                            let totalOriginalQty = 0;
+                            let totalPlanning = 0;
+                            let totalLoading = 0;
+                            let totalOnRoute = 0;
+                            let totalDelivered = 0;
+
+                            itemsList.forEach((item: any) => {
+                              const qty = item.original_quantity !== undefined ? item.original_quantity : item.quantity;
+                              totalOriginalQty += qty;
+
+                              const statusQuantities: Record<string, number> = {
+                                planning: 0,
+                                loading: 0,
+                                on_route: 0,
+                                delivered: 0,
+                                pending_to_assign: 0,
+                                failed: 0,
+                                returned: 0,
+                              };
+
+                              if (item.assignments && item.assignments.length > 0) {
+                                item.assignments.forEach((assignment: OrderItemAssignment) => {
+                                  const status = assignment.item_status;
+                                  if (status in statusQuantities) {
+                                    statusQuantities[status] += assignment.assigned_quantity;
+                                  }
+                                });
+                              }
+
+                              totalPlanning += statusQuantities.planning;
+                              totalLoading += statusQuantities.loading;
+                              totalOnRoute += statusQuantities.on_route;
+                              totalDelivered += statusQuantities.delivered;
+                            });
+
+                            return (
+                              <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                                <h5 className="text-sm font-bold text-gray-700 mb-3">Order Items Status Summary</h5>
+                                <div className="grid grid-cols-6 gap-3">
+                                  <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                    <p className="text-xs text-gray-600 mb-1">Total Items</p>
+                                    <p className="text-lg font-bold text-gray-900">{totalOriginalQty}</p>
+                                  </div>
+                                  <div className="bg-red-50 rounded-lg p-3 border border-red-200">
+                                    <p className="text-xs text-red-600 mb-1">Remaining</p>
+                                    <p className="text-lg font-bold text-red-700">{totalOriginalQty - totalPlanning - totalLoading - totalOnRoute - totalDelivered}</p>
+                                  </div>
+                                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                                    <p className="text-xs text-blue-600 mb-1">Planning</p>
+                                    <p className="text-lg font-bold text-blue-700">{totalPlanning}</p>
+                                  </div>
+                                  <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                                    <p className="text-xs text-orange-600 mb-1">Loading</p>
+                                    <p className="text-lg font-bold text-orange-700">{totalLoading}</p>
+                                  </div>
+                                  <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                    <p className="text-xs text-purple-600 mb-1">On Route</p>
+                                    <p className="text-lg font-bold text-purple-700">{totalOnRoute}</p>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                                    <p className="text-xs text-green-600 mb-1">Delivered</p>
+                                    <p className="text-lg font-bold text-green-700">{totalDelivered}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {/* Delivery Documents Section */}
                           {(order.status === 'delivered' || order.status === 'partial_delivered') && (
