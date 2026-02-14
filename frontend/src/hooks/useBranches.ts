@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BranchesListResponse } from "@/services/analytics";
+import { Branch, BranchesListResponse } from "@/services/analytics";
 
 export function useBranches() {
   const [branches, setBranches] = useState<Branch[]>([]);

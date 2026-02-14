@@ -77,11 +77,10 @@ export function ProductForm({ data, onChange, errors, mode = 'create', categorie
         </FieldWrapper>
         <div className="flex items-center space-x-3">
           <Switch
-            id="is_active"
             checked={data.is_active ?? true}
             onCheckedChange={(checked) => onChange('is_active', checked)}
           />
-          <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+          <label className="text-sm font-medium text-gray-700">
             Active Product
           </label>
         </div>

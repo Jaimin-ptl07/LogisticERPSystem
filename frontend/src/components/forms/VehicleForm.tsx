@@ -106,8 +106,8 @@ export function VehicleForm({ data, onChange, errors, mode = 'create', branches 
             hint="Optional: Assign this vehicle to a branch"
           >
             <select
-              value={data.branch_id || ''}
-              onChange={(e) => onChange('branch_id', e.target.value)}
+              value={data.branch_ids?.[0] || ''}
+              onChange={(e) => onChange('branch_ids', e.target.value ? [e.target.value] : [])}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Select Branch</option>
@@ -121,11 +121,10 @@ export function VehicleForm({ data, onChange, errors, mode = 'create', branches 
         </div>
         <div className="flex items-center space-x-3">
           <Switch
-            id="is_active"
             checked={data.is_active ?? true}
             onCheckedChange={(checked) => onChange('is_active', checked)}
           />
-          <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+          <label className="text-sm font-medium text-gray-700">
             Active Vehicle
           </label>
         </div>

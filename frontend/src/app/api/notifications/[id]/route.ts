@@ -4,7 +4,7 @@ const API_URL = process.env.NEXT_PUBLIC_NOTIFICATIONS_API_URL || 'http://localho
 
 // Helper function to get token from cookie or authorization header
 function getToken(request: NextRequest): string | null {
-  return request.cookies.get('access_token')?.value || request.headers.get('authorization')?.replace('Bearer ', '');
+  return request.cookies.get('access_token')?.value || request.headers.get('authorization')?.replace('Bearer ', '') || null;
 }
 
 // GET /api/notifications/[id] - Get a specific notification

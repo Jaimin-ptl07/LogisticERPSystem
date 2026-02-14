@@ -245,10 +245,10 @@ export function OrderDetailsModal({
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-700">
-                    Business Type
+                    GSTIN
                   </span>
                   <span className="text-sm text-gray-900">
-                    {fullOrderData.customer?.business_type || 'N/A'}
+                    {fullOrderData.customer?.gstin || 'N/A'}
                   </span>
                 </div>
               </div>

@@ -58,7 +58,7 @@ export function useNotificationStream(enabled: boolean = true) {
         console.log('SSE connection established');
         isConnectingRef.current = false; // Connection complete
         dispatch(setSSEConnected(true));
-        dispatch(setSSEError(null));
+        dispatch(setSSEError(''));
         reconnectAttemptsRef.current = 0;
       };
 

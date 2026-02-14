@@ -5,7 +5,7 @@ const API_URL = process.env.NEXT_PUBLIC_NOTIFICATIONS_API_URL || 'http://localho
 export async function GET(request: NextRequest) {
   try {
     // Get token from cookie or authorization header
-    const token = request.cookies.get('access_token')?.value || request.headers.get('authorization')?.replace('Bearer ', '');
+    const token = request.cookies.get('access_token')?.value || request.headers.get('authorization')?.replace('Bearer ', '') || null;
 
     if (!token) {
       return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });

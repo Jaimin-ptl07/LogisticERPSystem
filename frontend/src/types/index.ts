@@ -22,6 +22,24 @@ export interface Order {
   items: number;
 }
 
+export interface TripOrder {
+  id: string;
+  customer: string;
+  priority: string;
+  items: number;
+  weight: number;
+  items_data?: OrderItem[];
+  items_count?: number;
+  customerAddress?: string;
+  address?: string;
+  total?: number;
+  volume?: number;
+  status?: string;
+  delivery_status?: string;
+  sequence_number?: number;
+  order_id?: string;
+}
+
 export interface Trip {
   id: string;
   status:
@@ -30,7 +48,8 @@ export interface Trip {
     | "on-route"
     | "completed"
     | "cancelled"
-    | "truck-malfunction";
+    | "truck-malfunction"
+    | "paused";
   branch: string;
   origin?: string;
   destination?: string;
@@ -47,11 +66,12 @@ export interface Trip {
     name: string;
     phone: string;
   };
-  orders: OrderItem[];
+  orders: TripOrder[];
   date: string;
   createdAt?: string;
   capacityUsed?: number;
   capacityTotal?: number;
+  maintenanceNote?: string;
   // Time in current status
   current_status_since?: string;
   time_in_current_status_minutes?: number;
@@ -80,6 +100,9 @@ export interface OrderItem {
   items: number;
   quantity?: number;
   address?: string;
+  product_name?: string;
+  product_code?: string;
+  total_weight?: number;
   originalOrderId?: string;
   originalItems?: number;
   originalWeight?: number;
@@ -89,7 +112,7 @@ export interface OrderItem {
 
 export interface TripPlan {
   id: string;
-  orders: OrderItem[];
+  orders: TripOrder[];
   totalWeight: number;
   totalVolume: number;
   estimatedCapacity: number;
@@ -178,7 +201,7 @@ export interface Driver {
   phone: string;
   license: string;
   experience: string;
-  status: "available" | "on_trip" | "off_duty" | "on_leave" | "suspended";
+  status: "available" | "active" | "on_trip" | "off_duty" | "on_leave" | "suspended";
   currentTruck?: string | null;
   branch_id?: string | null;
   user_id?: string | null;

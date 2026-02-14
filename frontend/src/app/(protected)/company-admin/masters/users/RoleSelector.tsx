@@ -279,7 +279,7 @@ export function RoleManager({ isOpen, onClose }: RoleManagerProps) {
                           Permissions ({role.permissions.length}):
                         </p>
                         <div className="flex flex-wrap gap-1">
-                          {role.permissions.slice(0, 5).map((permission) => (
+                          {role.permissions.slice(0, 5).map((permission: Permission) => (
                             <Badge key={permission.id} variant="outline" className="text-xs">
                               {permission.action}
                             </Badge>

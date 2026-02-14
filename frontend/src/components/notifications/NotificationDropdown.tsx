@@ -10,7 +10,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 interface NotificationDropdownProps {
   onClose: () => void;
-  anchorRef: React.RefObject<HTMLButtonElement>;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
 }
 
 export function NotificationDropdown({ onClose, anchorRef }: NotificationDropdownProps) {

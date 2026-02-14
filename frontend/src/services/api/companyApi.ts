@@ -33,7 +33,7 @@ export interface User {
   last_name: string
   phone_number?: string
   phone?: string
-  profile_type: 'staff' | 'driver' | 'admin'
+  profile_type: 'staff' | 'driver' | 'admin' | 'branch_manager'
   role_id: number | string
   branch_id?: string // Deprecated: Use branch_ids for multiple branches
   branch_ids?: string[] // New: Multiple branch assignments
@@ -258,6 +258,7 @@ export interface UpdateMarketingPersonAssignment {
 export interface CustomerForAssignment extends Customer {
   assigned_marketing_person_id?: string
   assigned_marketing_person_name?: string
+  assigned_marketing_persons?: string[]  // Array of marketing person names
 }
 
 export interface Customer {
@@ -279,9 +280,11 @@ export interface Customer {
   credit_limit: number
   pricing_tier: string
   is_active: boolean
+  available_for_all_branches?: boolean
   created_at: string
   updated_at?: string
   home_branch?: Branch
+  branches?: Array<{ branch: Branch }>  // Customer-branch relationships
   business_type_relation?: BusinessTypeModel  // Deprecated - single business type
   business_types?: BusinessTypeModel[]  // New - multiple business types
   // Marketing person contact details
@@ -310,9 +313,11 @@ export interface Vehicle {
   current_fuel_economy?: number
   last_odometer_update?: string
   is_active: boolean
+  available_for_all_branches?: boolean
   created_at: string
   updated_at?: string
   branch?: Branch
+  branches?: Array<{ branch: Branch }>  // Vehicle-branch relationships
   vehicle_type_relation?: VehicleTypeModel
 }
 
@@ -570,7 +575,7 @@ export interface UserCreate {
   first_name?: string
   last_name?: string
   phone?: string
-  profile_type?: 'staff' | 'driver' | 'admin'
+  profile_type?: 'staff' | 'driver' | 'admin' | 'branch_manager'
   role_id?: string
   branch_id?: string // Deprecated: Use branch_ids for multiple branches
   branch_ids?: string[] // New: Multiple branch assignments
@@ -585,6 +590,7 @@ export interface UserUpdate {
   phone_number?: string
   role_id?: number
   branch_id?: string
+  branch_ids?: string[]  // Multiple branch assignments
   is_active?: boolean
 }
 
@@ -1116,7 +1122,7 @@ export const companyApi = createApi({
       search?: string;
       role_id?: number;
       branch_id?: string;
-      profile_type?: 'staff' | 'driver' | 'admin';
+      profile_type?: 'staff' | 'driver' | 'admin' | 'branch_manager';
       is_active?: boolean;
       include_profile?: boolean;
     }>({
@@ -1236,7 +1242,7 @@ export const companyApi = createApi({
     exportUsers: builder.mutation<Blob, {
       role_id?: number;
       branch_id?: string;
-      profile_type?: 'staff' | 'driver' | 'admin';
+      profile_type?: 'staff' | 'driver' | 'admin' | 'branch_manager';
       is_active?: boolean;
       format?: 'csv' | 'excel';
     }>({

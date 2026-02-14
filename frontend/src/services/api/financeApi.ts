@@ -257,7 +257,7 @@ export const financeApi = createApi({
       created_at: string;
     }>, string>({
       query: (approvalId) => `/approvals/${approvalId}/audit`,
-      providesTags: (result, error, approvalId) => [{ type: 'ApprovalAction', id: auditId }],
+      providesTags: (result, error, approvalId) => [{ type: 'ApprovalAction', id: approvalId }],
     }),
 
     // Reports endpoints

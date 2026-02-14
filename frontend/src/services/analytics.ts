@@ -498,20 +498,3 @@ class AnalyticsAPIClient {
 
 // Export singleton instance
 export const analyticsAPI = new AnalyticsAPIClient();
-
-// Export types
-export type {
-  StatusCount,
-  StatusDuration,
-  LifecycleTime,
-  BottleneckItem,
-  UtilizationMetrics,
-  TimelineEvent,
-  StatusTimelineItem,
-  OrderStatusTimelineResponse,
-  TripStatusTimelineResponse,
-  OrderTimelineSummary,
-  OrdersListResponse,
-  TripTimelineSummary,
-  TripsListResponse,
-};

@@ -5,7 +5,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 export interface Order {
   id: string;
   order_number: string;
-  status: 'draft' | 'submitted' | 'finance_approved' | 'finance_rejected' | 'logistics_approved' | 'logistics_rejected' | 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled';
+  status: 'draft' | 'submitted' | 'finance_approved' | 'finance_rejected' | 'logistics_approved' | 'logistics_rejected' | 'assigned' | 'picked_up' | 'in_transit' | 'partial_in_transit' | 'partial_delivered' | 'delivered' | 'cancelled';
   customer_id: string;
   customer?: {
     id: string;

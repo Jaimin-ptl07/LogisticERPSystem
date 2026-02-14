@@ -5,7 +5,7 @@ const API_URL = process.env.NEXT_PUBLIC_NOTIFICATIONS_API_URL || 'http://localho
 // GET /api/notifications/stream - SSE endpoint for real-time notifications
 export async function GET(request: NextRequest) {
   // Get token from cookie or authorization header
-  const token = request.cookies.get('access_token')?.value || request.headers.get('authorization')?.replace('Bearer ', '');
+  const token = request.cookies.get('access_token')?.value || request.headers.get('authorization')?.replace('Bearer ', '') || null;
 
   if (!token) {
     return new Response('Unauthorized', { status: 401 });

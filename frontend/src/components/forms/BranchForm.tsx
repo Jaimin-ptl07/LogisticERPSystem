@@ -47,11 +47,10 @@ export function BranchForm({ data, onChange, errors, mode = 'create', branches =
         </div>
         <div className="flex items-center space-x-3">
           <Switch
-            id="is_active"
             checked={data.is_active ?? true}
             onCheckedChange={(checked) => onChange('is_active', checked)}
           />
-          <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
+          <label className="text-sm font-medium text-gray-700">
             Active Branch
           </label>
         </div>

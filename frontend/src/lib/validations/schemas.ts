@@ -6,9 +6,7 @@ import { z } from 'zod'
  */
 
 // Email validation - requires @ and domain extension
-export const emailSchema = z.string({
-  required_error: 'Email is required',
-})
+export const emailSchema = z.string()
   .min(1, 'Email is required')
   .email('Invalid email format')
   .refine(
@@ -17,9 +15,7 @@ export const emailSchema = z.string({
   )
 
 // Phone validation - exactly 10 digits, numeric only
-export const phoneSchema = z.string({
-  required_error: 'Phone number is required',
-})
+export const phoneSchema = z.string()
   .min(1, 'Phone number is required')
   .regex(/^\d{10}$/, 'Phone number must be exactly 10 digits')
 
@@ -27,9 +23,7 @@ export const phoneSchema = z.string({
 export const phoneOptionalSchema = phoneSchema.optional().or(z.literal(''))
 
 // License number - alphanumeric (letters and numbers only)
-export const licenseNumberSchema = z.string({
-  required_error: 'License number is required',
-})
+export const licenseNumberSchema = z.string()
   .min(1, 'License number is required')
   .regex(/^[A-Za-z0-9]+$/, 'License number can only contain letters and numbers (no special characters)')
   .min(2, 'License number must be at least 2 characters')
@@ -42,9 +36,8 @@ export const bloodGroupSchema = z.string()
   .or(z.literal(''))
 
 // Pin code / Postal code - exactly 6 digits for India
-export const pinCodeSchema = z.string({
-  required_error: 'Pin code is required',
-})
+export const pinCodeSchema = z.string()
+  .min(1, 'Pin code is required')
   .regex(/^\d{6}$/, 'Pin code must be exactly 6 digits')
 
 // Optional pin code
@@ -69,9 +62,7 @@ export const gstinSchema = z.string()
   .or(z.literal(''))
 
 // Vehicle registration number - Indian format
-export const vehicleRegistrationSchema = z.string({
-  required_error: 'Vehicle registration number is required',
-})
+export const vehicleRegistrationSchema = z.string()
   .min(1, 'Vehicle registration number is required')
   .regex(/^[A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{4}$/, 'Invalid registration format (e.g., MH12AB1234)')
 
@@ -82,9 +73,7 @@ export const urlSchema = z.string()
   .or(z.literal(''))
 
 // Date validation - must be future date
-export const futureDateSchema = z.string({
-  required_error: 'Date is required',
-})
+export const futureDateSchema = z.string()
   .min(1, 'Date is required')
   .refine(
     (val) => {
@@ -97,9 +86,7 @@ export const futureDateSchema = z.string({
   )
 
 // Date validation - must be past date
-export const pastDateSchema = z.string({
-  required_error: 'Date is required',
-})
+export const pastDateSchema = z.string()
   .min(1, 'Date is required')
   .refine(
     (val) => {
@@ -118,9 +105,8 @@ export const bankAccountSchema = z.string()
   .or(z.literal(''))
 
 // IFSC code - Indian format
-export const ifscSchema = z.string({
-  required_error: 'IFSC code is required',
-})
+export const ifscSchema = z.string()
+  .min(1, 'IFSC code is required')
   .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC format (e.g., SBIN0001234)')
 
 // Passport number - alphanumeric
@@ -130,32 +116,24 @@ export const passportSchema = z.string()
   .or(z.literal(''))
 
 // Name validation - letters and spaces only
-export const nameSchema = z.string({
-  required_error: 'Name is required',
-})
+export const nameSchema = z.string()
   .min(1, 'Name is required')
   .min(2, 'Name must be at least 2 characters')
   .regex(/^[a-zA-Z\s]+$/, 'Name can only contain letters and spaces')
 
 // Required string with min length
 export const requiredString = (fieldName: string, minLength = 1) =>
-  z.string({
-    required_error: `${fieldName} is required`,
-  })
+  z.string()
     .min(1, `${fieldName} is required`)
     .min(minLength, `${fieldName} must be at least ${minLength} characters`)
 
 // Positive number validation
 export const positiveNumberSchema = (fieldName: string = 'Value') =>
-  z.number({
-    required_error: `${fieldName} is required`,
-  })
+  z.number()
     .min(0, `${fieldName} must be positive`)
 
 // Integer validation
-export const integerSchema = z.number({
-  required_error: 'Value is required',
-})
+export const integerSchema = z.number()
   .int('Value must be a whole number')
 
 /**

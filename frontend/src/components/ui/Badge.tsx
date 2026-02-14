@@ -11,7 +11,8 @@ interface BadgeProps {
     | "danger"
     | "info"
     | "secondary"
-    | "destructive";
+    | "destructive"
+    | "outline";
   size?: "sm" | "md";
   className?: string;
 }
@@ -33,6 +34,7 @@ export function Badge({
     info: "bg-blue-100 text-blue-700",
     secondary: "bg-blue-200 text-white",
     destructive: "bg-red-300 text-white",
+    outline: "bg-transparent border border-gray-300 text-gray-700",
   };
 
   const sizes = {

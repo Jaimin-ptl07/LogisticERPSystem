@@ -349,7 +349,7 @@ export default function NewProductPage() {
                   id="unit_type_id"
                   value={formData.unit_type_id || ""}
                   onChange={(e) =>
-                    handleInputChange("unit_type_id", e.target.value || undefined)
+                    handleInputChange("unit_type_id", e.target.value || "")
                   }
                   className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >

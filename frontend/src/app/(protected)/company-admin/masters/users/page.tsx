@@ -64,6 +64,7 @@ import { UserInvitationModal } from "./UserInvitationModal";
 export default function UsersPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<number | null>(null);
   const [branchFilter, setBranchFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<
     "all" | "active" | "inactive"

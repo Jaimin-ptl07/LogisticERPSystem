@@ -163,7 +163,7 @@ export default function Trips() {
       // Deduplicate trips by ID in case of duplicates
       const uniqueTrips = Array.from(
         new Map(data.map((trip: Trip) => [trip.id, trip])).values()
-      );
+      ) as Trip[];
       setAllTrips(uniqueTrips);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch trips");
@@ -306,10 +306,11 @@ export default function Trips() {
           // Pre-select current truck and driver
           setReassignTruck(trip.truck?.plate || "");
           setReassignDriver(trip.driver ? {
-            user_id: trip.driver_id || "",
-            name: trip.driver_name || "",
-            phone: trip.driver_phone || "",
+            id: (trip.driver as any).id || (trip.driver as any).user_id || "",
+            name: trip.driver.name || "",
+            phone: trip.driver.phone || "",
             license: "",
+            experience: "",
             status: "available",
             branch_id: ""
           } : null);
@@ -444,7 +445,7 @@ export default function Trips() {
         truck_plate: selectedTruckDetails.plate,
         truck_model: selectedTruckDetails.model,
         truck_capacity: selectedTruckDetails.capacity,
-        driver_id: selectedDriver.user_id, // Store the driver's user_id from auth service
+        driver_id: (selectedDriver as any).user_id || selectedDriver.id || "", // Store the driver's user_id from auth service
         driver_name: selectedDriver.name,
         driver_phone: selectedDriver.phone,
         capacity_total: selectedTruckDetails.capacity,
@@ -562,7 +563,7 @@ export default function Trips() {
       // Check if resources changed
       const resourcesChanged =
         truckDetails.plate !== selectedTripForReassign.truck?.plate ||
-        reassignDriver.user_id !== selectedTripForReassign.driver_id;
+        reassignDriver.id !== (selectedTripForReassign.driver as any)?.id;
 
       // Call the reassign API if resources changed
       if (resourcesChanged) {
@@ -570,7 +571,7 @@ export default function Trips() {
           truck_plate: truckDetails.plate,
           truck_model: truckDetails.model,
           truck_capacity: truckDetails.capacity,
-          driver_id: reassignDriver.user_id,
+          driver_id: (reassignDriver as any).user_id || reassignDriver.id || "",
           driver_name: reassignDriver.name,
           driver_phone: reassignDriver.phone,
         });
@@ -1059,6 +1060,7 @@ export default function Trips() {
         id?: string;
         product_id?: string;
         quantity?: number;
+        original_quantity?: number;
         weight?: number;
         volume?: number;
         total_price?: number;
@@ -1148,7 +1150,7 @@ export default function Trips() {
       const assignedTotal = itemsToAssign.reduce((sum: number, item: { total_price?: number }) => sum + (item.total_price || 0), 0);
       const assignedQuantity = itemsToAssign.reduce((sum: number, item: { quantity?: number }) => sum + (item.quantity || 0), 0);
 
-      const remainingWeight = itemsRemaining.reduce((sum: number, item: { total_weight?: number }) => sum + (item.total_weight || (item.weight || 0) * (item.quantity || 1)), 0);
+      const remainingWeight = itemsRemaining.reduce((sum: number, item: OrderItem) => sum + (item.total_weight || (item.weight || 0) * (item.quantity || 1)), 0);
       const remainingQuantity = itemsRemaining.reduce((sum: number, item: { quantity?: number }) => sum + (item.quantity || 0), 0);
 
       // Create split order data
@@ -2095,7 +2097,7 @@ export default function Trips() {
                                                       {item.weight ?? 0}
                                                     </td>
                                                     <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                                      {item.total_weight ?? (item.weight * item.quantity) ?? 0}
+                                                      {item.total_weight ?? ((item.weight || 0) * (item.quantity || 0))}
                                                     </td>
                                                   </tr>
                                                 ))}
@@ -2104,11 +2106,11 @@ export default function Trips() {
                                                 <tr>
                                                   <td colSpan={2} className="py-3 px-3 font-bold text-gray-900">Order Total</td>
                                                   <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                                    {order.items_data.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                                                    {order.items_data.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)}
                                                   </td>
                                                   <td className="py-3 px-3"></td>
                                                   <td className="py-3 px-3 text-right font-bold text-gray-900">
-                                                    {order.items_data.reduce((sum, item) => sum + (item.total_weight ?? (item.weight * item.quantity) ?? 0), 0).toFixed(2)}
+                                                    {order.items_data.reduce((sum: number, item: any) => sum + (item.total_weight ?? ((item.weight || 0) * (item.quantity || 0))), 0).toFixed(2)}
                                                   </td>
                                                 </tr>
                                               </tfoot>
@@ -2346,7 +2348,7 @@ export default function Trips() {
                                           {item.unit_price ? `₹${item.unit_price}` : "N/A"}
                                         </td>
                                         <td className="py-3 px-4 text-right font-bold text-gray-900">
-                                          {item.total_weight ?? (item.weight * item.quantity) ?? 0} kg
+                                          {item.total_weight ?? ((item.weight || 0) * (item.quantity || 0))} kg
                                         </td>
                                       </tr>
                                     ))}
@@ -2355,11 +2357,11 @@ export default function Trips() {
                                     <tr>
                                       <td colSpan={2} className="py-3 px-4 font-bold text-gray-900">Total</td>
                                       <td className="py-3 px-4 text-right font-bold text-gray-900">
-                                        {order.items_data.reduce((sum, item) => sum + (item.quantity || 0), 0)} items
+                                        {order.items_data.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)} items
                                       </td>
                                       <td colSpan={3}></td>
                                       <td className="py-3 px-4 text-right font-bold text-gray-900">
-                                        {order.items_data.reduce((sum, item) => sum + (item.total_weight ?? (item.weight * item.quantity) ?? 0), 0).toFixed(2)} kg
+                                        {order.items_data.reduce((sum: number, item: any) => sum + (item.total_weight ?? ((item.weight || 0) * (item.quantity || 0))), 0).toFixed(2)} kg
                                       </td>
                                     </tr>
                                   </tfoot>
@@ -4116,7 +4118,7 @@ export default function Trips() {
                               order_id: item.order_id,
                               order_item_id: item.order_item_id,
                               assigned_quantity: qty,
-                              weight_per_unit: item.weight_per_unit
+                              total_weight: qty * item.weight_per_unit
                             };
                           });
 

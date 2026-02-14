@@ -240,10 +240,10 @@ export function StatusTimeline({ entityType, entityId, onClose }: StatusTimeline
                               )}
                               <span
                                 className={`px-2 py-0.5 text-xs font-medium rounded border ${
-                                  statusColors[item.to_status] || "bg-gray-100 text-gray-700 border-gray-200"
+                                  statusColors[item.to_status || ""] || "bg-gray-100 text-gray-700 border-gray-200"
                                 }`}
                               >
-                                {formatStatus(item.to_status)}
+                                {formatStatus(item.to_status || "")}
                               </span>
                             </div>
                             <span className="text-xs text-gray-500 whitespace-nowrap">

@@ -147,16 +147,17 @@ export default function DriverProfileForm({
 
     try {
       // Map frontend form data to backend schema
-      // Backend expects: license_type (string), license_expiry (datetime), badge_expiry, preferred_vehicle_types
+      // Backend expects: license_types (array), license_issue_date, license_expiry_date, vehicle_preferences
       const profileData = {
         driver_code: formData.driver_code || undefined,
         license_number: formData.license_number,
-        license_type: formData.license_type, // String, not array
-        license_expiry: formData.license_expiry_date, // Map license_expiry_date to license_expiry
+        license_types: [formData.license_type], // Convert single string to array
+        license_issue_date: new Date().toISOString().split('T')[0], // Use current date as default
+        license_expiry_date: formData.license_expiry_date,
         license_issuing_authority: formData.license_issuing_authority || '',
         badge_number: formData.badge_number,
-        badge_expiry: formData.badge_expiry_date, // Map badge_expiry_date to badge_expiry
-        preferred_vehicle_types: formData.preferred_vehicle_types, // Map vehicle_preferences to preferred_vehicle_types
+        badge_expiry_date: formData.badge_expiry_date,
+        vehicle_preferences: formData.preferred_vehicle_types, // Map to vehicle_preferences
         experience_years: formData.experience_years,
       }
 

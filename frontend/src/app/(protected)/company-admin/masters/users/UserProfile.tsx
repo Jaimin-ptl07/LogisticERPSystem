@@ -89,19 +89,19 @@ const profileSchema = z.object({
   }).optional(),
   branch_manager_profile: z.object({
     managed_branch_id: z.string().optional(),
-    can_create_quotes: z.boolean().default(true),
-    can_approve_discounts: z.boolean().default(false),
-    max_discount_percentage: z.number().default(0),
-    can_manage_inventory: z.boolean().default(true),
-    can_manage_vehicles: z.boolean().default(false),
+    can_create_quotes: z.boolean(),
+    can_approve_discounts: z.boolean(),
+    max_discount_percentage: z.number(),
+    can_manage_inventory: z.boolean(),
+    can_manage_vehicles: z.boolean(),
     staff_management_permissions: z.object({
-      hire: z.boolean().default(false),
-      terminate: z.boolean().default(false),
-      approve_leave: z.boolean().default(false),
-      schedule_shifts: z.boolean().default(false),
-      performance_reviews: z.boolean().default(false),
-      salary_adjustments: z.boolean().default(false)
-    }).default({})
+      hire: z.boolean(),
+      terminate: z.boolean(),
+      approve_leave: z.boolean(),
+      schedule_shifts: z.boolean(),
+      performance_reviews: z.boolean(),
+      salary_adjustments: z.boolean()
+    })
   }).optional()
 });
 
@@ -136,7 +136,23 @@ export function UserProfile({ userId, isOpen, onClose }: UserProfileProps) {
     formState: { errors, isDirty }
   } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
-    defaultValues: profile || {}
+    defaultValues: profile || {
+      branch_manager_profile: {
+        can_create_quotes: true,
+        can_approve_discounts: false,
+        max_discount_percentage: 0,
+        can_manage_inventory: true,
+        can_manage_vehicles: false,
+        staff_management_permissions: {
+          hire: false,
+          terminate: false,
+          approve_leave: false,
+          schedule_shifts: false,
+          performance_reviews: false,
+          salary_adjustments: false
+        }
+      }
+    }
   });
 
   useEffect(() => {

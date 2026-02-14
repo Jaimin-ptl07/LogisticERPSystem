@@ -19,6 +19,7 @@ import {
   Product,
   Order,
 } from "@/services/api/ordersApi";
+import { OrderCreate } from "@/services/api/ordersApi";
 import { Package, Plus, X, Info, User, Weight, Clock, Building2, FileText, Box, TrendingUp, ChevronDown, Search } from "lucide-react";
 import { skipToken } from "@reduxjs/toolkit/query";
 
@@ -264,10 +265,11 @@ export function CreateOrderModal({
   // Fetch real data from APIs
   const { data: branchesData, isLoading: branchesLoading } = useGetBranchesQuery();
 
-  // Build customers query params - for marketing person, filter by their assignments
+  // Build customers query params
   const customersQueryParams = selectedBranch ? { branch_id: selectedBranch } : {};
   if (userType === 'marketing-person' && marketingPersonId) {
-    customersQueryParams.marketing_person_id = marketingPersonId;
+    // Note: Filtering by marketing_person_id is not supported by the API
+    // Customers will need to be filtered client-side if needed
   }
 
   const { data: customersData, isLoading: customersLoading } = useGetCustomersQuery(customersQueryParams);
@@ -449,10 +451,10 @@ export function CreateOrderModal({
         };
       });
 
-      const orderData: Partial<OrderCreate> = {
+      const orderData: OrderCreate = {
         tenant_id: "default-tenant",
         customer_id: data.customer,
-        branch_id: data.branch,
+        branch_id: data.branch || "",
         order_type: "delivery" as const,
         priority: "normal" as const,
         total_weight: totalWeight,
