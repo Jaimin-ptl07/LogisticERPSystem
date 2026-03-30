@@ -513,6 +513,7 @@ export interface ProductCreate {
   current_stock?: number
   is_active?: boolean
   available_for_all_branches?:boolean
+  branch_ids?: string[]
 }
 
 export interface ProductCategoryCreate {

@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -307,21 +307,10 @@ async def update_product(
                 detail=str(e)
             )
 
-    # Validate branch if provided
-    if product_data.branch_id:
-        branch_query = select(Branch).where(
-            Branch.id == product_data.branch_id,
-            Branch.tenant_id == tenant_id
-        )
-        branch_result = await db.execute(branch_query)
-        if not branch_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid branch"
-            )
-
-    # Update product
-    update_data = product_data.model_dump(exclude_unset=True)
+    # Extract branch_ids from request data
+    update_data = product_data.model_dump(exclude_unset=True, exclude={'branch_ids'})
+    branch_ids = product_data.branch_ids if hasattr(product_data, 'branch_ids') else None
+    available_for_all_branches = update_data.get('available_for_all_branches')
 
     # Calculate volume if dimensions are provided
     if 'length' in update_data or 'width' in update_data or 'height' in update_data:
@@ -338,6 +327,33 @@ async def update_product(
 
     await db.commit()
     await db.refresh(product)
+
+    # Handle branch assignments if available_for_all_branches is explicitly set or branch_ids is provided
+    if available_for_all_branches is not None or branch_ids is not None:
+        # Delete existing branch relationships
+        await db.execute(
+            delete(ProductBranch).where(ProductBranch.product_id == product_id)
+        )
+        await db.commit()
+
+        # If not available for all branches and branch_ids are provided, create new relationships
+        if not product.available_for_all_branches and branch_ids:
+            # Validate all branch IDs
+            for branch_id in branch_ids:
+                try:
+                    await validate_branch_exists(db, branch_id, tenant_id)
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+
+            # Create product-branch relationships
+            for branch_id in branch_ids:
+                product_branch = ProductBranch(
+                    product_id=product.id,
+                    branch_id=branch_id,
+                    tenant_id=tenant_id
+                )
+                db.add(product_branch)
+            await db.commit()
 
     # Load the category relationship for response with children
     result = await db.execute(

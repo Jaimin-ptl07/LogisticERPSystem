@@ -16,15 +16,19 @@ import {
   DollarSign,
   Box,
   AlertTriangle,
+  Building,
 } from "lucide-react";
 import {
   useGetProductQuery,
   useUpdateProductMutation,
   useGetProductCategoriesQuery,
   useGetAllProductUnitTypesQuery,
+  useGetBranchesQuery,
 } from "@/services/api/companyApi";
 import { ProductCreate } from "@/services/api/companyApi";
 import { toast } from "react-hot-toast";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
+import { useTenantSettings } from "@/contexts/TenantSettingsContext";
 
 export default function EditProductPage() {
   const params = useParams();
@@ -34,6 +38,8 @@ export default function EditProductPage() {
   const { data: product, isLoading, error } = useGetProductQuery(productId);
   const { data: categories } = useGetProductCategoriesQuery({});
   const { data: unitTypes } = useGetAllProductUnitTypesQuery({ is_active: true });
+  const { data: branches } = useGetBranchesQuery({});
+  const { currency } = useTenantSettings();
   const [updateProduct, { isLoading: isUpdating }] = useUpdateProductMutation();
 
   const [formData, setFormData] = useState<Partial<ProductCreate>>({
@@ -44,6 +50,9 @@ export default function EditProductPage() {
     description: "",
     unit_price: 0,
     special_price: undefined,
+    weight_type: "fixed" as "fixed" | "variable",
+    weight_unit: "kg",
+    fixed_weight: undefined,
     weight: undefined,
     length: undefined,
     width: undefined,
@@ -54,9 +63,12 @@ export default function EditProductPage() {
     max_stock_level: 0,
     current_stock: 0,
     is_active: true,
+    available_for_all_branches: true,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isAvailableForAllBranches, setIsAvailableForAllBranches] = useState(true);
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   useEffect(() => {
     if (product) {
@@ -68,6 +80,9 @@ export default function EditProductPage() {
         description: product.description || "",
         unit_price: product.unit_price || 0,
         special_price: product.special_price,
+        weight_type: product.weight_type || "fixed",
+        weight_unit: product.weight_unit || "kg",
+        fixed_weight: product.fixed_weight,
         weight: product.weight,
         length: product.length,
         width: product.width,
@@ -78,7 +93,17 @@ export default function EditProductPage() {
         max_stock_level: product.max_stock_level || 0,
         current_stock: product.current_stock || 0,
         is_active: product.is_active,
+        available_for_all_branches: product.available_for_all_branches ?? true,
       });
+
+      // Initialize branch state
+      setIsAvailableForAllBranches(product.available_for_all_branches ?? true);
+
+      // Extract branch IDs from product branches relationship
+      if (product.branches && product.branches.length > 0) {
+        const branchIds = product.branches.map((pb: any) => pb.branch_id);
+        setSelectedBranches(branchIds);
+      }
     }
   }, [product]);
 
@@ -115,6 +140,18 @@ export default function EditProductPage() {
       newErrors.current_stock = "Current stock must be non-negative";
     }
 
+    // Branch validation
+    if (!isAvailableForAllBranches && selectedBranches.length === 0) {
+      newErrors.branch_ids = "Please select at least one branch";
+    }
+
+    // Weight type validation
+    if (formData.weight_type === "fixed") {
+      if (!formData.fixed_weight || formData.fixed_weight <= 0) {
+        newErrors.fixed_weight = "Fixed weight is required for FIXED type";
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -128,9 +165,27 @@ export default function EditProductPage() {
     }
 
     try {
+      // Prepare data for API
+      const submitData: Partial<ProductCreate> = {
+        ...formData,
+        available_for_all_branches: isAvailableForAllBranches,
+        weight_type: formData.weight_type || "fixed",
+        weight_unit: formData.weight_unit || "kg",
+      };
+
+      // Only include branch_ids if not available for all branches
+      if (!isAvailableForAllBranches && selectedBranches.length > 0) {
+        submitData.branch_ids = selectedBranches;
+      }
+
+      // Only include fixed_weight if fixed type
+      if (formData.weight_type === "fixed" && formData.fixed_weight && formData.fixed_weight > 0) {
+        submitData.fixed_weight = formData.fixed_weight;
+      }
+
       await updateProduct({
         id: productId,
-        product: formData,
+        product: submitData,
       }).unwrap();
 
       toast.success("Product updated successfully");
@@ -350,6 +405,81 @@ export default function EditProductPage() {
                 </p>
               </div>
               <div>
+                <Label className="text-sm font-medium text-gray-700 mb-3 block">
+                  Branch Availability
+                </Label>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="available_for_all_branches"
+                      checked={isAvailableForAllBranches}
+                      onChange={(e) =>
+                        setIsAvailableForAllBranches(e.target.checked)
+                      }
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <Label
+                      htmlFor="available_for_all_branches"
+                      className="text-sm font-medium text-gray-900"
+                    >
+                      Available for all branches
+                    </Label>
+                  </div>
+
+                  {!isAvailableForAllBranches && (
+                    <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                      <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                        Select specific branches:
+                      </Label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {branches?.items?.map((branch: any) => (
+                          <div
+                            key={branch.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <input
+                              type="checkbox"
+                              id={`branch_${branch.id}`}
+                              checked={selectedBranches.includes(branch.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBranches([
+                                    ...selectedBranches,
+                                    branch.id,
+                                  ]);
+                                } else {
+                                  setSelectedBranches(
+                                    selectedBranches.filter(
+                                      (id) => id !== branch.id
+                                    )
+                                  );
+                                }
+                              }}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <Label
+                              htmlFor={`branch_${branch.id}`}
+                              className="text-sm text-gray-900"
+                            >
+                              {branch.name} ({branch.code})
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedBranches.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-2">
+                          Please select at least one branch
+                        </p>
+                      )}
+                      {errors.branch_ids && (
+                        <p className="text-sm text-red-600 mt-1">{errors.branch_ids}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
@@ -384,7 +514,7 @@ export default function EditProductPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="unit_price">Unit Price ($) *</Label>
+                  <Label htmlFor="unit_price">Unit Price ({currency.symbol}) *</Label>
                   <Input
                     id="unit_price"
                     type="number"
@@ -405,7 +535,7 @@ export default function EditProductPage() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="special_price">Special Price ($)</Label>
+                  <Label htmlFor="special_price">Special Price ({currency.symbol})</Label>
                   <Input
                     id="special_price"
                     type="number"
@@ -448,26 +578,94 @@ export default function EditProductPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="weight">Weight (kg)</Label>
-                  <Input
-                    id="weight"
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={formData.weight || ""}
-                    onChange={(e) => {
-                      if (e.target.value === "") {
-                        handleInputChange("weight", 0);
-                      } else {
-                        const value = parseFloat(e.target.value);
-                        handleInputChange("weight", isNaN(value) ? 0 : value);
-                      }
-                    }}
-                    placeholder="e.g., 5.5"
-                  />
+              {/* Weight Type Selection */}
+              <div>
+                <Label htmlFor="weight_type" className="text-sm font-medium text-gray-700 mb-3 block">
+                  Weight Type *
+                </Label>
+                <div className="flex gap-4">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="weight_type"
+                      id="weight_type_fixed"
+                      value="fixed"
+                      checked={formData.weight_type === "fixed"}
+                      onChange={(e) => handleInputChange("weight_type", e.target.value)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-900">Fixed Weight</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="weight_type"
+                      id="weight_type_variable"
+                      value="variable"
+                      checked={formData.weight_type === "variable"}
+                      onChange={(e) => handleInputChange("weight_type", e.target.value)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-900">Variable Weight</span>
+                  </label>
                 </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {formData.weight_type === "fixed"
+                    ? "Fixed weight products have a standard weight that is pre-determined and auto-filled in orders."
+                    : "Variable weight products require the actual weight to be entered when creating orders."}
+                </p>
+              </div>
+
+              {/* Weight Configuration - Fixed */}
+              {formData.weight_type === "fixed" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="fixed_weight">Fixed Weight ({formData.weight_unit || "kg"}) *</Label>
+                    <Input
+                      id="fixed_weight"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={formData.fixed_weight ?? ""}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange("fixed_weight", isNaN(value) ? 0 : value);
+                      }}
+                      placeholder="e.g., 5.5"
+                      className={errors.fixed_weight ? "border-red-500" : ""}
+                    />
+                    {errors.fixed_weight && (
+                      <p className="text-sm text-red-600 mt-1">{errors.fixed_weight}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="weight_unit">Weight Unit</Label>
+                    <select
+                      id="weight_unit"
+                      value={formData.weight_unit || "kg"}
+                      onChange={(e) => handleInputChange("weight_unit", e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="kg">Kilograms (kg)</option>
+                      <option value="g">Grams (g)</option>
+                      <option value="lb">Pounds (lb)</option>
+                      <option value="oz">Ounces (oz)</option>
+                      <option value="ton">Metric Tons (ton)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Weight Configuration - Variable */}
+              {formData.weight_type === "variable" && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Variable Weight:</strong> When creating orders for this product, you will be prompted to enter the actual weight for each item.
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="volume">Volume (m³)</Label>
                   <Input
@@ -478,7 +676,7 @@ export default function EditProductPage() {
                     value={formData.volume || ""}
                     onChange={(e) => {
                       if (e.target.value === "") {
-                        handleInputChange("volume", 0);
+                        handleInputChange("volume", undefined as any);
                       } else {
                         const value = parseFloat(e.target.value);
                         handleInputChange("volume", isNaN(value) ? 0 : value);
